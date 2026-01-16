@@ -460,8 +460,30 @@ Defer to implementation:
 
 - Exact Flintlock configuration details
 - VM resource defaults (start with 2 CPU / 4GB RAM, tune later)
-- Snapshot retention policy defaults
 - API authentication mechanism (API keys vs Tailscale identity)
+
+## Design Review Notes
+
+This design was reviewed by three senior engineers (infrastructure, security, architecture). Key clarifications based on that review:
+
+### Confirmed Decisions
+
+- **Flintlock**: Actively maintained (v0.9.0 released November 2025). Not a maintenance risk.
+- **Daemon architecture**: Required for API-first design, not premature.
+- **VM network isolation**: Not a requirement. VMs may share network bridge.
+- **Secrets in env vars/snapshots**: Accepted risk for this use case.
+
+### Deferred Items
+
+- **Snapshot retention/clearing tool**: Needed, will implement. Not blocking for V1.
+- **Real disk for ZFS**: File-backed pool is for prototyping only. Production deployments should use dedicated disk.
+- **virtio-fs vs 9p performance**: Worth benchmarking later, not blocking.
+
+### Implementation Notes
+
+- **File-backed ZFS**: Snapshots will work but won't be stress-tested until real disk.
+- **Resource budgeting**: Daemon should track allocated resources and warn/refuse when overcommitted.
+- **Snapshot sync**: Before snapshotting, flush virtio-fs buffers to ensure consistent captures.
 
 ## Future Phases
 
