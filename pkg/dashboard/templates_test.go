@@ -94,3 +94,40 @@ func TestTemplates_FleetWithTasks(t *testing.T) {
 		t.Error("expected repo name in output")
 	}
 }
+
+func TestTemplates_VMDetail(t *testing.T) {
+	tmpl, err := LoadTemplates()
+	if err != nil {
+		t.Fatalf("failed to load templates: %v", err)
+	}
+
+	var buf bytes.Buffer
+	data := map[string]interface{}{
+		"Title":     "vm-123",
+		"User":      "jesse",
+		"ActiveNav": "fleet",
+		"Task": map[string]interface{}{
+			"ID":            "vm-123",
+			"Name":          "test-vm",
+			"Status":        "running",
+			"RepoURL":       "github.com/test/repo",
+			"TailscaleHost": "vm-123.tail.net",
+		},
+		"Snapshots": []map[string]interface{}{
+			{"Name": "snap-1", "Label": "before refactor"},
+		},
+	}
+
+	err = tmpl.ExecuteTemplate(&buf, "vm_detail.html", data)
+	if err != nil {
+		t.Fatalf("failed to execute template: %v", err)
+	}
+
+	html := buf.String()
+	if !strings.Contains(html, "vm-123") {
+		t.Error("expected VM ID in output")
+	}
+	if !strings.Contains(html, "Copy SSH") {
+		t.Error("expected Copy SSH button")
+	}
+}
