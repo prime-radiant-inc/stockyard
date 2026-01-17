@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package stockyard.v1;
+
+option go_package = "github.com/obra/stockyard/pkg/api/v1";
+
+service Stockyard {
+    rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse);
+    rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+    rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+    rpc StopTask(StopTaskRequest) returns (StopTaskResponse);
+    rpc DestroyTask(DestroyTaskRequest) returns (DestroyTaskResponse);
+
+    rpc CreateSnapshot(CreateSnapshotRequest) returns (CreateSnapshotResponse);
+    rpc ListSnapshots(ListSnapshotsRequest) returns (ListSnapshotsResponse);
+    rpc RestoreSnapshot(RestoreSnapshotRequest) returns (RestoreSnapshotResponse);
+
+    rpc GetLogs(GetLogsRequest) returns (stream LogEntry);
+}
+
+message CreateTaskRequest {
+    string repo = 1;
+    string ref = 2;
+    string name = 3;
+    repeated string command = 4;
+    map<string, string> env = 5;
+    int32 cpus = 6;
+    string memory = 7;
+    bool no_tailscale = 8;
+}
+
+message CreateTaskResponse {
+    string task_id = 1;
+    string tailscale_hostname = 2;
+}
+
+message GetTaskRequest {
+    string task_id = 1;
+}
+
+message GetTaskResponse {
+    Task task = 1;
+}
+
+message ListTasksRequest {
+    string status = 1;
+}
+
+message ListTasksResponse {
+    repeated Task tasks = 1;
+}
+
+message StopTaskRequest {
+    string task_id = 1;
+}
+
+message StopTaskResponse {}
+
+message DestroyTaskRequest {
+    string task_id = 1;
+}
+
+message DestroyTaskResponse {}
+
+message CreateSnapshotRequest {
+    string task_id = 1;
+    string label = 2;
+}
+
+message CreateSnapshotResponse {
+    string snapshot_name = 1;
+}
+
+message ListSnapshotsRequest {
+    string task_id = 1;
+}
+
+message ListSnapshotsResponse {
+    repeated Snapshot snapshots = 1;
+}
+
+message RestoreSnapshotRequest {
+    string task_id = 1;
+    string snapshot_name = 2;
+}
+
+message RestoreSnapshotResponse {}
+
+message GetLogsRequest {
+    string task_id = 1;
+    bool follow = 2;
+    int32 tail = 3;
+}
+
+message LogEntry {
+    string timestamp = 1;
+    string line = 2;
+}
+
+message Task {
+    string id = 1;
+    string name = 2;
+    string repo = 3;
+    string ref = 4;
+    string status = 5;
+    string tailscale_hostname = 6;
+    string created_at = 7;
+    string stopped_at = 8;
+}
+
+message Snapshot {
+    string name = 1;
+    string label = 2;
+    string created_at = 3;
+}
