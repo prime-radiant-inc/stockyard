@@ -94,3 +94,44 @@ func TestAPIClient_SetBootSource(t *testing.T) {
 		t.Errorf("wrong boot args: %v", receivedBody)
 	}
 }
+
+func TestAPIClient_SetDrive(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, _ := net.Listen("unix", socketPath)
+	defer listener.Close()
+
+	var receivedPath string
+	var receivedBody map[string]interface{}
+
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewAPIClient(socketPath)
+	err := client.SetDrive(context.Background(), "rootfs", "/path/to/rootfs.ext4", true, false)
+	if err != nil {
+		t.Fatalf("SetDrive failed: %v", err)
+	}
+
+	if receivedPath != "/drives/rootfs" {
+		t.Errorf("expected path /drives/rootfs, got %s", receivedPath)
+	}
+	if receivedBody["drive_id"] != "rootfs" {
+		t.Errorf("wrong drive_id: %v", receivedBody)
+	}
+	if receivedBody["path_on_host"] != "/path/to/rootfs.ext4" {
+		t.Errorf("wrong path_on_host: %v", receivedBody)
+	}
+	if receivedBody["is_root_device"] != true {
+		t.Errorf("wrong is_root_device: %v", receivedBody)
+	}
+	if receivedBody["is_read_only"] != false {
+		t.Errorf("wrong is_read_only: %v", receivedBody)
+	}
+}

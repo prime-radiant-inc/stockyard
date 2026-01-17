@@ -67,3 +67,13 @@ func (a *APIClient) SetBootSource(ctx context.Context, kernelPath, bootArgs stri
 		"boot_args":         bootArgs,
 	})
 }
+
+// SetDrive configures a block device.
+func (a *APIClient) SetDrive(ctx context.Context, driveID, path string, isRoot, isReadOnly bool) error {
+	return a.put(ctx, "/drives/"+driveID, map[string]interface{}{
+		"drive_id":       driveID,
+		"path_on_host":   path,
+		"is_root_device": isRoot,
+		"is_read_only":   isReadOnly,
+	})
+}
