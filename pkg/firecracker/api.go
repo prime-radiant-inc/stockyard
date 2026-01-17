@@ -115,3 +115,10 @@ func (a *APIClient) StartInstance(ctx context.Context) error {
 		"action_type": "InstanceStart",
 	})
 }
+
+// SendCtrlAltDel sends Ctrl+Alt+Del for graceful shutdown.
+func (a *APIClient) SendCtrlAltDel(ctx context.Context) error {
+	return a.put(ctx, "/actions", map[string]string{
+		"action_type": "SendCtrlAltDel",
+	})
+}

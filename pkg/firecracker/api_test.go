@@ -319,3 +319,30 @@ func TestAPIClient_StartInstance(t *testing.T) {
 		t.Errorf("wrong action_type: %v", receivedBody)
 	}
 }
+
+func TestAPIClient_SendCtrlAltDel(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, _ := net.Listen("unix", socketPath)
+	defer listener.Close()
+
+	var receivedBody map[string]interface{}
+
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewAPIClient(socketPath)
+	err := client.SendCtrlAltDel(context.Background())
+	if err != nil {
+		t.Fatalf("SendCtrlAltDel failed: %v", err)
+	}
+
+	if receivedBody["action_type"] != "SendCtrlAltDel" {
+		t.Errorf("wrong action_type: %v", receivedBody)
+	}
+}
