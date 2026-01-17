@@ -8,6 +8,9 @@ import (
 	"strings"
 )
 
+// Compile-time interface compliance check
+var _ Provider = (*OnePasswordProvider)(nil)
+
 // OnePasswordProvider retrieves secrets from 1Password using the op CLI.
 type OnePasswordProvider struct {
 	Vault  string
