@@ -98,10 +98,15 @@ func (s *Server) handleVMDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.daemon == nil {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
 	ctx := r.Context()
 	task, err := s.daemon.GetTask(ctx, id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to get task", http.StatusInternalServerError)
 		return
 	}
 	if task == nil {
