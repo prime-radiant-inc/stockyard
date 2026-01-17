@@ -94,16 +94,18 @@ if [ ! -f /usr/local/bin/flintlockd ]; then
     ARCH=$(uname -m)
     if [ "$ARCH" = "x86_64" ]; then
         ARCH="amd64"
+    elif [ "$ARCH" = "aarch64" ]; then
+        ARCH="arm64"
     fi
 
-    curl -LO "https://github.com/liquidmetal-dev/flintlock/releases/download/${FLINTLOCK_VERSION}/flintlock_${FLINTLOCK_VERSION#v}_linux_${ARCH}.tar.gz"
-    tar -xzf "flintlock_${FLINTLOCK_VERSION#v}_linux_${ARCH}.tar.gz"
+    # Flintlock releases are standalone binaries, not tarballs
+    curl -L -o flintlockd "https://github.com/liquidmetal-dev/flintlock/releases/download/${FLINTLOCK_VERSION}/flintlockd_${ARCH}"
+    curl -L -o flintlock-metrics "https://github.com/liquidmetal-dev/flintlock/releases/download/${FLINTLOCK_VERSION}/flintlock-metrics_${ARCH}"
 
     mv flintlockd /usr/local/bin/
-    mv fl /usr/local/bin/  # Flintlock CLI
-    chmod +x /usr/local/bin/flintlockd /usr/local/bin/fl
+    mv flintlock-metrics /usr/local/bin/
+    chmod +x /usr/local/bin/flintlockd /usr/local/bin/flintlock-metrics
 
-    rm -f "flintlock_${FLINTLOCK_VERSION#v}_linux_${ARCH}.tar.gz"
     log "Flintlock installed to /usr/local/bin/flintlockd"
 else
     log "Flintlock already installed"

@@ -42,10 +42,10 @@ else
     fail "Flintlockd not found"
 fi
 
-if command -v fl &>/dev/null; then
-    log "Flintlock CLI (fl): $(which fl)"
+if command -v flintlock-metrics &>/dev/null; then
+    log "Flintlock metrics: $(which flintlock-metrics)"
 else
-    warn "Flintlock CLI (fl) not found (optional)"
+    warn "Flintlock metrics not found (optional)"
 fi
 
 # Check containerd
