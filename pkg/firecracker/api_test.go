@@ -287,3 +287,35 @@ func TestAPIClient_SetMMDSData(t *testing.T) {
 		t.Errorf("wrong instance-id: %v", receivedBody)
 	}
 }
+
+func TestAPIClient_StartInstance(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, _ := net.Listen("unix", socketPath)
+	defer listener.Close()
+
+	var receivedPath string
+	var receivedBody map[string]interface{}
+
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewAPIClient(socketPath)
+	err := client.StartInstance(context.Background())
+	if err != nil {
+		t.Fatalf("StartInstance failed: %v", err)
+	}
+
+	if receivedPath != "/actions" {
+		t.Errorf("expected path /actions, got %s", receivedPath)
+	}
+	if receivedBody["action_type"] != "InstanceStart" {
+		t.Errorf("wrong action_type: %v", receivedBody)
+	}
+}

@@ -108,3 +108,10 @@ func (a *APIClient) SetMMDSConfig(ctx context.Context, networkInterfaces []strin
 func (a *APIClient) SetMMDSData(ctx context.Context, data map[string]interface{}) error {
 	return a.put(ctx, "/mmds", data)
 }
+
+// StartInstance boots the configured VM.
+func (a *APIClient) StartInstance(ctx context.Context) error {
+	return a.put(ctx, "/actions", map[string]string{
+		"action_type": "InstanceStart",
+	})
+}
