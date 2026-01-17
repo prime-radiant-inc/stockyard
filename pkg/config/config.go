@@ -14,6 +14,7 @@ type Config struct {
 	ZFS         ZFSConfig         `json:"zfs"`
 	Firecracker FirecrackerConfig `json:"firecracker"`
 	VM          VMConfig          `json:"vm"`
+	HTTP        HTTPConfig        `json:"http"`
 }
 
 type VMConfig struct {
@@ -43,6 +44,12 @@ type FirecrackerConfig struct {
 	BridgeName string `json:"bridge_name"`
 }
 
+// HTTPConfig configures the web dashboard HTTP server.
+type HTTPConfig struct {
+	Enabled bool   `json:"enabled"`
+	Addr    string `json:"addr"`
+}
+
 func DefaultConfig() *Config {
 	return &Config{
 		Secrets: SecretsConfig{
@@ -65,6 +72,10 @@ func DefaultConfig() *Config {
 		},
 		VM: VMConfig{
 			User: "mooby",
+		},
+		HTTP: HTTPConfig{
+			Enabled: false,
+			Addr:    ":8080",
 		},
 	}
 }

@@ -54,3 +54,13 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		t.Errorf("instance ID mismatch: got %q, want %q", loaded.InstanceID, cfg.InstanceID)
 	}
 }
+
+func TestConfig_HTTPDefaults(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.HTTP.Enabled != false {
+		t.Errorf("expected HTTP disabled by default, got %v", cfg.HTTP.Enabled)
+	}
+	if cfg.HTTP.Addr != ":8080" {
+		t.Errorf("expected default addr :8080, got %s", cfg.HTTP.Addr)
+	}
+}
