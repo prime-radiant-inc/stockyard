@@ -37,7 +37,7 @@ func NewTaskManager(d *Daemon, fcConfig *FirecrackerConfig) *TaskManager {
 			RootfsPath: fcConfig.RootfsPath,
 			BridgeName: fcConfig.BridgeName,
 		}
-		client, err := firecracker.NewClient(cfg)
+		client, err := firecracker.NewClient(cfg, d.zfs)
 		if err != nil {
 			fmt.Printf("Warning: failed to create firecracker client: %v\n", err)
 		} else {

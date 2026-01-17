@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/obra/stockyard/pkg/zfs"
 )
 
 // Default paths and settings.
@@ -31,11 +33,13 @@ type ClientConfig struct {
 // Client manages Firecracker microVMs.
 type Client struct {
 	config  ClientConfig
+	zfs     *zfs.Manager
 	network *NetworkManager
 }
 
 // NewClient creates a new Firecracker client.
-func NewClient(cfg ClientConfig) (*Client, error) {
+// The zfsMgr parameter can be nil if ZFS cloning is not needed.
+func NewClient(cfg ClientConfig, zfsMgr *zfs.Manager) (*Client, error) {
 	if cfg.StateDir == "" {
 		cfg.StateDir = DefaultStateDir
 	}
@@ -53,6 +57,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 
 	return &Client{
 		config:  cfg,
+		zfs:     zfsMgr,
 		network: NewNetworkManager(cfg.BridgeName),
 	}, nil
 }
