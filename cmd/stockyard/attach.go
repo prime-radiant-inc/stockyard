@@ -1,0 +1,73 @@
+// cmd/stockyard/attach.go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"syscall"
+
+	"github.com/obra/stockyard/pkg/client"
+	"github.com/obra/stockyard/pkg/config"
+	"github.com/spf13/cobra"
+)
+
+var attachCmd = &cobra.Command{
+	Use:   "attach <task-id>",
+	Short: "Attach to a running task via SSH",
+	Long:  `Attach to a running task's VM via SSH through Tailscale.`,
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		taskID := args[0]
+
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+
+		c, err := client.New(cfg.Daemon.SocketPath)
+		if err != nil {
+			return fmt.Errorf("failed to connect to daemon: %w\nIs stockyardd running?", err)
+		}
+		defer c.Close()
+
+		// Get task details
+		task, err := c.GetTask(context.Background(), taskID)
+		if err != nil {
+			return fmt.Errorf("failed to get task: %w", err)
+		}
+
+		if task == nil {
+			return fmt.Errorf("task not found: %s", taskID)
+		}
+
+		if task.Status != "running" {
+			return fmt.Errorf("task is not running (status: %s)", task.Status)
+		}
+
+		if task.TailscaleHostname == "" {
+			return fmt.Errorf("task has no Tailscale hostname (was --no-tailscale used?)")
+		}
+
+		// Build SSH command
+		sshHost := task.TailscaleHostname
+		sshUser := "vscode"
+
+		fmt.Printf("Connecting to %s@%s...\n", sshUser, sshHost)
+
+		// Exec SSH (replaces current process)
+		sshPath, err := exec.LookPath("ssh")
+		if err != nil {
+			return fmt.Errorf("ssh not found: %w", err)
+		}
+
+		sshArgs := []string{"ssh", "-o", "StrictHostKeyChecking=accept-new", fmt.Sprintf("%s@%s", sshUser, sshHost)}
+
+		return syscall.Exec(sshPath, sshArgs, os.Environ())
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(attachCmd)
+}
