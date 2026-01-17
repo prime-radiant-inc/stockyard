@@ -58,6 +58,8 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 			KernelPath: cfg.Firecracker.KernelPath,
 			RootfsPath: cfg.Firecracker.RootfsPath,
 			BridgeName: cfg.Firecracker.BridgeName,
+			ImagesPath: cfg.ZFS.ImagesPath,
+			VMsPath:    cfg.ZFS.VMsPath,
 		}
 	}
 	d.tasks = NewTaskManager(d, fcConfig)

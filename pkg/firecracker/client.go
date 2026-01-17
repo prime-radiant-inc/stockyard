@@ -29,6 +29,8 @@ type ClientConfig struct {
 	BridgeName     string
 	KernelPath     string
 	RootfsPath     string
+	ImagesPath     string // ZFS dataset path for images (e.g., "stockyard/images")
+	VMsPath        string // ZFS dataset path for VMs (e.g., "stockyard/vms")
 }
 
 // Client manages Firecracker microVMs.
@@ -115,9 +117,9 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	if c.zfs != nil {
 		// Use ZFS clone for copy-on-write rootfs
 		// Full snapshot path: tank/stockyard/images/rootfs@base
-		snapshotPath := fmt.Sprintf("%s/stockyard/images/rootfs@base", c.zfs.PoolName)
+		snapshotPath := fmt.Sprintf("%s/%s/rootfs@base", c.zfs.PoolName, c.config.ImagesPath)
 		// Full clone target: tank/stockyard/vms/<vmID>
-		vmDatasetPath = fmt.Sprintf("%s/stockyard/vms/%s", c.zfs.PoolName, config.ID)
+		vmDatasetPath = fmt.Sprintf("%s/%s/%s", c.zfs.PoolName, c.config.VMsPath, config.ID)
 
 		// Clone: zfs clone <snapshot> <target>
 		cmd := exec.CommandContext(ctx, "zfs", "clone", snapshotPath, vmDatasetPath)
@@ -345,7 +347,7 @@ func (c *Client) DeleteVM(ctx context.Context, namespace, id string) error {
 
 	// Destroy ZFS clone dataset if using ZFS
 	if c.zfs != nil {
-		vmDatasetPath := fmt.Sprintf("%s/stockyard/vms/%s", c.zfs.PoolName, id)
+		vmDatasetPath := fmt.Sprintf("%s/%s/%s", c.zfs.PoolName, c.config.VMsPath, id)
 		destroyZFSDataset(vmDatasetPath)
 	}
 

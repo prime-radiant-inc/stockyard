@@ -23,6 +23,8 @@ type FirecrackerConfig struct {
 	KernelPath string
 	RootfsPath string
 	BridgeName string
+	ImagesPath string // ZFS dataset path for images
+	VMsPath    string // ZFS dataset path for VMs
 }
 
 // NewTaskManager creates a TaskManager with the given daemon and firecracker configuration.
@@ -36,6 +38,8 @@ func NewTaskManager(d *Daemon, fcConfig *FirecrackerConfig) *TaskManager {
 			KernelPath: fcConfig.KernelPath,
 			RootfsPath: fcConfig.RootfsPath,
 			BridgeName: fcConfig.BridgeName,
+			ImagesPath: fcConfig.ImagesPath,
+			VMsPath:    fcConfig.VMsPath,
 		}
 		client, err := firecracker.NewClient(cfg, d.zfs)
 		if err != nil {
