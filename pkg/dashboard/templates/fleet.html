@@ -98,7 +98,7 @@
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">running</span>
                                         {{else if eq .Status "stopped"}}
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">stopped</span>
-                                        {{else if eq .Status "error"}}
+                                        {{else if eq .Status "failed"}}
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">error</span>
                                         {{else}}
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">{{.Status}}</span>
@@ -113,11 +113,11 @@
                                             </button>
                                             <div x-show="actionsOpen" x-cloak class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
                                                 <div class="py-1">
-                                                    <button @click="copySSH('{{.ID}}')" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Copy SSH Command</button>
+                                                    <button @click="copySSH('{{.TailscaleHost}}')" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Copy SSH Command</button>
                                                     {{if eq .Status "running"}}
-                                                    <button hx-post="/vm/{{.ID}}/stop" hx-swap="none" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Stop</button>
+                                                    <button hx-post="/api/vm/{{.ID}}/stop" hx-swap="none" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Stop</button>
                                                     {{end}}
-                                                    <button hx-delete="/vm/{{.ID}}" hx-swap="none" hx-confirm="Are you sure you want to destroy this VM?" class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Destroy</button>
+                                                    <button hx-delete="/api/vm/{{.ID}}" hx-swap="none" hx-confirm="Are you sure you want to destroy this VM?" class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Destroy</button>
                                                 </div>
                                             </div>
                                         </div>
