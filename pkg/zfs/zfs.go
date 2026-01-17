@@ -159,3 +159,17 @@ func (m *Manager) runZFS(ctx context.Context, args ...string) error {
 	}
 	return nil
 }
+
+// CloneTargetPath returns the full ZFS dataset path for a clone target.
+// targetDataset is relative like "vms/abc123" -> becomes "tank/stockyard/vms/abc123"
+func (m *Manager) CloneTargetPath(targetDataset string) string {
+	return fmt.Sprintf("%s/%s/%s", m.PoolName, m.BasePath, targetDataset)
+}
+
+// CloneSnapshot creates a new dataset from an existing snapshot.
+// snapshotPath is the full path like "tank/stockyard/images/rootfs@base"
+// targetDataset is relative like "vms/abc123" -> becomes "tank/stockyard/vms/abc123"
+func (m *Manager) CloneSnapshot(ctx context.Context, snapshotPath, targetDataset string) error {
+	fullTarget := m.CloneTargetPath(targetDataset)
+	return m.runZFS(ctx, "clone", snapshotPath, fullTarget)
+}

@@ -67,3 +67,23 @@ func TestDatasetPath(t *testing.T) {
 		t.Errorf("got %q, want %q", path, expected)
 	}
 }
+
+func TestCloneSnapshotTargetPath(t *testing.T) {
+	m := NewManager("tank", "stockyard")
+
+	// Test that CloneTargetPath builds correct full path from relative target
+	tests := []struct {
+		targetDataset string
+		want          string
+	}{
+		{"vms/test-vm-123", "tank/stockyard/vms/test-vm-123"},
+		{"vms/abc", "tank/stockyard/vms/abc"},
+	}
+
+	for _, tt := range tests {
+		got := m.CloneTargetPath(tt.targetDataset)
+		if got != tt.want {
+			t.Errorf("CloneTargetPath(%q) = %q, want %q", tt.targetDataset, got, tt.want)
+		}
+	}
+}
