@@ -160,12 +160,13 @@ func (s *grpcServer) GetLogs(req *pb.GetLogsRequest, stream grpc.ServerStreaming
 
 func taskToProto(t *Task) *pb.Task {
 	pt := &pb.Task{
-		Id:        t.ID,
-		Name:      t.Name,
-		Repo:      t.Repo,
-		Ref:       t.Ref,
-		Status:    t.Status,
-		CreatedAt: t.CreatedAt.Format(time.RFC3339),
+		Id:                t.ID,
+		Name:              t.Name,
+		Repo:              t.Repo,
+		Ref:               t.Ref,
+		Status:            t.Status,
+		TailscaleHostname: t.TailscaleHostname,
+		CreatedAt:         t.CreatedAt.Format(time.RFC3339),
 	}
 	if t.StoppedAt != nil {
 		pt.StoppedAt = t.StoppedAt.Format(time.RFC3339)
