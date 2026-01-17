@@ -343,6 +343,12 @@ func (c *Client) DeleteVM(ctx context.Context, namespace, id string) error {
 		c.network.DeleteTap(string(data))
 	}
 
+	// Destroy ZFS clone dataset if using ZFS
+	if c.zfs != nil {
+		vmDatasetPath := fmt.Sprintf("%s/stockyard/vms/%s", c.zfs.PoolName, id)
+		destroyZFSDataset(vmDatasetPath)
+	}
+
 	// Remove state directory
 	if err := os.RemoveAll(vmDir); err != nil {
 		return fmt.Errorf("failed to remove VM directory: %w", err)
