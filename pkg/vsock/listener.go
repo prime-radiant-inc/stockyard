@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/mdlayher/vsock"
@@ -35,6 +36,9 @@ type SnapshotServer struct {
 
 // NewSnapshotServer creates a new snapshot server
 func NewSnapshotServer(handler SnapshotHandler) *SnapshotServer {
+	if handler == nil {
+		panic("vsock: handler cannot be nil")
+	}
 	return &SnapshotServer{
 		handler: handler,
 		port:    DefaultPort,
@@ -87,8 +91,9 @@ func (s *SnapshotServer) ListenUnix(ctx context.Context) error {
 	}
 
 	// Ensure directory exists
-	if err := os.MkdirAll("/run/stockyard", 0755); err != nil {
-		// Ignore error, might be testing
+	dir := filepath.Dir(s.UnixSocketPath)
+	if err := os.MkdirAll(dir, 0755); err != nil && !os.IsExist(err) {
+		log.Printf("warning: could not create directory %s: %v", dir, err)
 	}
 
 	// Remove stale socket
@@ -126,26 +131,42 @@ func (s *SnapshotServer) ListenUnix(ctx context.Context) error {
 
 // Listen starts both vsock and unix listeners
 func (s *SnapshotServer) Listen(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel() // This will stop both listeners when we exit
+
+	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
 
 	// Try vsock
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if err := s.ListenVsock(ctx); err != nil {
 			log.Printf("vsock listener failed: %v (falling back to unix)", err)
 		}
-		errCh <- nil
 	}()
 
 	// Always start Unix as fallback
+	wg.Add(1)
 	go func() {
-		errCh <- s.ListenUnix(ctx)
+		defer wg.Done()
+		if err := s.ListenUnix(ctx); err != nil {
+			select {
+			case errCh <- err:
+			default:
+			}
+		}
 	}()
 
-	// Wait for context or error
+	// Wait for context cancellation or Unix listener error
 	select {
 	case <-ctx.Done():
+		cancel()
+		wg.Wait()
 		return nil
 	case err := <-errCh:
+		cancel()
+		wg.Wait()
 		return err
 	}
 }
@@ -157,7 +178,9 @@ func (s *SnapshotServer) handleConnection(conn net.Conn, vmID string) {
 	label, err := DecodeSnapshotRequest(conn)
 	if err != nil {
 		log.Printf("failed to decode request from %s: %v", vmID, err)
-		EncodeSnapshotResponse(conn, false, err.Error())
+		if encErr := EncodeSnapshotResponse(conn, false, err.Error()); encErr != nil {
+			log.Printf("failed to send error response to %s: %v", vmID, encErr)
+		}
 		return
 	}
 
@@ -166,12 +189,16 @@ func (s *SnapshotServer) handleConnection(conn net.Conn, vmID string) {
 	// Call handler
 	if err := s.handler(vmID, label); err != nil {
 		log.Printf("snapshot handler error for %s: %v", vmID, err)
-		EncodeSnapshotResponse(conn, false, err.Error())
+		if encErr := EncodeSnapshotResponse(conn, false, err.Error()); encErr != nil {
+			log.Printf("failed to send error response to %s: %v", vmID, encErr)
+		}
 		return
 	}
 
 	// Success
-	EncodeSnapshotResponse(conn, true, "")
+	if err := EncodeSnapshotResponse(conn, true, ""); err != nil {
+		log.Printf("failed to send success response to %s: %v", vmID, err)
+	}
 }
 
 // Close closes all listeners
