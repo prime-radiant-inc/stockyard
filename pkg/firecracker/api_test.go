@@ -3,6 +3,7 @@ package firecracker
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -56,5 +57,40 @@ func TestAPIClient_put(t *testing.T) {
 	}
 	if !strings.Contains(string(receivedBody), `"key":"value"`) {
 		t.Errorf("expected body to contain key:value, got %s", receivedBody)
+	}
+}
+
+func TestAPIClient_SetBootSource(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, _ := net.Listen("unix", socketPath)
+	defer listener.Close()
+
+	var receivedPath string
+	var receivedBody map[string]interface{}
+
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewAPIClient(socketPath)
+	err := client.SetBootSource(context.Background(), "/path/to/kernel", "console=ttyS0")
+	if err != nil {
+		t.Fatalf("SetBootSource failed: %v", err)
+	}
+
+	if receivedPath != "/boot-source" {
+		t.Errorf("expected path /boot-source, got %s", receivedPath)
+	}
+	if receivedBody["kernel_image_path"] != "/path/to/kernel" {
+		t.Errorf("wrong kernel path: %v", receivedBody)
+	}
+	if receivedBody["boot_args"] != "console=ttyS0" {
+		t.Errorf("wrong boot args: %v", receivedBody)
 	}
 }

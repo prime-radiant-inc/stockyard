@@ -59,3 +59,11 @@ func (a *APIClient) put(ctx context.Context, path string, body interface{}) erro
 
 	return nil
 }
+
+// SetBootSource configures the kernel and boot arguments.
+func (a *APIClient) SetBootSource(ctx context.Context, kernelPath, bootArgs string) error {
+	return a.put(ctx, "/boot-source", map[string]string{
+		"kernel_image_path": kernelPath,
+		"boot_args":         bootArgs,
+	})
+}
