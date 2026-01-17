@@ -1,0 +1,14 @@
+[Unit]
+Description=Stockyard VM Initialization
+After=cloud-init.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/stockyard-init.sh
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
