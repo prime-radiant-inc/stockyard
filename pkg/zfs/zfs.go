@@ -190,3 +190,10 @@ func (m *Manager) GetDatasetMountpoint(ctx context.Context, datasetPath string) 
 
 	return strings.TrimSpace(stdout.String()), nil
 }
+
+// DestroyDatasetByPath destroys a dataset by its path relative to BasePath.
+// datasetPath is relative like "vms/abc123" -> becomes "tank/stockyard/vms/abc123"
+func (m *Manager) DestroyDatasetByPath(ctx context.Context, datasetPath string) error {
+	fullPath := m.CloneTargetPath(datasetPath)
+	return m.runZFS(ctx, "destroy", "-r", fullPath)
+}
