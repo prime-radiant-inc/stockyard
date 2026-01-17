@@ -10,17 +10,24 @@ Ubuntu 24.04-based VM image for Firecracker, configured for Claude Code sessions
 - Go 1.22+
 - Root access (for rootfs conversion)
 
-### Steps
+### Quick Start
 
 ```bash
-# 1. Build Docker image (includes stockyard-snapshot binary)
-./build.sh
-
-# 2. Convert to Firecracker rootfs (requires sudo)
-sudo ./convert-to-rootfs.sh
+make
 ```
 
-Output: `output/rootfs.ext4` (~4GB)
+This builds the Docker image and converts it to a Firecracker rootfs.
+
+### Individual Targets
+
+```bash
+make docker   # Build Docker image only
+make rootfs   # Convert to rootfs (requires sudo)
+make clean    # Remove build artifacts
+make help     # Show all options
+```
+
+Output: `output/rootfs.ext4` (~8GB)
 
 ### Configuration Options
 
