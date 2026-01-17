@@ -6,14 +6,16 @@ import (
 
 // Server is the HTTP server for the web dashboard.
 type Server struct {
-	mux *http.ServeMux
+	mux    *http.ServeMux
+	daemon DaemonAPI
 }
 
 // NewServer creates a new dashboard HTTP server.
 // The daemon parameter will be used for API calls (nil allowed for testing).
-func NewServer(daemon interface{}) *Server {
+func NewServer(daemon DaemonAPI) *Server {
 	s := &Server{
-		mux: http.NewServeMux(),
+		mux:    http.NewServeMux(),
+		daemon: daemon,
 	}
 	s.registerRoutes()
 	return s
