@@ -1,0 +1,1971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stockyard Dashboard - Design Decisions</title>
+    <style>
+        :root {
+            --bg: #f8f9fa;
+            --card-bg: #ffffff;
+            --border: #e1e4e8;
+            --text: #24292e;
+            --text-muted: #586069;
+            --primary: #0366d6;
+            --primary-hover: #0256b9;
+            --success: #28a745;
+            --danger: #dc3545;
+            --warning: #ffc107;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            color: var(--text-muted);
+        }
+
+        .progress-bar {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .progress-step {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .progress-step.active {
+            background: var(--primary);
+            transform: scale(1.2);
+        }
+
+        .progress-step.completed {
+            background: var(--success);
+        }
+
+        .section {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .question {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .question h2 {
+            font-size: 1.25rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .question p {
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        .options {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .options.grid-2 {
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        }
+
+        .option {
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .option:hover {
+            border-color: var(--primary);
+            background: #f6f8fa;
+        }
+
+        .option.selected {
+            border-color: var(--primary);
+            background: #f0f7ff;
+        }
+
+        .option.selected::after {
+            content: '✓';
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: var(--primary);
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .option h3 {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .option p {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            margin-bottom: 0;
+        }
+
+        /* Wireframe styles */
+        .wireframe {
+            background: #fafbfc;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1rem;
+            margin-top: 1rem;
+            font-family: monospace;
+            font-size: 11px;
+        }
+
+        .wireframe-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .wireframe-box {
+            background: #e1e4e8;
+            border-radius: 3px;
+            padding: 0.5rem;
+            text-align: center;
+            flex: 1;
+        }
+
+        .wireframe-box.sidebar {
+            flex: 0 0 120px;
+            min-height: 150px;
+        }
+
+        .wireframe-box.main {
+            min-height: 150px;
+        }
+
+        .wireframe-box.header {
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .wireframe-box.tall {
+            min-height: 200px;
+        }
+
+        .wireframe-box.small {
+            height: 60px;
+        }
+
+        .wireframe-box.metric {
+            height: 80px;
+        }
+
+        .wireframe-label {
+            color: var(--text-muted);
+            font-size: 10px;
+        }
+
+        .notes-section {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .notes-section label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: var(--text-muted);
+        }
+
+        .notes-section textarea {
+            width: 100%;
+            height: 80px;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 0.875rem;
+            resize: vertical;
+        }
+
+        .notes-section textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .nav-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 2rem;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+        }
+
+        button:disabled {
+            background: var(--border);
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        button.secondary:hover {
+            background: #f6f8fa;
+        }
+
+        /* Summary section */
+        .summary {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 2rem;
+        }
+
+        .summary h2 {
+            margin-bottom: 1rem;
+        }
+
+        .summary-item {
+            padding: 1rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .summary-item:last-child {
+            border-bottom: none;
+        }
+
+        .summary-item strong {
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+
+        .summary-item span {
+            color: var(--primary);
+        }
+
+        .copy-section {
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 2px solid var(--border);
+        }
+
+        .copy-section h3 {
+            margin-bottom: 1rem;
+        }
+
+        textarea {
+            width: 100%;
+            height: 300px;
+            font-family: monospace;
+            font-size: 13px;
+            padding: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            resize: vertical;
+        }
+
+        .copy-button {
+            margin-top: 1rem;
+        }
+
+        /* Visual mockups */
+        .mockup {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            color: #a0a0b0;
+            font-family: monospace;
+            font-size: 11px;
+            overflow: hidden;
+        }
+
+        .mockup-header {
+            display: flex;
+            gap: 0.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid #2a2a3e;
+            margin-bottom: 0.75rem;
+        }
+
+        .mockup-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .mockup-dot.red { background: #ff5f56; }
+        .mockup-dot.yellow { background: #ffbd2e; }
+        .mockup-dot.green { background: #27ca40; }
+
+        .mockup-content {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .mockup-sidebar {
+            width: 140px;
+            flex-shrink: 0;
+        }
+
+        .mockup-nav-item {
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 0.25rem;
+        }
+
+        .mockup-nav-item.active {
+            background: #2a2a3e;
+            color: #fff;
+        }
+
+        .mockup-main {
+            flex: 1;
+        }
+
+        .mockup-card {
+            background: #2a2a3e;
+            border-radius: 6px;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .mockup-card-title {
+            color: #fff;
+            margin-bottom: 0.5rem;
+        }
+
+        .mockup-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+        }
+
+        .mockup-metric {
+            background: #2a2a3e;
+            border-radius: 4px;
+            padding: 0.5rem;
+            text-align: center;
+        }
+
+        .mockup-metric-value {
+            color: #4ade80;
+            font-size: 1.25rem;
+            font-weight: bold;
+        }
+
+        .mockup-table {
+            width: 100%;
+            margin-top: 0.5rem;
+        }
+
+        .mockup-table-row {
+            display: flex;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #2a2a3e;
+        }
+
+        .mockup-table-row:last-child {
+            border-bottom: none;
+        }
+
+        .mockup-table-cell {
+            flex: 1;
+        }
+
+        .mockup-status {
+            display: inline-block;
+            padding: 0.125rem 0.5rem;
+            border-radius: 3px;
+            font-size: 10px;
+        }
+
+        .mockup-status.running { background: #166534; color: #4ade80; }
+        .mockup-status.stopped { background: #1e3a5f; color: #60a5fa; }
+        .mockup-status.failed { background: #7f1d1d; color: #f87171; }
+
+        .mockup-tabs {
+            display: flex;
+            gap: 1rem;
+            border-bottom: 1px solid #2a2a3e;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+        }
+
+        .mockup-tab {
+            padding: 0.25rem 0;
+        }
+
+        .mockup-tab.active {
+            color: #fff;
+            border-bottom: 2px solid #4ade80;
+        }
+
+        .mockup-chart {
+            height: 60px;
+            background: linear-gradient(to right, #166534 0%, #166534 60%, #ca8a04 60%, #ca8a04 80%, #dc2626 80%);
+            border-radius: 4px;
+            opacity: 0.6;
+            position: relative;
+        }
+
+        .mockup-chart::after {
+            content: '▁▂▃▄▅▆▇█▇▆▅▆▇█▇▆▅▄▃▄▅▆▇';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            text-align: center;
+            letter-spacing: -2px;
+            color: #4ade80;
+            opacity: 0.7;
+        }
+
+        .mockup-log {
+            font-size: 10px;
+            height: 80px;
+            overflow: hidden;
+            background: #0d0d1a;
+            padding: 0.5rem;
+            border-radius: 4px;
+        }
+
+        .mockup-log-line {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .mockup-log-time {
+            color: #666;
+        }
+
+        .mockup-log-text {
+            color: #a0a0b0;
+        }
+
+        .recommendation {
+            background: #fff8e6;
+            border-left: 3px solid var(--warning);
+            padding: 0.75rem 1rem;
+            margin-top: 1rem;
+            font-size: 0.875rem;
+        }
+
+        .recommendation strong {
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Stockyard Dashboard Design</h1>
+            <p>Click through each decision to build your dashboard specification</p>
+        </header>
+
+        <div class="progress-bar" id="progressBar"></div>
+
+        <!-- Section 1: Navigation Structure -->
+        <div class="section active" data-section="0">
+            <div class="question">
+                <h2>1. Navigation Structure</h2>
+                <p>How should the dashboard be organized at the top level?</p>
+
+                <div class="options grid-2">
+                    <div class="option" data-question="nav_structure" data-value="sidebar">
+                        <h3>Sidebar Navigation</h3>
+                        <p>Persistent left sidebar with main sections. Common in data-heavy dashboards.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-content">
+                                <div class="mockup-sidebar">
+                                    <div class="mockup-nav-item active">Fleet</div>
+                                    <div class="mockup-nav-item">VMs</div>
+                                    <div class="mockup-nav-item">Repos</div>
+                                    <div class="mockup-nav-item">Activity</div>
+                                    <div class="mockup-nav-item">Settings</div>
+                                </div>
+                                <div class="mockup-main">
+                                    <div class="mockup-card">
+                                        <div class="mockup-card-title">Fleet Overview</div>
+                                        <div style="color:#666">Main content area...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="nav_structure" data-value="topnav">
+                        <h3>Top Navigation</h3>
+                        <p>Horizontal nav bar at top. Maximizes vertical content space.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-tabs" style="border-bottom: 1px solid #2a2a3e; padding: 0.5rem 0;">
+                                <div class="mockup-tab active">Fleet</div>
+                                <div class="mockup-tab">VMs</div>
+                                <div class="mockup-tab">Repos</div>
+                                <div class="mockup-tab">Activity</div>
+                                <div class="mockup-tab" style="margin-left: auto;">Settings</div>
+                            </div>
+                            <div class="mockup-card" style="min-height: 120px;">
+                                <div class="mockup-card-title">Fleet Overview</div>
+                                <div style="color:#666">Main content area with more vertical space...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="nav_structure" data-value="hybrid">
+                        <h3>Hybrid (Recommended)</h3>
+                        <p>Minimal top bar for global actions, context-specific tabs within pages.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.5rem; border-bottom: 1px solid #2a2a3e; margin-bottom: 0.5rem;">
+                                <div style="color:#fff; font-weight: bold;">Stockyard</div>
+                                <div style="display: flex; gap: 1rem;">
+                                    <span>Fleet</span>
+                                    <span>Activity</span>
+                                    <span style="color:#4ade80;">●</span>
+                                </div>
+                            </div>
+                            <div class="mockup-tabs">
+                                <div class="mockup-tab active">Overview</div>
+                                <div class="mockup-tab">By Repo</div>
+                                <div class="mockup-tab">By Owner</div>
+                            </div>
+                            <div class="mockup-card">
+                                <div style="color:#666">Content with contextual sub-navigation...</div>
+                            </div>
+                        </div>
+                        <div class="recommendation">
+                            <strong>Recommended:</strong> Scales better as features grow. Top bar stays simple, complexity moves to contextual tabs.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="notes-section">
+                <label>Additional notes for this decision:</label>
+                <textarea data-notes="nav_structure" placeholder="Any thoughts, constraints, or alternatives to consider..."></textarea>
+            </div>
+
+            <div class="nav-buttons">
+                <button class="secondary" disabled>Previous</button>
+                <button onclick="nextSection()">Next</button>
+            </div>
+        </div>
+
+        <!-- Section 2: Fleet Overview Layout -->
+        <div class="section" data-section="1">
+            <div class="question">
+                <h2>2. Fleet Overview Layout</h2>
+                <p>How should the main dashboard display fleet status?</p>
+
+                <div class="options">
+                    <div class="option" data-question="fleet_layout" data-value="metrics_top">
+                        <h3>Metrics Bar + Table</h3>
+                        <p>Summary metrics at top, detailed VM list below. Classic dashboard pattern.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-grid" style="margin-bottom: 1rem;">
+                                <div class="mockup-metric">
+                                    <div class="mockup-metric-value">24</div>
+                                    <div>Running</div>
+                                </div>
+                                <div class="mockup-metric">
+                                    <div class="mockup-metric-value" style="color:#60a5fa;">8</div>
+                                    <div>Stopped</div>
+                                </div>
+                                <div class="mockup-metric">
+                                    <div class="mockup-metric-value" style="color:#f87171;">2</div>
+                                    <div>Failed</div>
+                                </div>
+                            </div>
+                            <div class="mockup-table">
+                                <div class="mockup-table-row" style="color:#fff; font-weight:bold;">
+                                    <div class="mockup-table-cell">VM</div>
+                                    <div class="mockup-table-cell">Repo</div>
+                                    <div class="mockup-table-cell">Owner</div>
+                                    <div class="mockup-table-cell">CPU</div>
+                                    <div class="mockup-table-cell">Status</div>
+                                </div>
+                                <div class="mockup-table-row">
+                                    <div class="mockup-table-cell">vm-abc123</div>
+                                    <div class="mockup-table-cell">stockyard</div>
+                                    <div class="mockup-table-cell">jesse</div>
+                                    <div class="mockup-table-cell">45%</div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                </div>
+                                <div class="mockup-table-row">
+                                    <div class="mockup-table-cell">vm-def456</div>
+                                    <div class="mockup-table-cell">claude-code</div>
+                                    <div class="mockup-table-cell">bot</div>
+                                    <div class="mockup-table-cell">92%</div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="fleet_layout" data-value="grouped_cards">
+                        <h3>Grouped Cards (Recommended)</h3>
+                        <p>VMs grouped by repository in collapsible cards. Matches your priority of repo grouping.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-card">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                    <div class="mockup-card-title">stockyard <span style="color:#666; font-weight:normal;">3 VMs</span></div>
+                                    <div><span style="color:#4ade80;">●</span> 2 running <span style="color:#60a5fa;">●</span> 1 stopped</div>
+                                </div>
+                                <div class="mockup-table">
+                                    <div class="mockup-table-row">
+                                        <div class="mockup-table-cell">vm-abc123</div>
+                                        <div class="mockup-table-cell">jesse</div>
+                                        <div class="mockup-table-cell">CPU 45% | Mem 2.1GB</div>
+                                        <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                    </div>
+                                    <div class="mockup-table-row">
+                                        <div class="mockup-table-cell">vm-xyz789</div>
+                                        <div class="mockup-table-cell">bot</div>
+                                        <div class="mockup-table-cell">CPU 12% | Mem 1.8GB</div>
+                                        <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mockup-card">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                    <div class="mockup-card-title">claude-code <span style="color:#666; font-weight:normal;">5 VMs</span></div>
+                                    <div><span style="color:#4ade80;">●</span> 4 running <span style="color:#f87171;">●</span> 1 failed</div>
+                                </div>
+                                <div style="color:#666; font-size: 10px;">Click to expand...</div>
+                            </div>
+                        </div>
+                        <div class="recommendation">
+                            <strong>Recommended:</strong> Aligns with your priority of repo grouping. Natural hierarchy for finding VMs.
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="fleet_layout" data-value="split_view">
+                        <h3>Split View</h3>
+                        <p>List on left, detail preview on right. Good for quick scanning without full navigation.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-content">
+                                <div style="flex: 0 0 45%; border-right: 1px solid #2a2a3e; padding-right: 0.5rem;">
+                                    <div style="background:#2a2a3e; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.25rem; color:#fff;">
+                                        vm-abc123 <span class="mockup-status running">running</span>
+                                    </div>
+                                    <div style="padding: 0.5rem; margin-bottom: 0.25rem;">
+                                        vm-def456 <span class="mockup-status running">running</span>
+                                    </div>
+                                    <div style="padding: 0.5rem; margin-bottom: 0.25rem;">
+                                        vm-ghi789 <span class="mockup-status failed">failed</span>
+                                    </div>
+                                </div>
+                                <div style="flex: 1; padding-left: 0.5rem;">
+                                    <div style="color:#fff; margin-bottom: 0.5rem;">vm-abc123</div>
+                                    <div style="font-size: 10px; margin-bottom: 0.5rem;">
+                                        Repo: stockyard<br>
+                                        Owner: jesse<br>
+                                        Started: 2h ago
+                                    </div>
+                                    <div class="mockup-chart" style="height: 40px;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="notes-section">
+                <label>Additional notes for this decision:</label>
+                <textarea data-notes="fleet_layout" placeholder="Any thoughts, constraints, or alternatives to consider..."></textarea>
+            </div>
+
+            <div class="nav-buttons">
+                <button class="secondary" onclick="prevSection()">Previous</button>
+                <button onclick="nextSection()">Next</button>
+            </div>
+        </div>
+
+        <!-- Section 3: VM Detail View -->
+        <div class="section" data-section="2">
+            <div class="question">
+                <h2>3. VM Detail View Layout</h2>
+                <p>When drilling into a single VM, how should information be organized?</p>
+
+                <div class="options">
+                    <div class="option" data-question="vm_detail_layout" data-value="tabbed">
+                        <h3>Tabbed Sections</h3>
+                        <p>Separate tabs for Overview, Logs, Metrics, Snapshots. Clean separation of concerns.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #2a2a3e;">
+                                <div style="color:#fff; font-weight: bold;">vm-abc123 <span class="mockup-status running">running</span></div>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <span style="background:#2a2a3e; padding: 0.25rem 0.5rem; border-radius: 3px;">SSH</span>
+                                    <span style="background:#7f1d1d; padding: 0.25rem 0.5rem; border-radius: 3px;">Stop</span>
+                                </div>
+                            </div>
+                            <div class="mockup-tabs">
+                                <div class="mockup-tab active">Overview</div>
+                                <div class="mockup-tab">Logs</div>
+                                <div class="mockup-tab">Metrics</div>
+                                <div class="mockup-tab">Snapshots</div>
+                            </div>
+                            <div class="mockup-grid" style="grid-template-columns: 1fr 1fr;">
+                                <div class="mockup-card">
+                                    <div style="color:#666; margin-bottom: 0.25rem;">Repository</div>
+                                    <div style="color:#fff;">stockyard</div>
+                                </div>
+                                <div class="mockup-card">
+                                    <div style="color:#666; margin-bottom: 0.25rem;">Owner</div>
+                                    <div style="color:#fff;">jesse</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="vm_detail_layout" data-value="stacked">
+                        <h3>Stacked Panels (Recommended)</h3>
+                        <p>All info on one scrollable page with collapsible sections. See everything at once.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #2a2a3e; margin-bottom: 0.5rem;">
+                                <div style="color:#fff; font-weight: bold;">vm-abc123 <span class="mockup-status running">running</span></div>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <span style="background:#2a2a3e; padding: 0.25rem 0.5rem; border-radius: 3px;">SSH</span>
+                                    <span style="background:#7f1d1d; padding: 0.25rem 0.5rem; border-radius: 3px;">Stop</span>
+                                </div>
+                            </div>
+                            <div class="mockup-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 0.5rem;">
+                                <div class="mockup-metric" style="padding: 0.25rem;">
+                                    <div style="color:#666; font-size: 9px;">CPU</div>
+                                    <div style="color:#4ade80;">45%</div>
+                                </div>
+                                <div class="mockup-metric" style="padding: 0.25rem;">
+                                    <div style="color:#666; font-size: 9px;">Memory</div>
+                                    <div style="color:#4ade80;">2.1GB</div>
+                                </div>
+                                <div class="mockup-metric" style="padding: 0.25rem;">
+                                    <div style="color:#666; font-size: 9px;">Network</div>
+                                    <div style="color:#60a5fa;">1.2MB/s</div>
+                                </div>
+                                <div class="mockup-metric" style="padding: 0.25rem;">
+                                    <div style="color:#666; font-size: 9px;">Uptime</div>
+                                    <div style="color:#fff;">2h 34m</div>
+                                </div>
+                            </div>
+                            <div class="mockup-chart" style="height: 30px; margin-bottom: 0.5rem;"></div>
+                            <div class="mockup-log">
+                                <div class="mockup-log-line"><span class="mockup-log-time">14:32:01</span> <span class="mockup-log-text">Running npm install...</span></div>
+                                <div class="mockup-log-line"><span class="mockup-log-time">14:32:15</span> <span class="mockup-log-text">Dependencies installed</span></div>
+                                <div class="mockup-log-line"><span class="mockup-log-time">14:32:16</span> <span class="mockup-log-text">Starting build process...</span></div>
+                            </div>
+                        </div>
+                        <div class="recommendation">
+                            <strong>Recommended:</strong> For spotting runaway VMs, you want metrics + logs visible together without clicking tabs.
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="vm_detail_layout" data-value="columns">
+                        <h3>Column Layout</h3>
+                        <p>Side-by-side columns for metrics (left) and logs (right). Good for wide screens.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #2a2a3e; margin-bottom: 0.5rem;">
+                                <div style="color:#fff; font-weight: bold;">vm-abc123</div>
+                                <div><span class="mockup-status running">running</span></div>
+                            </div>
+                            <div class="mockup-content">
+                                <div style="flex: 0 0 40%;">
+                                    <div class="mockup-metric" style="margin-bottom: 0.5rem;">
+                                        <div style="color:#666; font-size: 9px;">CPU Usage</div>
+                                        <div class="mockup-chart" style="height: 40px;"></div>
+                                    </div>
+                                    <div class="mockup-metric">
+                                        <div style="color:#666; font-size: 9px;">Memory</div>
+                                        <div class="mockup-chart" style="height: 40px;"></div>
+                                    </div>
+                                </div>
+                                <div style="flex: 1; padding-left: 0.5rem;">
+                                    <div style="color:#666; font-size: 9px; margin-bottom: 0.25rem;">Logs</div>
+                                    <div class="mockup-log" style="height: 100px;">
+                                        <div class="mockup-log-line"><span class="mockup-log-time">14:32:01</span> <span>Running npm install...</span></div>
+                                        <div class="mockup-log-line"><span class="mockup-log-time">14:32:15</span> <span>Dependencies installed</span></div>
+                                        <div class="mockup-log-line"><span class="mockup-log-time">14:32:16</span> <span>Starting build...</span></div>
+                                        <div class="mockup-log-line"><span class="mockup-log-time">14:32:20</span> <span>Build complete</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="notes-section">
+                <label>Additional notes for this decision:</label>
+                <textarea data-notes="vm_detail_layout" placeholder="Any thoughts, constraints, or alternatives to consider..."></textarea>
+            </div>
+
+            <div class="nav-buttons">
+                <button class="secondary" onclick="prevSection()">Previous</button>
+                <button onclick="nextSection()">Next</button>
+            </div>
+        </div>
+
+        <!-- Section 4: Resource Metrics Display -->
+        <div class="section" data-section="3">
+            <div class="question">
+                <h2>4. Resource Metrics Visualization</h2>
+                <p>How should CPU/memory/network metrics be displayed?</p>
+
+                <div class="options grid-2">
+                    <div class="option" data-question="metrics_display" data-value="sparklines">
+                        <h3>Sparklines (Recommended)</h3>
+                        <p>Compact inline charts showing recent trend. Good for fleet overview.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-table">
+                                <div class="mockup-table-row" style="color:#fff;">
+                                    <div class="mockup-table-cell">VM</div>
+                                    <div class="mockup-table-cell">CPU</div>
+                                    <div class="mockup-table-cell">Memory</div>
+                                </div>
+                                <div class="mockup-table-row">
+                                    <div class="mockup-table-cell">vm-abc</div>
+                                    <div class="mockup-table-cell">
+                                        <span style="color:#4ade80;">45%</span>
+                                        <span style="letter-spacing:-2px;">▁▂▃▄▅▄▃▄▅</span>
+                                    </div>
+                                    <div class="mockup-table-cell">
+                                        <span style="color:#4ade80;">2.1GB</span>
+                                        <span style="letter-spacing:-2px;">▃▃▃▄▄▄▄▄▄</span>
+                                    </div>
+                                </div>
+                                <div class="mockup-table-row">
+                                    <div class="mockup-table-cell">vm-def</div>
+                                    <div class="mockup-table-cell">
+                                        <span style="color:#f87171;">92%</span>
+                                        <span style="letter-spacing:-2px; color:#f87171;">▅▆▇█▇█▇██</span>
+                                    </div>
+                                    <div class="mockup-table-cell">
+                                        <span style="color:#ca8a04;">3.8GB</span>
+                                        <span style="letter-spacing:-2px;">▅▆▆▇▇▇▇▇▇</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="recommendation">
+                            <strong>Recommended:</strong> High information density. Instantly spot trends and outliers without clicking into each VM.
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="metrics_display" data-value="gauges">
+                        <h3>Gauge/Progress Bars</h3>
+                        <p>Visual gauges showing current value. Simple and readable.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="padding: 0.5rem;">
+                                <div style="margin-bottom: 0.75rem;">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                                        <span>CPU</span><span style="color:#4ade80;">45%</span>
+                                    </div>
+                                    <div style="background:#2a2a3e; height: 8px; border-radius: 4px;">
+                                        <div style="background:#4ade80; width: 45%; height: 100%; border-radius: 4px;"></div>
+                                    </div>
+                                </div>
+                                <div style="margin-bottom: 0.75rem;">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                                        <span>Memory</span><span style="color:#ca8a04;">78%</span>
+                                    </div>
+                                    <div style="background:#2a2a3e; height: 8px; border-radius: 4px;">
+                                        <div style="background:#ca8a04; width: 78%; height: 100%; border-radius: 4px;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="metrics_display" data-value="timeseries">
+                        <h3>Time Series Charts</h3>
+                        <p>Full charts with time axis. More detail but takes more space.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="padding: 0.5rem;">
+                                <div style="color:#666; font-size: 9px; margin-bottom: 0.25rem;">CPU Usage (last hour)</div>
+                                <div class="mockup-chart" style="height: 60px; margin-bottom: 0.5rem;"></div>
+                                <div style="display: flex; justify-content: space-between; font-size: 9px; color:#666;">
+                                    <span>1h ago</span>
+                                    <span>30m ago</span>
+                                    <span>now</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="metrics_display" data-value="hybrid_metrics">
+                        <h3>Hybrid: Sparklines + Expandable</h3>
+                        <p>Sparklines by default, click to expand to full time series.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="padding: 0.5rem;">
+                                <div style="display: flex; gap: 1rem; margin-bottom: 0.5rem;">
+                                    <div style="flex:1;">
+                                        <div style="color:#666; font-size: 9px;">CPU</div>
+                                        <div><span style="color:#4ade80; font-size: 1.1rem;">45%</span> <span style="letter-spacing:-2px;">▁▂▃▄▅▄▃</span></div>
+                                    </div>
+                                    <div style="flex:1;">
+                                        <div style="color:#666; font-size: 9px;">Memory</div>
+                                        <div><span style="color:#4ade80; font-size: 1.1rem;">2.1GB</span> <span style="letter-spacing:-2px;">▃▃▄▄▄▄▄</span></div>
+                                    </div>
+                                </div>
+                                <div style="color:#60a5fa; font-size: 10px; cursor: pointer;">↓ Expand charts</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="notes-section">
+                <label>Additional notes for this decision:</label>
+                <textarea data-notes="metrics_display" placeholder="Any thoughts, constraints, or alternatives to consider..."></textarea>
+            </div>
+
+            <div class="nav-buttons">
+                <button class="secondary" onclick="prevSection()">Previous</button>
+                <button onclick="nextSection()">Next</button>
+            </div>
+        </div>
+
+        <!-- Section 5: Log Viewing -->
+        <div class="section" data-section="4">
+            <div class="question">
+                <h2>5. Log Viewing Experience</h2>
+                <p>How should logs be displayed and interacted with?</p>
+
+                <div class="options grid-2">
+                    <div class="option" data-question="log_display" data-value="streaming">
+                        <h3>Live Streaming (Recommended)</h3>
+                        <p>Auto-scrolling live log view with pause/resume. Like <code>tail -f</code>.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; margin-bottom: 0.25rem; border-bottom: 1px solid #2a2a3e;">
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <span style="background:#166534; padding: 0.125rem 0.5rem; border-radius: 3px;">● Live</span>
+                                    <span style="color:#666;">stdout</span>
+                                </div>
+                                <div style="color:#666;">Filter...</div>
+                            </div>
+                            <div class="mockup-log" style="height: 100px;">
+                                <div class="mockup-log-line"><span class="mockup-log-time">14:32:01</span> <span class="mockup-log-text">Cloning repository...</span></div>
+                                <div class="mockup-log-line"><span class="mockup-log-time">14:32:05</span> <span class="mockup-log-text">Repository cloned</span></div>
+                                <div class="mockup-log-line"><span class="mockup-log-time">14:32:06</span> <span class="mockup-log-text">Running npm install...</span></div>
+                                <div class="mockup-log-line"><span class="mockup-log-time">14:32:15</span> <span class="mockup-log-text" style="color:#4ade80;">npm WARN deprecated</span></div>
+                                <div class="mockup-log-line"><span class="mockup-log-time">14:32:16</span> <span class="mockup-log-text">added 847 packages</span></div>
+                                <div class="mockup-log-line" style="color:#4ade80;">▌</div>
+                            </div>
+                        </div>
+                        <div class="recommendation">
+                            <strong>Recommended:</strong> Essential for watching active agents. Pause to investigate, resume to continue.
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="log_display" data-value="paginated">
+                        <h3>Paginated/Historical</h3>
+                        <p>Load logs in chunks with search. Better for forensics on stopped VMs.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; padding: 0.25rem 0; margin-bottom: 0.25rem; border-bottom: 1px solid #2a2a3e;">
+                                <input type="text" placeholder="Search logs..." style="flex:1; background:#2a2a3e; border:none; padding: 0.25rem; border-radius: 3px; color:#fff; font-size: 10px;">
+                                <span style="color:#666;">1-100 of 2,847</span>
+                            </div>
+                            <div class="mockup-log" style="height: 80px;">
+                                <div class="mockup-log-line"><span class="mockup-log-time">14:32:01</span> <span class="mockup-log-text">Cloning repository...</span></div>
+                                <div class="mockup-log-line"><span class="mockup-log-time">14:32:05</span> <span class="mockup-log-text">Repository cloned</span></div>
+                                <div class="mockup-log-line"><span class="mockup-log-time">14:32:06</span> <span class="mockup-log-text">Running npm install...</span></div>
+                            </div>
+                            <div style="display: flex; justify-content: center; gap: 0.5rem; padding-top: 0.5rem;">
+                                <span style="color:#666;">← Prev</span>
+                                <span style="color:#fff;">Next →</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="log_display" data-value="both_logs">
+                        <h3>Both: Toggle Mode</h3>
+                        <p>Switch between live streaming and historical search.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; padding: 0.25rem 0; margin-bottom: 0.25rem; border-bottom: 1px solid #2a2a3e;">
+                                <span style="background:#166534; padding: 0.125rem 0.5rem; border-radius: 3px;">Live</span>
+                                <span style="background:#2a2a3e; padding: 0.125rem 0.5rem; border-radius: 3px;">History</span>
+                                <span style="flex:1;"></span>
+                                <span style="color:#666;">Filter...</span>
+                            </div>
+                            <div class="mockup-log" style="height: 80px;">
+                                <div class="mockup-log-line"><span class="mockup-log-time">14:32:16</span> <span class="mockup-log-text">added 847 packages</span></div>
+                                <div class="mockup-log-line" style="color:#4ade80;">▌</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="log_display" data-value="split_logs">
+                        <h3>Split: stdout + stderr</h3>
+                        <p>Separate panels for stdout and stderr streams.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-content">
+                                <div style="flex:1; padding-right: 0.25rem;">
+                                    <div style="color:#666; font-size: 9px; margin-bottom: 0.25rem;">stdout</div>
+                                    <div class="mockup-log" style="height: 60px;">
+                                        <div class="mockup-log-line"><span class="mockup-log-text">added 847 packages</span></div>
+                                        <div class="mockup-log-line"><span class="mockup-log-text">Build started...</span></div>
+                                    </div>
+                                </div>
+                                <div style="flex:1; padding-left: 0.25rem;">
+                                    <div style="color:#f87171; font-size: 9px; margin-bottom: 0.25rem;">stderr</div>
+                                    <div class="mockup-log" style="height: 60px;">
+                                        <div class="mockup-log-line"><span class="mockup-log-text" style="color:#f87171;">npm WARN deprecated</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="notes-section">
+                <label>Additional notes for this decision:</label>
+                <textarea data-notes="log_display" placeholder="Any thoughts, constraints, or alternatives to consider..."></textarea>
+            </div>
+
+            <div class="nav-buttons">
+                <button class="secondary" onclick="prevSection()">Previous</button>
+                <button onclick="nextSection()">Next</button>
+            </div>
+        </div>
+
+        <!-- Section 6: Activity Feed -->
+        <div class="section" data-section="5">
+            <div class="question">
+                <h2>6. Activity Feed</h2>
+                <p>You mentioned recent activity as a priority. How should it be presented?</p>
+
+                <div class="options grid-2">
+                    <div class="option" data-question="activity_feed" data-value="timeline">
+                        <h3>Timeline Feed (Recommended)</h3>
+                        <p>Chronological list of events across all VMs. Global view of what's happening.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="padding: 0.5rem;">
+                                <div style="display: flex; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid #2a2a3e;">
+                                    <span style="color:#4ade80;">●</span>
+                                    <div style="flex:1;">
+                                        <div style="color:#fff;">vm-abc123 started</div>
+                                        <div style="color:#666; font-size: 10px;">stockyard · jesse · 2 minutes ago</div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid #2a2a3e;">
+                                    <span style="color:#f87171;">●</span>
+                                    <div style="flex:1;">
+                                        <div style="color:#fff;">vm-xyz789 failed</div>
+                                        <div style="color:#666; font-size: 10px;">claude-code · bot · 5 minutes ago</div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; padding: 0.5rem 0;">
+                                    <span style="color:#60a5fa;">●</span>
+                                    <div style="flex:1;">
+                                        <div style="color:#fff;">vm-def456 snapshot created</div>
+                                        <div style="color:#666; font-size: 10px;">stockyard · jesse · 12 minutes ago</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="recommendation">
+                            <strong>Recommended:</strong> Quick at-a-glance understanding of fleet activity. Problems bubble up naturally.
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="activity_feed" data-value="notifications">
+                        <h3>Notification Center</h3>
+                        <p>Badge + dropdown showing recent events. Less prominent but always accessible.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="display: flex; justify-content: flex-end; padding: 0.5rem; border-bottom: 1px solid #2a2a3e;">
+                                <span style="position: relative;">
+                                    🔔
+                                    <span style="position: absolute; top: -5px; right: -5px; background: #f87171; color: #fff; font-size: 9px; padding: 0 4px; border-radius: 10px;">3</span>
+                                </span>
+                            </div>
+                            <div style="background: #2a2a3e; margin: 0.5rem; border-radius: 4px; padding: 0.5rem;">
+                                <div style="font-size: 10px; border-bottom: 1px solid #3a3a4e; padding-bottom: 0.25rem; margin-bottom: 0.25rem;">
+                                    <span style="color:#f87171;">●</span> vm-xyz789 failed
+                                </div>
+                                <div style="font-size: 10px; border-bottom: 1px solid #3a3a4e; padding-bottom: 0.25rem; margin-bottom: 0.25rem;">
+                                    <span style="color:#4ade80;">●</span> vm-abc123 started
+                                </div>
+                                <div style="font-size: 10px;">
+                                    <span style="color:#60a5fa;">●</span> Snapshot created
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="activity_feed" data-value="dashboard_widget">
+                        <h3>Dashboard Widget</h3>
+                        <p>Activity as one panel among others on the fleet overview.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-content">
+                                <div class="mockup-card" style="flex: 1;">
+                                    <div class="mockup-card-title">Fleet Status</div>
+                                    <div style="color:#666; font-size: 10px;">24 running...</div>
+                                </div>
+                                <div class="mockup-card" style="flex: 1;">
+                                    <div class="mockup-card-title">Recent Activity</div>
+                                    <div style="font-size: 10px;">
+                                        <div><span style="color:#4ade80;">●</span> vm-abc started</div>
+                                        <div><span style="color:#f87171;">●</span> vm-xyz failed</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="activity_feed" data-value="separate_page">
+                        <h3>Separate Activity Page</h3>
+                        <p>Full page dedicated to activity history with filtering and search.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-tabs">
+                                <div class="mockup-tab">Fleet</div>
+                                <div class="mockup-tab active">Activity</div>
+                                <div class="mockup-tab">Settings</div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                <input type="text" placeholder="Search..." style="flex:1; background:#2a2a3e; border:none; padding: 0.25rem; border-radius: 3px; color:#fff; font-size: 10px;">
+                                <span style="background:#2a2a3e; padding: 0.25rem 0.5rem; border-radius: 3px; font-size: 10px;">All types ▾</span>
+                            </div>
+                            <div style="font-size: 10px; color:#666;">Showing 1-50 of 1,247 events...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="notes-section">
+                <label>Additional notes for this decision:</label>
+                <textarea data-notes="activity_feed" placeholder="Any thoughts, constraints, or alternatives to consider..."></textarea>
+            </div>
+
+            <div class="nav-buttons">
+                <button class="secondary" onclick="prevSection()">Previous</button>
+                <button onclick="nextSection()">Next</button>
+            </div>
+        </div>
+
+        <!-- Section 7: Actions & Controls -->
+        <div class="section" data-section="6">
+            <div class="question">
+                <h2>7. VM Actions & Controls</h2>
+                <p>How should stop/destroy/snapshot actions be presented?</p>
+
+                <div class="options grid-2">
+                    <div class="option" data-question="vm_actions" data-value="inline_buttons">
+                        <h3>Inline Buttons</h3>
+                        <p>Action buttons directly on each VM row/card. Fast access, always visible.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-table">
+                                <div class="mockup-table-row">
+                                    <div class="mockup-table-cell">vm-abc123</div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                    <div class="mockup-table-cell" style="display: flex; gap: 0.25rem;">
+                                        <span style="background:#2a2a3e; padding: 0.125rem 0.5rem; border-radius: 3px; font-size: 9px;">SSH</span>
+                                        <span style="background:#2a2a3e; padding: 0.125rem 0.5rem; border-radius: 3px; font-size: 9px;">Snap</span>
+                                        <span style="background:#7f1d1d; padding: 0.125rem 0.5rem; border-radius: 3px; font-size: 9px;">Stop</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="vm_actions" data-value="hover_reveal">
+                        <h3>Hover Reveal (Recommended)</h3>
+                        <p>Actions appear on hover. Cleaner default view, actions when you need them.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-table">
+                                <div class="mockup-table-row">
+                                    <div class="mockup-table-cell">vm-abc123</div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                    <div class="mockup-table-cell" style="color:#666;">jesse · 2h</div>
+                                </div>
+                                <div class="mockup-table-row" style="background:#2a2a3e;">
+                                    <div class="mockup-table-cell">vm-def456</div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                    <div class="mockup-table-cell" style="display: flex; gap: 0.25rem;">
+                                        <span style="background:#3a3a4e; padding: 0.125rem 0.5rem; border-radius: 3px; font-size: 9px;">SSH</span>
+                                        <span style="background:#3a3a4e; padding: 0.125rem 0.5rem; border-radius: 3px; font-size: 9px;">Snap</span>
+                                        <span style="background:#7f1d1d; padding: 0.125rem 0.5rem; border-radius: 3px; font-size: 9px;">Stop</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="recommendation">
+                            <strong>Recommended:</strong> Reduces visual clutter. Actions appear exactly when you're focused on a VM.
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="vm_actions" data-value="dropdown_menu">
+                        <h3>Dropdown Menu</h3>
+                        <p>Three-dot menu revealing all actions. Most compact, works for many actions.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-table">
+                                <div class="mockup-table-row">
+                                    <div class="mockup-table-cell">vm-abc123</div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                    <div class="mockup-table-cell" style="text-align: right;">⋮</div>
+                                </div>
+                            </div>
+                            <div style="background:#2a2a3e; width: 120px; margin-left: auto; border-radius: 4px; padding: 0.25rem; font-size: 10px;">
+                                <div style="padding: 0.25rem;">Copy SSH</div>
+                                <div style="padding: 0.25rem;">Create Snapshot</div>
+                                <div style="padding: 0.25rem; border-top: 1px solid #3a3a4e; color:#f87171;">Stop VM</div>
+                                <div style="padding: 0.25rem; color:#f87171;">Destroy VM</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="vm_actions" data-value="detail_page_only">
+                        <h3>Detail Page Only</h3>
+                        <p>Actions only on VM detail view. Forces deliberate navigation before action.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="color:#666; text-align: center; padding: 1rem;">
+                                Click VM row to open detail view with actions
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.5rem; border-top: 1px solid #2a2a3e;">
+                                <div style="color:#fff;">vm-abc123 Detail View</div>
+                                <div style="display: flex; gap: 0.25rem;">
+                                    <span style="background:#2a2a3e; padding: 0.125rem 0.5rem; border-radius: 3px; font-size: 9px;">SSH</span>
+                                    <span style="background:#7f1d1d; padding: 0.125rem 0.5rem; border-radius: 3px; font-size: 9px;">Stop</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="notes-section">
+                <label>Additional notes for this decision:</label>
+                <textarea data-notes="vm_actions" placeholder="Any thoughts, constraints, or alternatives to consider..."></textarea>
+            </div>
+
+            <div class="nav-buttons">
+                <button class="secondary" onclick="prevSection()">Previous</button>
+                <button onclick="nextSection()">Next</button>
+            </div>
+        </div>
+
+        <!-- Section 8: Alert Indicators -->
+        <div class="section" data-section="7">
+            <div class="question">
+                <h2>8. Problem/Alert Indicators</h2>
+                <p>How should VMs needing attention be highlighted?</p>
+
+                <div class="options grid-2">
+                    <div class="option" data-question="alert_display" data-value="inline_warning">
+                        <h3>Inline Warning Style</h3>
+                        <p>Row/card changes color when VM has issues. Immediate visibility.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-table">
+                                <div class="mockup-table-row">
+                                    <div class="mockup-table-cell">vm-abc123</div>
+                                    <div class="mockup-table-cell">CPU 45%</div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                </div>
+                                <div class="mockup-table-row" style="background: #7f1d1d33; border-left: 3px solid #f87171;">
+                                    <div class="mockup-table-cell" style="color:#f87171;">vm-def456 ⚠</div>
+                                    <div class="mockup-table-cell" style="color:#f87171;">CPU 98%</div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                </div>
+                                <div class="mockup-table-row">
+                                    <div class="mockup-table-cell">vm-ghi789</div>
+                                    <div class="mockup-table-cell">CPU 23%</div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="alert_display" data-value="problems_section">
+                        <h3>Problems Section (Recommended)</h3>
+                        <p>Dedicated "Needs Attention" section at top showing problem VMs.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-card" style="background:#7f1d1d33; border: 1px solid #f8717133;">
+                                <div class="mockup-card-title" style="color:#f87171;">⚠ Needs Attention (2)</div>
+                                <div class="mockup-table">
+                                    <div class="mockup-table-row">
+                                        <div class="mockup-table-cell">vm-def456</div>
+                                        <div class="mockup-table-cell" style="color:#f87171;">CPU 98% for 5m</div>
+                                        <div class="mockup-table-cell"><span style="background:#7f1d1d; padding: 0.125rem 0.5rem; border-radius: 3px; font-size: 9px;">Stop</span></div>
+                                    </div>
+                                    <div class="mockup-table-row">
+                                        <div class="mockup-table-cell">vm-xyz000</div>
+                                        <div class="mockup-table-cell" style="color:#f87171;">Unresponsive</div>
+                                        <div class="mockup-table-cell"><span style="background:#7f1d1d; padding: 0.125rem 0.5rem; border-radius: 3px; font-size: 9px;">Stop</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="color:#666; font-size: 10px; margin-top: 0.5rem;">All VMs...</div>
+                        </div>
+                        <div class="recommendation">
+                            <strong>Recommended:</strong> Problems can't be missed - they're always at the top. Action buttons right there.
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="alert_display" data-value="badge_count">
+                        <h3>Badge + Filter</h3>
+                        <p>Badge showing problem count in nav, click to filter to problems only.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.5rem; border-bottom: 1px solid #2a2a3e;">
+                                <div style="color:#fff;">Fleet</div>
+                                <div>
+                                    <span style="background:#f87171; color:#fff; padding: 0.125rem 0.5rem; border-radius: 10px; font-size: 10px;">2 problems</span>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; padding: 0.5rem;">
+                                <span style="background:#2a2a3e; padding: 0.125rem 0.5rem; border-radius: 3px; font-size: 10px;">All</span>
+                                <span style="background:#7f1d1d; padding: 0.125rem 0.5rem; border-radius: 3px; font-size: 10px;">Problems (2)</span>
+                                <span style="background:#2a2a3e; padding: 0.125rem 0.5rem; border-radius: 3px; font-size: 10px;">Running</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="alert_display" data-value="sort_to_top">
+                        <h3>Auto-Sort to Top</h3>
+                        <p>Problem VMs automatically sort to top of list. Simple, no separate section.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-table">
+                                <div class="mockup-table-row" style="color:#f87171;">
+                                    <div class="mockup-table-cell">⚠ vm-def456</div>
+                                    <div class="mockup-table-cell">CPU 98%</div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                </div>
+                                <div class="mockup-table-row" style="color:#ca8a04;">
+                                    <div class="mockup-table-cell">⚠ vm-xyz000</div>
+                                    <div class="mockup-table-cell">Memory 89%</div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                </div>
+                                <div class="mockup-table-row">
+                                    <div class="mockup-table-cell">vm-abc123</div>
+                                    <div class="mockup-table-cell">CPU 45%</div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="notes-section">
+                <label>Additional notes for this decision:</label>
+                <textarea data-notes="alert_display" placeholder="Any thoughts, constraints, or alternatives to consider..."></textarea>
+            </div>
+
+            <div class="nav-buttons">
+                <button class="secondary" onclick="prevSection()">Previous</button>
+                <button onclick="nextSection()">Next</button>
+            </div>
+        </div>
+
+        <!-- Section 9: SSH Access -->
+        <div class="section" data-section="8">
+            <div class="question">
+                <h2>9. SSH Access (V1)</h2>
+                <p>For v1, how should the copy-paste SSH experience work?</p>
+
+                <div class="options grid-2">
+                    <div class="option" data-question="ssh_access" data-value="copy_button">
+                        <h3>Copy Command Button (Recommended)</h3>
+                        <p>Button copies full SSH command to clipboard. Simple, works everywhere.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="padding: 0.5rem;">
+                                <div style="color:#fff; margin-bottom: 0.5rem;">vm-abc123</div>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <code style="background:#2a2a3e; padding: 0.5rem; border-radius: 4px; flex: 1; font-size: 11px;">ssh user@vm-abc123.tailnet</code>
+                                    <span style="background:#4ade80; color:#000; padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 11px;">Copy</span>
+                                </div>
+                                <div style="color:#4ade80; font-size: 10px; margin-top: 0.25rem;">✓ Copied!</div>
+                            </div>
+                        </div>
+                        <div class="recommendation">
+                            <strong>Recommended:</strong> One click, paste into any terminal. No special integration needed.
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="ssh_access" data-value="quick_copy">
+                        <h3>Quick Copy Icon</h3>
+                        <p>Small copy icon next to VM name. More compact for list views.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div class="mockup-table">
+                                <div class="mockup-table-row">
+                                    <div class="mockup-table-cell">vm-abc123 <span style="cursor:pointer;">📋</span></div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                </div>
+                                <div class="mockup-table-row">
+                                    <div class="mockup-table-cell">vm-def456 <span style="cursor:pointer;">📋</span></div>
+                                    <div class="mockup-table-cell"><span class="mockup-status running">running</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="ssh_access" data-value="modal_details">
+                        <h3>Connection Modal</h3>
+                        <p>Modal with connection details, multiple copy options, instructions.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="background:#2a2a3e; margin: 0.5rem; border-radius: 6px; padding: 0.75rem;">
+                                <div style="color:#fff; margin-bottom: 0.5rem; display: flex; justify-content: space-between;">
+                                    <span>Connect to vm-abc123</span>
+                                    <span style="color:#666;">✕</span>
+                                </div>
+                                <div style="margin-bottom: 0.5rem;">
+                                    <div style="color:#666; font-size: 9px;">SSH Command</div>
+                                    <code style="font-size: 10px;">ssh user@vm-abc123.tailnet</code>
+                                </div>
+                                <div style="margin-bottom: 0.5rem;">
+                                    <div style="color:#666; font-size: 9px;">Hostname</div>
+                                    <code style="font-size: 10px;">vm-abc123.tailnet</code>
+                                </div>
+                                <div style="margin-bottom: 0.5rem;">
+                                    <div style="color:#666; font-size: 9px;">IP Address</div>
+                                    <code style="font-size: 10px;">100.x.y.z</code>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="option" data-question="ssh_access" data-value="protocol_handler">
+                        <h3>SSH Protocol Handler</h3>
+                        <p>Click opens ssh:// link, launches system terminal. Seamless but requires setup.</p>
+                        <div class="mockup">
+                            <div class="mockup-header">
+                                <div class="mockup-dot red"></div>
+                                <div class="mockup-dot yellow"></div>
+                                <div class="mockup-dot green"></div>
+                            </div>
+                            <div style="padding: 0.5rem;">
+                                <div style="color:#fff; margin-bottom: 0.5rem;">vm-abc123</div>
+                                <div>
+                                    <span style="background:#4ade80; color:#000; padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 11px;">🔗 Open SSH</span>
+                                </div>
+                                <div style="color:#666; font-size: 10px; margin-top: 0.5rem;">Opens your default terminal</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="notes-section">
+                <label>Additional notes for this decision:</label>
+                <textarea data-notes="ssh_access" placeholder="Any thoughts, constraints, or alternatives to consider..."></textarea>
+            </div>
+
+            <div class="nav-buttons">
+                <button class="secondary" onclick="prevSection()">Previous</button>
+                <button onclick="nextSection()">Next</button>
+            </div>
+        </div>
+
+        <!-- Section 10: Summary -->
+        <div class="section" data-section="9">
+            <div class="summary">
+                <h2>Your Dashboard Design Decisions</h2>
+                <p>Review your selections below. You can go back to change any decision.</p>
+
+                <div id="summaryContent"></div>
+
+                <div class="copy-section">
+                    <h3>Copy for Claude</h3>
+                    <p style="color: var(--text-muted); margin-bottom: 1rem;">Copy this text and paste it back to continue the design process:</p>
+                    <textarea id="exportText" readonly></textarea>
+                    <button class="copy-button" onclick="copyExport()">Copy to Clipboard</button>
+                    <div id="copyConfirm" style="color: var(--success); margin-top: 0.5rem; display: none;">✓ Copied to clipboard!</div>
+                </div>
+            </div>
+
+            <div class="nav-buttons">
+                <button class="secondary" onclick="prevSection()">Previous</button>
+                <button disabled>Complete</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const decisions = {};
+        const notes = {};
+        const questions = {
+            nav_structure: {
+                title: "Navigation Structure",
+                options: {
+                    sidebar: "Sidebar Navigation",
+                    topnav: "Top Navigation",
+                    hybrid: "Hybrid (top bar + contextual tabs)"
+                }
+            },
+            fleet_layout: {
+                title: "Fleet Overview Layout",
+                options: {
+                    metrics_top: "Metrics Bar + Table",
+                    grouped_cards: "Grouped Cards (by repo)",
+                    split_view: "Split View (list + preview)"
+                }
+            },
+            vm_detail_layout: {
+                title: "VM Detail View Layout",
+                options: {
+                    tabbed: "Tabbed Sections",
+                    stacked: "Stacked Panels (single page)",
+                    columns: "Column Layout (metrics | logs)"
+                }
+            },
+            metrics_display: {
+                title: "Resource Metrics Visualization",
+                options: {
+                    sparklines: "Sparklines (inline mini-charts)",
+                    gauges: "Gauge/Progress Bars",
+                    timeseries: "Time Series Charts",
+                    hybrid_metrics: "Hybrid (sparklines + expandable)"
+                }
+            },
+            log_display: {
+                title: "Log Viewing Experience",
+                options: {
+                    streaming: "Live Streaming (tail -f style)",
+                    paginated: "Paginated/Historical",
+                    both_logs: "Both (toggle mode)",
+                    split_logs: "Split (stdout + stderr)"
+                }
+            },
+            activity_feed: {
+                title: "Activity Feed",
+                options: {
+                    timeline: "Timeline Feed (chronological)",
+                    notifications: "Notification Center (dropdown)",
+                    dashboard_widget: "Dashboard Widget",
+                    separate_page: "Separate Activity Page"
+                }
+            },
+            vm_actions: {
+                title: "VM Actions & Controls",
+                options: {
+                    inline_buttons: "Inline Buttons (always visible)",
+                    hover_reveal: "Hover Reveal",
+                    dropdown_menu: "Dropdown Menu (three-dot)",
+                    detail_page_only: "Detail Page Only"
+                }
+            },
+            alert_display: {
+                title: "Problem/Alert Indicators",
+                options: {
+                    inline_warning: "Inline Warning Style (row color)",
+                    problems_section: "Problems Section (top of page)",
+                    badge_count: "Badge + Filter",
+                    sort_to_top: "Auto-Sort to Top"
+                }
+            },
+            ssh_access: {
+                title: "SSH Access (V1)",
+                options: {
+                    copy_button: "Copy Command Button",
+                    quick_copy: "Quick Copy Icon",
+                    modal_details: "Connection Modal",
+                    protocol_handler: "SSH Protocol Handler"
+                }
+            }
+        };
+
+        let currentSection = 0;
+        const totalSections = 10;
+
+        function initProgressBar() {
+            const bar = document.getElementById('progressBar');
+            for (let i = 0; i < totalSections; i++) {
+                const step = document.createElement('div');
+                step.className = 'progress-step' + (i === 0 ? ' active' : '');
+                step.onclick = () => goToSection(i);
+                bar.appendChild(step);
+            }
+        }
+
+        function updateProgressBar() {
+            const steps = document.querySelectorAll('.progress-step');
+            steps.forEach((step, i) => {
+                step.classList.remove('active');
+                if (i < currentSection) {
+                    step.classList.add('completed');
+                } else if (i === currentSection) {
+                    step.classList.add('active');
+                }
+            });
+        }
+
+        function goToSection(index) {
+            if (index < 0 || index >= totalSections) return;
+
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelector(`[data-section="${index}"]`).classList.add('active');
+            currentSection = index;
+            updateProgressBar();
+
+            if (index === totalSections - 1) {
+                updateSummary();
+            }
+        }
+
+        function nextSection() {
+            goToSection(currentSection + 1);
+        }
+
+        function prevSection() {
+            goToSection(currentSection - 1);
+        }
+
+        function selectOption(element) {
+            const question = element.dataset.question;
+            const value = element.dataset.value;
+
+            // Deselect siblings
+            element.parentElement.querySelectorAll('.option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+
+            // Select this one
+            element.classList.add('selected');
+            decisions[question] = value;
+        }
+
+        function updateSummary() {
+            collectNotes();
+            const content = document.getElementById('summaryContent');
+            let html = '';
+
+            for (const [key, value] of Object.entries(decisions)) {
+                const q = questions[key];
+                const noteText = notes[key] ? `<p style="color: var(--text-muted); font-size: 0.875rem; margin-top: 0.25rem;"><em>Note: ${notes[key]}</em></p>` : '';
+                html += `
+                    <div class="summary-item">
+                        <strong>${q.title}</strong>
+                        <span>${q.options[value]}</span>
+                        ${noteText}
+                    </div>
+                `;
+            }
+
+            if (Object.keys(decisions).length === 0) {
+                html = '<p style="color: var(--text-muted);">No decisions made yet. Go back and select options.</p>';
+            }
+
+            content.innerHTML = html;
+            updateExportText();
+        }
+
+        function collectNotes() {
+            document.querySelectorAll('textarea[data-notes]').forEach(textarea => {
+                const key = textarea.dataset.notes;
+                if (textarea.value.trim()) {
+                    notes[key] = textarea.value.trim();
+                } else {
+                    delete notes[key];
+                }
+            });
+        }
+
+        function updateExportText() {
+            collectNotes();
+
+            const lines = [
+                "# Stockyard Dashboard Design Decisions",
+                "",
+                "## Context (Already Confirmed)",
+                "- Users: Human operators (full view) + developers (own VMs). Agents use CLI/MCP.",
+                "- Auth: Tailscale identity",
+                "- Observability: Logs + status + resource metrics",
+                "- Fleet view priorities: Repo grouping, resource consumption, recent activity",
+                "- VM detail view: Status, logs, resource graphs (snapshots nice-to-have)",
+                "- Alerts: In-dashboard indicators for v1",
+                "- Web terminal: Design for it, implement later (copy-paste SSH for v1)",
+                "",
+                "## UI/UX Decisions from Prototype",
+                ""
+            ];
+
+            for (const [key, value] of Object.entries(decisions)) {
+                const q = questions[key];
+                lines.push(`**${q.title}:** ${q.options[value]}`);
+                if (notes[key]) {
+                    lines.push(`  - Notes: ${notes[key]}`);
+                }
+            }
+
+            if (Object.keys(decisions).length < Object.keys(questions).length) {
+                lines.push("");
+                lines.push("⚠️ Note: Not all decisions were made. Missing:");
+                for (const key of Object.keys(questions)) {
+                    if (!decisions[key]) {
+                        lines.push(`- ${questions[key].title}`);
+                    }
+                }
+            }
+
+            // Include any notes for decisions that weren't made
+            const notesWithoutDecisions = Object.keys(notes).filter(k => !decisions[k]);
+            if (notesWithoutDecisions.length > 0) {
+                lines.push("");
+                lines.push("## Additional Notes (no selection made)");
+                for (const key of notesWithoutDecisions) {
+                    lines.push(`**${questions[key].title}:** ${notes[key]}`);
+                }
+            }
+
+            lines.push("");
+            lines.push("---");
+            lines.push("Please proceed with the design document based on these decisions.");
+
+            document.getElementById('exportText').value = lines.join('\n');
+        }
+
+        function copyExport() {
+            const textarea = document.getElementById('exportText');
+            textarea.select();
+            document.execCommand('copy');
+
+            const confirm = document.getElementById('copyConfirm');
+            confirm.style.display = 'block';
+            setTimeout(() => {
+                confirm.style.display = 'none';
+            }, 2000);
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initProgressBar();
+
+            // Add click handlers to all options
+            document.querySelectorAll('.option').forEach(opt => {
+                opt.addEventListener('click', () => selectOption(opt));
+            });
+        });
+    </script>
+</body>
+</html>
