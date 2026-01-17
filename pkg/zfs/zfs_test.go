@@ -87,3 +87,25 @@ func TestCloneSnapshotTargetPath(t *testing.T) {
 		}
 	}
 }
+
+func TestCloneTargetPathForMountpoint(t *testing.T) {
+	m := NewManager("tank", "stockyard")
+
+	// Verify CloneTargetPath works for various dataset paths
+	// This is used by both CloneSnapshot and GetDatasetMountpoint
+	tests := []struct {
+		datasetPath string
+		want        string
+	}{
+		{"vms/test-vm-123", "tank/stockyard/vms/test-vm-123"},
+		{"images/rootfs", "tank/stockyard/images/rootfs"},
+		{"workspaces/task-abc", "tank/stockyard/workspaces/task-abc"},
+	}
+
+	for _, tt := range tests {
+		got := m.CloneTargetPath(tt.datasetPath)
+		if got != tt.want {
+			t.Errorf("CloneTargetPath(%q) = %q, want %q", tt.datasetPath, got, tt.want)
+		}
+	}
+}

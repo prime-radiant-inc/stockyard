@@ -173,3 +173,20 @@ func (m *Manager) CloneSnapshot(ctx context.Context, snapshotPath, targetDataset
 	fullTarget := m.CloneTargetPath(targetDataset)
 	return m.runZFS(ctx, "clone", snapshotPath, fullTarget)
 }
+
+// GetDatasetMountpoint returns the mountpoint for any dataset path relative to BasePath.
+// datasetPath is relative like "vms/abc123" or "images/rootfs"
+func (m *Manager) GetDatasetMountpoint(ctx context.Context, datasetPath string) (string, error) {
+	fullPath := m.CloneTargetPath(datasetPath)
+
+	cmd := exec.CommandContext(ctx, "zfs", "get", "-H", "-o", "value", "mountpoint", fullPath)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("zfs get mountpoint failed for %s: %w: %s", fullPath, err, stderr.String())
+	}
+
+	return strings.TrimSpace(stdout.String()), nil
+}
