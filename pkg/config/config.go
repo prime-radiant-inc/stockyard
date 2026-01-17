@@ -31,8 +31,10 @@ type DaemonConfig struct {
 }
 
 type ZFSConfig struct {
-	Pool     string `json:"pool"`
-	BasePath string `json:"base_path"`
+	Pool       string `json:"pool"`
+	BasePath   string `json:"base_path"`
+	ImagesPath string `json:"images_path"`
+	VMsPath    string `json:"vms_path"`
 }
 
 type FirecrackerConfig struct {
@@ -51,8 +53,10 @@ func DefaultConfig() *Config {
 			SocketPath: "/var/run/stockyard/stockyard.sock",
 		},
 		ZFS: ZFSConfig{
-			Pool:     "tank",
-			BasePath: "stockyard/workspaces",
+			Pool:       "tank",
+			BasePath:   "stockyard/workspaces",
+			ImagesPath: "stockyard/images",
+			VMsPath:    "stockyard/vms",
 		},
 		Firecracker: FirecrackerConfig{
 			KernelPath: "/tmp/vmlinux.bin",
