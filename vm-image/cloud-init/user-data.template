@@ -75,7 +75,7 @@ runcmd:
   - mkdir -p /etc/stockyard
 
   # Set up Claude Code hooks for vscode user
-  - /usr/local/bin/setup-claude-hooks.sh
+  - su - vscode -c "/usr/local/bin/setup-claude-hooks.sh"
 
   # Start stockyard init service
   - systemctl daemon-reload
@@ -89,7 +89,7 @@ runcmd:
 
 {{- if .CloneRepo }}
   # Clone the repository
-  - su - vscode -c "git clone {{ .CloneRepo }} /home/vscode/workspace"
+  - su - vscode -c "git clone '{{ .CloneRepo }}' /home/vscode/workspace"
   - chown -R vscode:vscode /home/vscode/workspace
 {{- end }}
 

@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/mdlayher/vsock"
 )
 
 const (
@@ -134,11 +136,10 @@ func tryVsock(cid uint32, port uint32) (net.Conn, error) {
 		return nil, fmt.Errorf("vsock not available: %s does not exist", vsockPath)
 	}
 
-	// Use the standard vsock dial approach
-	// In a real implementation, this would use syscall.Socket with AF_VSOCK
-	// For now, we return an error to trigger the Unix socket fallback
-	// The actual vsock implementation would use:
-	//   fd, _ := syscall.Socket(syscall.AF_VSOCK, syscall.SOCK_STREAM, 0)
-	//   syscall.Connect(fd, &syscall.SockaddrVM{CID: cid, Port: port})
-	return nil, fmt.Errorf("vsock direct dial not implemented - use fallback")
+	// Dial using the mdlayher/vsock package
+	conn, err := vsock.Dial(cid, port, nil)
+	if err != nil {
+		return nil, fmt.Errorf("vsock dial failed: %w", err)
+	}
+	return conn, nil
 }
