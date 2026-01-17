@@ -211,6 +211,13 @@ func (m *Manager) ImportRootfsImage(ctx context.Context, imagesPath, srcPath str
 		return fmt.Errorf("failed to create image dataset: %w", err)
 	}
 
+	success := false
+	defer func() {
+		if !success {
+			m.runZFS(ctx, "destroy", "-r", datasetPath)
+		}
+	}()
+
 	// Get mountpoint
 	cmd := exec.CommandContext(ctx, "zfs", "get", "-H", "-o", "value", "mountpoint", datasetPath)
 	var stdout, stderr bytes.Buffer
@@ -234,6 +241,7 @@ func (m *Manager) ImportRootfsImage(ctx context.Context, imagesPath, srcPath str
 		return fmt.Errorf("failed to create snapshot: %w", err)
 	}
 
+	success = true
 	return nil
 }
 
@@ -250,11 +258,23 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+
+	success := false
+	defer func() {
+		dstFile.Close()
+		if !success {
+			os.Remove(dst)
+		}
+	}()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return err
 	}
 
-	return dstFile.Sync()
+	if err := dstFile.Sync(); err != nil {
+		return err
+	}
+
+	success = true
+	return nil
 }
