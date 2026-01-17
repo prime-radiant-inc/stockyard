@@ -71,10 +71,12 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Render template
-	data := struct {
-		Groups map[string][]Task
-	}{
-		Groups: grouped,
+	data := map[string]interface{}{
+		"Title":        "Fleet",
+		"User":         "user", // TODO: get from auth
+		"ActiveNav":    "fleet",
+		"Tasks":        tasks,
+		"GroupedTasks": grouped,
 	}
 	w.Header().Set("Content-Type", "text/html")
 	if err := s.templates.ExecuteTemplate(w, "fleet.html", data); err != nil {
