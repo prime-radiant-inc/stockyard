@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"html/template"
@@ -78,10 +79,13 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		"Tasks":        tasks,
 		"GroupedTasks": grouped,
 	}
-	w.Header().Set("Content-Type", "text/html")
-	if err := s.templates.ExecuteTemplate(w, "fleet.html", data); err != nil {
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, "fleet.html", data); err != nil {
 		http.Error(w, "Failed to render template", http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html")
+	buf.WriteTo(w)
 }
 
 // ServeHTTP implements http.Handler.
