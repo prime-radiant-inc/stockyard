@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -68,4 +69,44 @@ func (m *MockDaemon) ListSnapshots(ctx context.Context, taskID string) ([]Snapsh
 
 func (m *MockDaemon) CreateSnapshot(ctx context.Context, taskID, label string) (*Snapshot, error) {
 	return &Snapshot{Name: "snap-1", TaskID: taskID, Label: label}, nil
+}
+
+func TestServer_FleetPage(t *testing.T) {
+	mock := &MockDaemon{
+		tasks: []Task{
+			{ID: "task-1", Name: "test-vm", Status: "running", RepoURL: "github.com/test/repo"},
+			{ID: "task-2", Name: "test-vm-2", Status: "stopped", RepoURL: "github.com/test/repo"},
+		},
+	}
+	srv := NewServer(mock)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "task-1") {
+		t.Error("expected task-1 in output")
+	}
+	if !strings.Contains(body, "running") {
+		t.Error("expected running status in output")
+	}
+}
+
+func TestServer_FleetPage_NotFound(t *testing.T) {
+	srv := NewServer(nil)
+
+	req := httptest.NewRequest("GET", "/unknown-path", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", w.Code)
+	}
 }
