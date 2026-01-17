@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -196,4 +199,62 @@ func (m *Manager) GetDatasetMountpoint(ctx context.Context, datasetPath string) 
 func (m *Manager) DestroyDatasetByPath(ctx context.Context, datasetPath string) error {
 	fullPath := m.CloneTargetPath(datasetPath)
 	return m.runZFS(ctx, "destroy", "-r", fullPath)
+}
+
+// ImportRootfsImage imports a rootfs.ext4 file into ZFS and creates the base snapshot.
+// Creates: pool/BasePath/imagesPath/rootfs dataset with rootfs.ext4 file and @base snapshot.
+func (m *Manager) ImportRootfsImage(ctx context.Context, imagesPath, srcPath string) error {
+	datasetPath := fmt.Sprintf("%s/%s/%s/rootfs", m.PoolName, m.BasePath, imagesPath)
+
+	// Create the dataset
+	if err := m.runZFS(ctx, "create", "-p", datasetPath); err != nil {
+		return fmt.Errorf("failed to create image dataset: %w", err)
+	}
+
+	// Get mountpoint
+	cmd := exec.CommandContext(ctx, "zfs", "get", "-H", "-o", "value", "mountpoint", datasetPath)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to get mountpoint: %w: %s", err, stderr.String())
+	}
+	mountpoint := strings.TrimSpace(stdout.String())
+
+	// Copy rootfs.ext4 to dataset
+	destPath := filepath.Join(mountpoint, "rootfs.ext4")
+	if err := copyFile(srcPath, destPath); err != nil {
+		return fmt.Errorf("failed to copy rootfs: %w", err)
+	}
+
+	// Create snapshot
+	snapshotPath := datasetPath + "@base"
+	if err := m.runZFS(ctx, "snapshot", snapshotPath); err != nil {
+		return fmt.Errorf("failed to create snapshot: %w", err)
+	}
+
+	return nil
+}
+
+// copyFile copies a file from src to dst using buffered I/O.
+// This is memory-efficient for large files like 4GB rootfs images.
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return err
+	}
+
+	return dstFile.Sync()
 }
