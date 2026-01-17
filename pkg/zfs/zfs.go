@@ -202,9 +202,10 @@ func (m *Manager) DestroyDatasetByPath(ctx context.Context, datasetPath string) 
 }
 
 // ImportRootfsImage imports a rootfs.ext4 file into ZFS and creates the base snapshot.
-// Creates: pool/BasePath/imagesPath/rootfs dataset with rootfs.ext4 file and @base snapshot.
+// Creates: pool/imagesPath/rootfs dataset with rootfs.ext4 file and @base snapshot.
+// imagesPath is the full path under the pool, e.g., "stockyard/images"
 func (m *Manager) ImportRootfsImage(ctx context.Context, imagesPath, srcPath string) error {
-	datasetPath := fmt.Sprintf("%s/%s/%s/rootfs", m.PoolName, m.BasePath, imagesPath)
+	datasetPath := fmt.Sprintf("%s/%s/rootfs", m.PoolName, imagesPath)
 
 	// Create the dataset
 	if err := m.runZFS(ctx, "create", "-p", datasetPath); err != nil {

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
@@ -75,6 +76,11 @@ func (d *Daemon) Start(ctx context.Context) error {
 	d.running = true
 	d.snapshots = NewSnapshotService(d)
 	d.mu.Unlock()
+
+	// Ensure base rootfs image is available for VM creation
+	if err := d.ensureBaseImage(ctx); err != nil {
+		return fmt.Errorf("failed to ensure base image: %w", err)
+	}
 
 	socketDir := filepath.Dir(d.cfg.Daemon.SocketPath)
 	if err := os.MkdirAll(socketDir, 0755); err != nil {
@@ -198,4 +204,23 @@ func (d *Daemon) Tasks() *TaskManager {
 // SetTaskManager sets the daemon's task manager.
 func (d *Daemon) SetTaskManager(tm *TaskManager) {
 	d.tasks = tm
+}
+
+// ensureBaseImage checks if the base rootfs snapshot exists and imports it if not.
+func (d *Daemon) ensureBaseImage(ctx context.Context) error {
+	// Construct the expected snapshot path: pool/ImagesPath/rootfs@base
+	// e.g., tank/stockyard/images/rootfs@base
+	snapshotPath := fmt.Sprintf("%s/%s/rootfs@base", d.cfg.ZFS.Pool, d.cfg.ZFS.ImagesPath)
+
+	// Check if snapshot exists
+	cmd := exec.CommandContext(ctx, "zfs", "list", "-t", "snapshot", snapshotPath)
+	if err := cmd.Run(); err != nil {
+		// Snapshot doesn't exist, import from configured rootfs
+		fmt.Printf("Importing base rootfs image from %s...\n", d.cfg.Firecracker.RootfsPath)
+		if err := d.zfs.ImportRootfsImage(ctx, d.cfg.ZFS.ImagesPath, d.cfg.Firecracker.RootfsPath); err != nil {
+			return fmt.Errorf("failed to import base image: %w", err)
+		}
+		fmt.Println("Base image imported successfully")
+	}
+	return nil
 }
