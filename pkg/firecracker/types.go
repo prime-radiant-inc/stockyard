@@ -49,9 +49,10 @@ type VMConfig struct {
 	RootfsPath       string            // Path to rootfs.ext4
 	KernelPath       string            // Path to vmlinux kernel
 	KernelArgs       string            // Boot arguments (optional, has defaults)
-	CloudInitData    string            // Base64-encoded cloud-init user-data
-	TailscaleAuthKey string            // Tailscale auth key for MMDS
-	Network          NetworkConfig
+	CloudInitData     string            // Base64-encoded cloud-init user-data
+	TailscaleAuthKey  string            // Tailscale auth key for MMDS
+	SSHAuthorizedKeys []string          // SSH public keys for VM access via MMDS
+	Network           NetworkConfig
 	Metadata         map[string]string // Labels for the VM
 }
 

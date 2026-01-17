@@ -43,6 +43,22 @@ if [ -n "$HOSTNAME" ]; then
     hostnamectl set-hostname "$HOSTNAME"
 fi
 
+# Get SSH authorized keys from meta-data
+SSH_KEYS_RAW=$(curl -sf "${MMDS_URL}/meta-data/ssh-authorized-keys" 2>/dev/null || echo "")
+SSH_KEYS=$(echo "$SSH_KEYS_RAW" | strip_json_quotes)
+if [ -n "$SSH_KEYS" ]; then
+    echo "Installing SSH authorized keys..."
+    SSH_DIR="/home/${VM_USER}/.ssh"
+    mkdir -p "$SSH_DIR"
+    echo "$SSH_KEYS" > "${SSH_DIR}/authorized_keys"
+    chmod 700 "$SSH_DIR"
+    chmod 600 "${SSH_DIR}/authorized_keys"
+    chown -R "${VM_USER}:${VM_USER}" "$SSH_DIR"
+    echo "SSH keys installed ($(echo "$SSH_KEYS" | wc -l) keys)"
+else
+    echo "No SSH authorized keys found in MMDS"
+fi
+
 # Get Tailscale auth key from meta-data
 TS_AUTH_KEY_RAW=$(curl -sf "${MMDS_URL}/meta-data/tailscale-auth-key" 2>/dev/null || echo "")
 TS_AUTH_KEY=$(echo "$TS_AUTH_KEY_RAW" | strip_json_quotes)

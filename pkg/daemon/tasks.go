@@ -61,8 +61,9 @@ type CreateTaskRequest struct {
 	Env              map[string]string
 	CPUs             int32
 	MemoryMB         int32
-	NoTailscale      bool
-	TailscaleAuthKey string // Optional: overrides 1Password lookup
+	NoTailscale       bool
+	TailscaleAuthKey  string   // Optional: overrides 1Password lookup
+	SSHAuthorizedKeys []string // SSH public keys for VM access
 }
 
 // CreateTask creates a new VM-based task with the given parameters.
@@ -163,12 +164,13 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	var vmID string
 	if tm.fc != nil {
 		vmCfg := &firecracker.VMConfig{
-			ID:               taskID,
-			Namespace:        "stockyard",
-			VCPU:             req.CPUs,
-			MemoryMB:         req.MemoryMB,
-			CloudInitData:    cloudInitData,
-			TailscaleAuthKey: tailscaleAuthKey,
+			ID:                taskID,
+			Namespace:         "stockyard",
+			VCPU:              req.CPUs,
+			MemoryMB:          req.MemoryMB,
+			CloudInitData:     cloudInitData,
+			TailscaleAuthKey:  tailscaleAuthKey,
+			SSHAuthorizedKeys: req.SSHAuthorizedKeys,
 			Metadata: map[string]string{
 				"task-id":   taskID,
 				"task-name": req.Name,

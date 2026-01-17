@@ -32,15 +32,16 @@ func (s *grpcServer) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) 
 	}
 
 	task, err := s.daemon.tasks.CreateTask(ctx, &CreateTaskRequest{
-		Repo:             req.Repo,
-		Ref:              req.Ref,
-		Name:             req.Name,
-		Command:          req.Command,
-		Env:              req.Env,
-		CPUs:             req.Cpus,
-		MemoryMB:         parseMemory(req.Memory),
-		NoTailscale:      req.NoTailscale,
-		TailscaleAuthKey: req.TailscaleAuthKey,
+		Repo:              req.Repo,
+		Ref:               req.Ref,
+		Name:              req.Name,
+		Command:           req.Command,
+		Env:               req.Env,
+		CPUs:              req.Cpus,
+		MemoryMB:          parseMemory(req.Memory),
+		NoTailscale:       req.NoTailscale,
+		TailscaleAuthKey:  req.TailscaleAuthKey,
+		SSHAuthorizedKeys: req.SshAuthorizedKeys,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create task: %v", err)

@@ -175,12 +175,8 @@ RUN mkdir -p /var/run/sshd \
     && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config \
     && sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 
-# Add SSH key for VM user (for debugging)
-RUN mkdir -p /home/${VM_USER}/.ssh \
-    && echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH3MQD2+f46FzfwZLiouCPkmcQGWmFBkc2d9aA4qjIMZ jesse@paradise-park.local" > /home/${VM_USER}/.ssh/authorized_keys \
-    && chmod 700 /home/${VM_USER}/.ssh \
-    && chmod 600 /home/${VM_USER}/.ssh/authorized_keys \
-    && chown -R ${VM_USER}:${VM_USER} /home/${VM_USER}/.ssh
+# SSH authorized keys are delivered via MMDS at runtime (see stockyard-init.sh)
+# This allows per-VM key configuration instead of baking keys into the base image
 
 # ============================================================================
 # Section 7: Stockyard Integration

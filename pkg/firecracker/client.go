@@ -250,10 +250,11 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 
 	hostname := fmt.Sprintf("stockyard-%s", config.ID)
 	mmdsData := BuildMMDSData(MMDSMetadata{
-		InstanceID:       "i-" + config.ID,
-		Hostname:         hostname,
-		TailscaleAuthKey: config.TailscaleAuthKey,
-		UserData:         config.CloudInitData,
+		InstanceID:        "i-" + config.ID,
+		Hostname:          hostname,
+		TailscaleAuthKey:  config.TailscaleAuthKey,
+		SSHAuthorizedKeys: config.SSHAuthorizedKeys,
+		UserData:          config.CloudInitData,
 	})
 	if err := apiClient.SetMMDSData(ctx, mmdsData); err != nil {
 		cmd.Process.Kill()

@@ -22,18 +22,19 @@ const (
 )
 
 type CreateTaskRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Repo             string                 `protobuf:"bytes,1,opt,name=repo,proto3" json:"repo,omitempty"`
-	Ref              string                 `protobuf:"bytes,2,opt,name=ref,proto3" json:"ref,omitempty"`
-	Name             string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	Command          []string               `protobuf:"bytes,4,rep,name=command,proto3" json:"command,omitempty"`
-	Env              map[string]string      `protobuf:"bytes,5,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Cpus             int32                  `protobuf:"varint,6,opt,name=cpus,proto3" json:"cpus,omitempty"`
-	Memory           string                 `protobuf:"bytes,7,opt,name=memory,proto3" json:"memory,omitempty"`
-	NoTailscale      bool                   `protobuf:"varint,8,opt,name=no_tailscale,json=noTailscale,proto3" json:"no_tailscale,omitempty"`
-	TailscaleAuthKey string                 `protobuf:"bytes,9,opt,name=tailscale_auth_key,json=tailscaleAuthKey,proto3" json:"tailscale_auth_key,omitempty"` // Optional: override 1Password lookup
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Repo              string                 `protobuf:"bytes,1,opt,name=repo,proto3" json:"repo,omitempty"`
+	Ref               string                 `protobuf:"bytes,2,opt,name=ref,proto3" json:"ref,omitempty"`
+	Name              string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Command           []string               `protobuf:"bytes,4,rep,name=command,proto3" json:"command,omitempty"`
+	Env               map[string]string      `protobuf:"bytes,5,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Cpus              int32                  `protobuf:"varint,6,opt,name=cpus,proto3" json:"cpus,omitempty"`
+	Memory            string                 `protobuf:"bytes,7,opt,name=memory,proto3" json:"memory,omitempty"`
+	NoTailscale       bool                   `protobuf:"varint,8,opt,name=no_tailscale,json=noTailscale,proto3" json:"no_tailscale,omitempty"`
+	TailscaleAuthKey  string                 `protobuf:"bytes,9,opt,name=tailscale_auth_key,json=tailscaleAuthKey,proto3" json:"tailscale_auth_key,omitempty"`     // Optional: override 1Password lookup
+	SshAuthorizedKeys []string               `protobuf:"bytes,10,rep,name=ssh_authorized_keys,json=sshAuthorizedKeys,proto3" json:"ssh_authorized_keys,omitempty"` // SSH public keys for VM access
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *CreateTaskRequest) Reset() {
@@ -127,6 +128,13 @@ func (x *CreateTaskRequest) GetTailscaleAuthKey() string {
 		return x.TailscaleAuthKey
 	}
 	return ""
+}
+
+func (x *CreateTaskRequest) GetSshAuthorizedKeys() []string {
+	if x != nil {
+		return x.SshAuthorizedKeys
+	}
+	return nil
 }
 
 type CreateTaskResponse struct {
@@ -1065,7 +1073,7 @@ var File_api_stockyard_proto protoreflect.FileDescriptor
 
 const file_api_stockyard_proto_rawDesc = "" +
 	"\n" +
-	"\x13api/stockyard.proto\x12\fstockyard.v1\"\xd8\x02\n" +
+	"\x13api/stockyard.proto\x12\fstockyard.v1\"\x88\x03\n" +
 	"\x11CreateTaskRequest\x12\x12\n" +
 	"\x04repo\x18\x01 \x01(\tR\x04repo\x12\x10\n" +
 	"\x03ref\x18\x02 \x01(\tR\x03ref\x12\x12\n" +
@@ -1075,7 +1083,9 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"\x04cpus\x18\x06 \x01(\x05R\x04cpus\x12\x16\n" +
 	"\x06memory\x18\a \x01(\tR\x06memory\x12!\n" +
 	"\fno_tailscale\x18\b \x01(\bR\vnoTailscale\x12,\n" +
-	"\x12tailscale_auth_key\x18\t \x01(\tR\x10tailscaleAuthKey\x1a6\n" +
+	"\x12tailscale_auth_key\x18\t \x01(\tR\x10tailscaleAuthKey\x12.\n" +
+	"\x13ssh_authorized_keys\x18\n" +
+	" \x03(\tR\x11sshAuthorizedKeys\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\\\n" +
