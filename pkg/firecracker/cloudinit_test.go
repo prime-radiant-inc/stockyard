@@ -9,7 +9,11 @@ import (
 func TestBuildMMDSData(t *testing.T) {
 	cloudInitYAML := "#cloud-config\nhostname: test-vm\n"
 
-	data := BuildMMDSData("i-abc123", "stockyard-abc123", cloudInitYAML)
+	data := BuildMMDSData(MMDSMetadata{
+		InstanceID: "i-abc123",
+		Hostname:   "stockyard-abc123",
+		UserData:   cloudInitYAML,
+	})
 
 	latest, ok := data["latest"].(map[string]interface{})
 	if !ok {

@@ -145,10 +145,45 @@ COPY init/stockyard-init.service /etc/systemd/system/stockyard-init.service
 RUN systemctl enable stockyard-init.service 2>/dev/null || true
 
 # Configure cloud-init for VM initialization
-RUN mkdir -p /var/lib/cloud/seed/nocloud
+# Use IMDS datasource first (for Firecracker MMDS), fall back to NoCloud
+RUN mkdir -p /var/lib/cloud/seed/nocloud /etc/cloud/cloud.cfg.d \
+    && cat > /etc/cloud/cloud.cfg.d/99-datasource.cfg <<'EOF'
+datasource_list: [ IMDS, NoCloud, None ]
+datasource:
+  IMDS:
+    metadata_urls: ["http://169.254.169.254"]
+EOF
+
+# Configure network for Firecracker MMDS access
+# Static IP on 192.168.100.0/24 network, plus route to 169.254.169.254 for MMDS
+# The IP will be set by cloud-init, but we need the MMDS route to be available early
+RUN mkdir -p /etc/systemd/network \
+    && cat > /etc/systemd/network/10-eth0.network <<'EOF'
+[Match]
+Name=eth0
+
+[Network]
+Address=192.168.100.2/24
+Gateway=192.168.100.1
+DNS=8.8.8.8
+
+[Route]
+Destination=169.254.169.254/32
+Scope=link
+EOF
+# Enable systemd-networkd
+RUN systemctl enable systemd-networkd 2>/dev/null || true
 
 # ============================================================================
-# Section 8: Finalize
+# Section 8: MicroVM Kernel
+# ============================================================================
+
+# Download a prebuilt kernel compatible with Firecracker/Cloud Hypervisor
+RUN curl -fsSL -o /boot/vmlinuz \
+    https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/x86_64/kernels/vmlinux.bin
+
+# ============================================================================
+# Section 9: Finalize
 # ============================================================================
 
 # Set environment variables

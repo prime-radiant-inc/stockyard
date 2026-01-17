@@ -241,7 +241,7 @@ func TestAPIClient_SetMMDSConfig(t *testing.T) {
 	if len(ifaces) != 1 || ifaces[0] != "eth0" {
 		t.Errorf("wrong network_interfaces: %v", receivedBody)
 	}
-	if receivedBody["version"] != "V2" {
+	if receivedBody["version"] != "V1" {
 		t.Errorf("wrong version: %v", receivedBody)
 	}
 }

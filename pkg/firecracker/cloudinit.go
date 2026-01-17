@@ -171,15 +171,27 @@ func (c *CloudInitConfig) buildProfileScript() string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
+// MMDSMetadata holds metadata fields for MMDS.
+type MMDSMetadata struct {
+	InstanceID       string
+	Hostname         string
+	TailscaleAuthKey string
+	UserData         string
+}
+
 // BuildMMDSData constructs the MMDS data structure for cloud-init.
-func BuildMMDSData(instanceID, hostname, cloudInitYAML string) map[string]interface{} {
+func BuildMMDSData(meta MMDSMetadata) map[string]interface{} {
+	metaData := map[string]string{
+		"instance-id":    meta.InstanceID,
+		"local-hostname": meta.Hostname,
+	}
+	if meta.TailscaleAuthKey != "" {
+		metaData["tailscale-auth-key"] = meta.TailscaleAuthKey
+	}
 	return map[string]interface{}{
 		"latest": map[string]interface{}{
-			"meta-data": map[string]string{
-				"instance-id":    instanceID,
-				"local-hostname": hostname,
-			},
-			"user-data": cloudInitYAML,
+			"meta-data": metaData,
+			"user-data": meta.UserData,
 		},
 	}
 }

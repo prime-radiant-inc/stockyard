@@ -42,16 +42,17 @@ type NetworkConfig struct {
 
 // VMConfig specifies the configuration for creating a new VM.
 type VMConfig struct {
-	ID            string
-	Namespace     string
-	VCPU          int32
-	MemoryMB      int32
-	RootfsPath    string            // Path to rootfs.ext4
-	KernelPath    string            // Path to vmlinux kernel
-	KernelArgs    string            // Boot arguments (optional, has defaults)
-	CloudInitData string            // Base64-encoded cloud-init user-data
-	Network       NetworkConfig
-	Metadata      map[string]string // Labels for the VM
+	ID               string
+	Namespace        string
+	VCPU             int32
+	MemoryMB         int32
+	RootfsPath       string            // Path to rootfs.ext4
+	KernelPath       string            // Path to vmlinux kernel
+	KernelArgs       string            // Boot arguments (optional, has defaults)
+	CloudInitData    string            // Base64-encoded cloud-init user-data
+	TailscaleAuthKey string            // Tailscale auth key for MMDS
+	Network          NetworkConfig
+	Metadata         map[string]string // Labels for the VM
 }
 
 // Validate checks that the VMConfig has all required fields.

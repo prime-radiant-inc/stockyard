@@ -97,10 +97,11 @@ func (a *APIClient) SetMachineConfig(ctx context.Context, vcpus, memMB int32) er
 }
 
 // SetMMDSConfig enables MMDS on the specified network interfaces.
+// Uses V1 for compatibility with cloud-init's IMDS datasource (V2 requires token auth).
 func (a *APIClient) SetMMDSConfig(ctx context.Context, networkInterfaces []string) error {
 	return a.put(ctx, "/mmds/config", map[string]interface{}{
 		"network_interfaces": networkInterfaces,
-		"version":            "V2",
+		"version":            "V1",
 	})
 }
 

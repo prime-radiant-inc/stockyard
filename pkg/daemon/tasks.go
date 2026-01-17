@@ -8,29 +8,40 @@ import (
 	"strings"
 	"time"
 
-	"github.com/obra/stockyard/pkg/flintlock"
+	"github.com/obra/stockyard/pkg/firecracker"
 	"github.com/obra/stockyard/pkg/tailscale"
 )
 
 // TaskManager handles the lifecycle of VM-based tasks.
 type TaskManager struct {
-	daemon   *Daemon
-	flintock *flintlock.Client
+	daemon *Daemon
+	fc     *firecracker.Client
 }
 
-// NewTaskManager creates a TaskManager with the given daemon and optional flintlock endpoint.
-// If flintEndpoint is empty, VM creation will fail at runtime.
-func NewTaskManager(d *Daemon, flintEndpoint string) *TaskManager {
+// FirecrackerConfig holds configuration for direct Firecracker VM management.
+type FirecrackerConfig struct {
+	KernelPath string
+	RootfsPath string
+	BridgeName string
+}
+
+// NewTaskManager creates a TaskManager with the given daemon and firecracker configuration.
+func NewTaskManager(d *Daemon, fcConfig *FirecrackerConfig) *TaskManager {
 	tm := &TaskManager{
 		daemon: d,
 	}
 
-	if flintEndpoint != "" {
-		client, err := flintlock.NewClient(flintEndpoint)
+	if fcConfig != nil {
+		cfg := firecracker.ClientConfig{
+			KernelPath: fcConfig.KernelPath,
+			RootfsPath: fcConfig.RootfsPath,
+			BridgeName: fcConfig.BridgeName,
+		}
+		client, err := firecracker.NewClient(cfg)
 		if err != nil {
-			fmt.Printf("Warning: failed to connect to flintlock at %s: %v\n", flintEndpoint, err)
+			fmt.Printf("Warning: failed to create firecracker client: %v\n", err)
 		} else {
-			tm.flintock = client
+			tm.fc = client
 		}
 	}
 
@@ -39,14 +50,15 @@ func NewTaskManager(d *Daemon, flintEndpoint string) *TaskManager {
 
 // CreateTaskRequest contains the parameters for creating a new task.
 type CreateTaskRequest struct {
-	Repo        string
-	Ref         string
-	Name        string
-	Command     []string
-	Env         map[string]string
-	CPUs        int32
-	MemoryMB    int32
-	NoTailscale bool
+	Repo             string
+	Ref              string
+	Name             string
+	Command          []string
+	Env              map[string]string
+	CPUs             int32
+	MemoryMB         int32
+	NoTailscale      bool
+	TailscaleAuthKey string // Optional: overrides 1Password lookup
 }
 
 // CreateTask creates a new VM-based task with the given parameters.
@@ -67,7 +79,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	}
 
 	// Generate task ID
-	taskID := flintlock.GenerateVMID()
+	taskID := firecracker.GenerateVMID()
 
 	// Create ZFS dataset for workspace
 	if err := tm.daemon.zfs.CreateDataset(ctx, taskID); err != nil {
@@ -101,16 +113,27 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	var tailscaleAuthKey string
 	var tailscaleHostname string
 	if !req.NoTailscale {
-		key, err := tm.daemon.secrets.GetSecret(ctx, "tailscale-auth-key")
-		if err != nil {
-			log.Printf("Warning: could not get Tailscale auth key: %v", err)
-			// Continue without Tailscale
-		} else if err := tailscale.ValidateAuthKey(key); err != nil {
-			log.Printf("Warning: invalid Tailscale auth key: %v", err)
-			// Continue without Tailscale
+		var key string
+		if req.TailscaleAuthKey != "" {
+			// Use provided auth key
+			key = req.TailscaleAuthKey
 		} else {
-			tailscaleAuthKey = key
-			tailscaleHostname = tailscale.BuildHostname(taskID)
+			// Fetch from secrets provider
+			var err error
+			key, err = tm.daemon.secrets.GetSecret(ctx, "tailscale-auth-key")
+			if err != nil {
+				log.Printf("Warning: could not get Tailscale auth key: %v", err)
+				// Continue without Tailscale
+			}
+		}
+		if key != "" {
+			if err := tailscale.ValidateAuthKey(key); err != nil {
+				log.Printf("Warning: invalid Tailscale auth key: %v", err)
+				// Continue without Tailscale
+			} else {
+				tailscaleAuthKey = key
+				tailscaleHostname = tailscale.BuildHostname(taskID)
+			}
 		}
 	}
 
@@ -118,7 +141,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	hostname := fmt.Sprintf("stockyard-%s", taskID)
 
 	// Generate cloud-init config
-	cloudInitCfg := &flintlock.CloudInitConfig{
+	cloudInitCfg := &firecracker.CloudInitConfig{
 		Hostname:          hostname,
 		Environment:       env,
 		TailscaleAuthKey:  tailscaleAuthKey,
@@ -132,21 +155,16 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		return nil, fmt.Errorf("failed to generate cloud-init config: %w", err)
 	}
 
-	// Create VM if flintlock client is available
-	var vmUID string
-	if tm.flintock != nil {
-		vmCfg := &flintlock.VMConfig{
-			ID:            taskID,
-			Namespace:     "stockyard",
-			VCPU:          req.CPUs,
-			MemoryMB:      req.MemoryMB,
-			Image:         "docker.io/library/ubuntu:22.04", // Default image
-			KernelImage:   "ghcr.io/weaveworks-liquidmetal/flintlock-kernel:5.10.77",
-			WorkspacePath: workspacePath,
-			CloudInitData: cloudInitData,
-			Network: flintlock.NetworkConfig{
-				EnableTailscale: !req.NoTailscale,
-			},
+	// Create VM if firecracker client is available
+	var vmID string
+	if tm.fc != nil {
+		vmCfg := &firecracker.VMConfig{
+			ID:               taskID,
+			Namespace:        "stockyard",
+			VCPU:             req.CPUs,
+			MemoryMB:         req.MemoryMB,
+			CloudInitData:    cloudInitData,
+			TailscaleAuthKey: tailscaleAuthKey,
 			Metadata: map[string]string{
 				"task-id":   taskID,
 				"task-name": req.Name,
@@ -155,12 +173,12 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			},
 		}
 
-		vm, err := tm.flintock.CreateVM(ctx, vmCfg)
+		vm, err := tm.fc.CreateVM(ctx, vmCfg)
 		if err != nil {
 			tm.daemon.zfs.DestroyDataset(ctx, taskID)
 			return nil, fmt.Errorf("failed to create VM: %w", err)
 		}
-		vmUID = vm.UID
+		vmID = vm.ID
 	}
 
 	// Determine command string for storage
@@ -177,15 +195,15 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		Ref:               req.Ref,
 		Command:           commandStr,
 		Status:            "running",
-		VMID:              vmUID,
+		VMID:              vmID,
 		TailscaleHostname: tailscaleHostname,
 		CreatedAt:         time.Now(),
 	}
 
 	if err := tm.daemon.state.CreateTask(task); err != nil {
 		// Attempt cleanup on failure
-		if tm.flintock != nil && vmUID != "" {
-			tm.flintock.DeleteVM(ctx, vmUID)
+		if tm.fc != nil && vmID != "" {
+			tm.fc.DeleteVM(ctx, "stockyard", vmID)
 		}
 		tm.daemon.zfs.DestroyDataset(ctx, taskID)
 		return nil, fmt.Errorf("failed to record task: %w", err)
@@ -201,10 +219,10 @@ func (tm *TaskManager) StopTask(ctx context.Context, taskID string) error {
 		return err
 	}
 
-	// Stop VM if flintlock client is available and task has a VM
-	if tm.flintock != nil && task.VMID != "" {
-		if err := tm.flintock.DeleteVM(ctx, task.VMID); err != nil {
-			fmt.Printf("Warning: failed to delete VM %s: %v\n", task.VMID, err)
+	// Stop VM if firecracker client is available and task has a VM
+	if tm.fc != nil && task.VMID != "" {
+		if err := tm.fc.StopVM(ctx, "stockyard", task.VMID); err != nil {
+			fmt.Printf("Warning: failed to stop VM %s: %v\n", task.VMID, err)
 		}
 	}
 
@@ -219,9 +237,9 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 		return err
 	}
 
-	// Delete VM if flintlock client is available and task has a VM
-	if tm.flintock != nil && task.VMID != "" {
-		if err := tm.flintock.DeleteVM(ctx, task.VMID); err != nil {
+	// Delete VM if firecracker client is available and task has a VM
+	if tm.fc != nil && task.VMID != "" {
+		if err := tm.fc.DeleteVM(ctx, "stockyard", task.VMID); err != nil {
 			fmt.Printf("Warning: failed to delete VM %s: %v\n", task.VMID, err)
 		}
 	}
@@ -237,8 +255,8 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 
 // Close closes the task manager and releases resources.
 func (tm *TaskManager) Close() error {
-	if tm.flintock != nil {
-		return tm.flintock.Close()
+	if tm.fc != nil {
+		return tm.fc.Close()
 	}
 	return nil
 }
