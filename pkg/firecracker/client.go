@@ -111,12 +111,13 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 
 	// Create rootfs for this VM (each VM needs its own writable copy)
 	var vmRootfs string
+	var vmDatasetPath string // Track ZFS dataset for cleanup on failure
 	if c.zfs != nil {
 		// Use ZFS clone for copy-on-write rootfs
 		// Full snapshot path: tank/stockyard/images/rootfs@base
 		snapshotPath := fmt.Sprintf("%s/stockyard/images/rootfs@base", c.zfs.PoolName)
 		// Full clone target: tank/stockyard/vms/<vmID>
-		vmDatasetPath := fmt.Sprintf("%s/stockyard/vms/%s", c.zfs.PoolName, config.ID)
+		vmDatasetPath = fmt.Sprintf("%s/stockyard/vms/%s", c.zfs.PoolName, config.ID)
 
 		// Clone: zfs clone <snapshot> <target>
 		cmd := exec.CommandContext(ctx, "zfs", "clone", snapshotPath, vmDatasetPath)
@@ -129,6 +130,7 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 		cmd = exec.CommandContext(ctx, "zfs", "get", "-H", "-o", "value", "mountpoint", vmDatasetPath)
 		output, err := cmd.Output()
 		if err != nil {
+			destroyZFSDataset(vmDatasetPath)
 			c.network.DeleteTap(tapName)
 			return nil, fmt.Errorf("failed to get clone mountpoint: %w", err)
 		}
@@ -169,6 +171,7 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	if err := cmd.Start(); err != nil {
 		stdoutLog.Close()
 		stderrLog.Close()
+		destroyZFSDataset(vmDatasetPath)
 		c.network.DeleteTap(tapName)
 		return nil, fmt.Errorf("failed to start firecracker: %w", err)
 	}
@@ -185,6 +188,7 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	time.Sleep(time.Second)
 	if !processRunning(cmd.Process.Pid) {
 		stderrContent, _ := os.ReadFile(filepath.Join(vmDir, "stderr.log"))
+		destroyZFSDataset(vmDatasetPath)
 		c.network.DeleteTap(tapName)
 		return nil, fmt.Errorf("firecracker exited immediately: %s", string(stderrContent))
 	}
@@ -195,6 +199,7 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	defer cancel()
 	if err := apiClient.WaitForSocket(waitCtx); err != nil {
 		cmd.Process.Kill()
+		destroyZFSDataset(vmDatasetPath)
 		c.network.DeleteTap(tapName)
 		return nil, fmt.Errorf("wait for API socket: %w", err)
 	}
@@ -203,24 +208,28 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	bootArgs := "console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw"
 	if err := apiClient.SetBootSource(ctx, kernelPath, bootArgs); err != nil {
 		cmd.Process.Kill()
+		destroyZFSDataset(vmDatasetPath)
 		c.network.DeleteTap(tapName)
 		return nil, fmt.Errorf("set boot source: %w", err)
 	}
 
 	if err := apiClient.SetDrive(ctx, "rootfs", vmRootfs, true, false); err != nil {
 		cmd.Process.Kill()
+		destroyZFSDataset(vmDatasetPath)
 		c.network.DeleteTap(tapName)
 		return nil, fmt.Errorf("set drive: %w", err)
 	}
 
 	if err := apiClient.SetNetworkInterface(ctx, "eth0", macAddr, tapName); err != nil {
 		cmd.Process.Kill()
+		destroyZFSDataset(vmDatasetPath)
 		c.network.DeleteTap(tapName)
 		return nil, fmt.Errorf("set network interface: %w", err)
 	}
 
 	if err := apiClient.SetMachineConfig(ctx, config.VCPU, config.MemoryMB); err != nil {
 		cmd.Process.Kill()
+		destroyZFSDataset(vmDatasetPath)
 		c.network.DeleteTap(tapName)
 		return nil, fmt.Errorf("set machine config: %w", err)
 	}
@@ -228,6 +237,7 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	// Configure MMDS for cloud-init
 	if err := apiClient.SetMMDSConfig(ctx, []string{"eth0"}); err != nil {
 		cmd.Process.Kill()
+		destroyZFSDataset(vmDatasetPath)
 		c.network.DeleteTap(tapName)
 		return nil, fmt.Errorf("set MMDS config: %w", err)
 	}
@@ -241,6 +251,7 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	})
 	if err := apiClient.SetMMDSData(ctx, mmdsData); err != nil {
 		cmd.Process.Kill()
+		destroyZFSDataset(vmDatasetPath)
 		c.network.DeleteTap(tapName)
 		return nil, fmt.Errorf("set MMDS data: %w", err)
 	}
@@ -248,6 +259,7 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	// Start instance
 	if err := apiClient.StartInstance(ctx); err != nil {
 		cmd.Process.Kill()
+		destroyZFSDataset(vmDatasetPath)
 		c.network.DeleteTap(tapName)
 		return nil, fmt.Errorf("start instance: %w", err)
 	}
@@ -430,4 +442,12 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return os.WriteFile(dst, input, 0644)
+}
+
+// destroyZFSDataset destroys a ZFS dataset if the path is non-empty.
+// Errors are ignored since this is best-effort cleanup.
+func destroyZFSDataset(datasetPath string) {
+	if datasetPath != "" {
+		exec.Command("zfs", "destroy", "-r", datasetPath).Run()
+	}
 }
