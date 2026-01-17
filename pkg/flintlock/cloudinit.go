@@ -15,6 +15,7 @@ type CloudInitConfig struct {
 	Environment       map[string]string
 	SSHAuthorizedKeys []string
 	TailscaleAuthKey  string
+	TailscaleHostname string
 	WorkspacePath     string
 	PostCreateScript  string
 }
@@ -97,7 +98,12 @@ func (c *CloudInitConfig) Generate() (string, error) {
 
 	// Set up Tailscale if auth key provided
 	if c.TailscaleAuthKey != "" {
-		cmds = append(cmds, fmt.Sprintf("tailscale up --authkey %s --ssh", c.TailscaleAuthKey))
+		tsHostname := c.TailscaleHostname
+		if tsHostname == "" {
+			tsHostname = c.Hostname
+		}
+		cmds = append(cmds, fmt.Sprintf("tailscale up --authkey=%s --hostname=%s --accept-routes --ssh",
+			c.TailscaleAuthKey, tsHostname))
 	}
 
 	// Run post-create script if provided

@@ -139,3 +139,79 @@ func TestCloudInitConfig_Generate_NoTailscaleWithoutKey(t *testing.T) {
 		t.Error("should not contain tailscale auth command when no key provided")
 	}
 }
+
+func TestCloudInitConfig_Generate_TailscaleHostname(t *testing.T) {
+	t.Run("uses TailscaleHostname when provided", func(t *testing.T) {
+		cfg := &CloudInitConfig{
+			Hostname:          "vm-hostname",
+			TailscaleAuthKey:  "tskey-auth-xxx",
+			TailscaleHostname: "custom-ts-hostname",
+		}
+
+		userData, err := cfg.Generate()
+		if err != nil {
+			t.Fatalf("failed to generate cloud-init: %v", err)
+		}
+
+		decoded, err := base64.StdEncoding.DecodeString(userData)
+		if err != nil {
+			t.Fatalf("failed to decode base64: %v", err)
+		}
+
+		content := string(decoded)
+
+		if !strings.Contains(content, "--hostname=custom-ts-hostname") {
+			t.Error("should use TailscaleHostname in tailscale up command")
+		}
+		if strings.Contains(content, "--hostname=vm-hostname") {
+			t.Error("should not use VM Hostname when TailscaleHostname is set")
+		}
+	})
+
+	t.Run("falls back to Hostname when TailscaleHostname empty", func(t *testing.T) {
+		cfg := &CloudInitConfig{
+			Hostname:          "vm-hostname",
+			TailscaleAuthKey:  "tskey-auth-xxx",
+			TailscaleHostname: "",
+		}
+
+		userData, err := cfg.Generate()
+		if err != nil {
+			t.Fatalf("failed to generate cloud-init: %v", err)
+		}
+
+		decoded, err := base64.StdEncoding.DecodeString(userData)
+		if err != nil {
+			t.Fatalf("failed to decode base64: %v", err)
+		}
+
+		content := string(decoded)
+
+		if !strings.Contains(content, "--hostname=vm-hostname") {
+			t.Error("should fall back to Hostname when TailscaleHostname is empty")
+		}
+	})
+
+	t.Run("includes accept-routes flag", func(t *testing.T) {
+		cfg := &CloudInitConfig{
+			Hostname:         "vm-hostname",
+			TailscaleAuthKey: "tskey-auth-xxx",
+		}
+
+		userData, err := cfg.Generate()
+		if err != nil {
+			t.Fatalf("failed to generate cloud-init: %v", err)
+		}
+
+		decoded, err := base64.StdEncoding.DecodeString(userData)
+		if err != nil {
+			t.Fatalf("failed to decode base64: %v", err)
+		}
+
+		content := string(decoded)
+
+		if !strings.Contains(content, "--accept-routes") {
+			t.Error("should include --accept-routes flag")
+		}
+	})
+}

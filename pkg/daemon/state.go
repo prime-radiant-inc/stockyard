@@ -13,15 +13,16 @@ import (
 
 // Task represents a running or completed task in the system.
 type Task struct {
-	ID        string
-	Name      string
-	Repo      string
-	Ref       string
-	Command   string
-	Status    string
-	VMID      string
-	CreatedAt time.Time
-	StoppedAt *time.Time
+	ID                string
+	Name              string
+	Repo              string
+	Ref               string
+	Command           string
+	Status            string
+	VMID              string
+	TailscaleHostname string
+	CreatedAt         time.Time
+	StoppedAt         *time.Time
 }
 
 // State manages persistent state for the daemon using SQLite.
@@ -83,6 +84,7 @@ func (s *State) migrate() error {
 		command TEXT NOT NULL,
 		status TEXT NOT NULL,
 		vmid TEXT,
+		tailscale_hostname TEXT,
 		created_at DATETIME NOT NULL,
 		stopped_at DATETIME
 	);
@@ -99,7 +101,22 @@ func (s *State) migrate() error {
 	`
 
 	_, err := s.db.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Migration for existing databases: add tailscale_hostname column if it doesn't exist
+	// SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check PRAGMA table_info
+	migrations := []string{
+		`ALTER TABLE tasks ADD COLUMN tailscale_hostname TEXT`,
+	}
+
+	for _, migration := range migrations {
+		// Ignore errors from ALTER TABLE - column may already exist
+		s.db.Exec(migration)
+	}
+
+	return nil
 }
 
 // Close closes the database connection.
@@ -110,8 +127,8 @@ func (s *State) Close() error {
 // CreateTask creates a new task in the database.
 func (s *State) CreateTask(task *Task) error {
 	query := `
-	INSERT INTO tasks (id, name, repo, ref, command, status, vmid, created_at, stopped_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO tasks (id, name, repo, ref, command, status, vmid, tailscale_hostname, created_at, stopped_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := s.db.Exec(query,
 		task.ID,
@@ -121,6 +138,7 @@ func (s *State) CreateTask(task *Task) error {
 		task.Command,
 		task.Status,
 		task.VMID,
+		task.TailscaleHostname,
 		task.CreatedAt,
 		task.StoppedAt,
 	)
@@ -133,7 +151,7 @@ func (s *State) CreateTask(task *Task) error {
 // GetTask retrieves a task by ID.
 func (s *State) GetTask(id string) (*Task, error) {
 	query := `
-	SELECT id, name, repo, ref, command, status, vmid, created_at, stopped_at
+	SELECT id, name, repo, ref, command, status, vmid, tailscale_hostname, created_at, stopped_at
 	FROM tasks
 	WHERE id = ?
 	`
@@ -143,6 +161,7 @@ func (s *State) GetTask(id string) (*Task, error) {
 	var stoppedAt sql.NullTime
 	var vmid sql.NullString
 	var name sql.NullString
+	var tailscaleHostname sql.NullString
 
 	err := row.Scan(
 		&task.ID,
@@ -152,6 +171,7 @@ func (s *State) GetTask(id string) (*Task, error) {
 		&task.Command,
 		&task.Status,
 		&vmid,
+		&tailscaleHostname,
 		&task.CreatedAt,
 		&stoppedAt,
 	)
@@ -168,6 +188,9 @@ func (s *State) GetTask(id string) (*Task, error) {
 	if vmid.Valid {
 		task.VMID = vmid.String
 	}
+	if tailscaleHostname.Valid {
+		task.TailscaleHostname = tailscaleHostname.String
+	}
 	if stoppedAt.Valid {
 		task.StoppedAt = &stoppedAt.Time
 	}
@@ -183,13 +206,13 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 
 	if status == "" {
 		query = `
-		SELECT id, name, repo, ref, command, status, vmid, created_at, stopped_at
+		SELECT id, name, repo, ref, command, status, vmid, tailscale_hostname, created_at, stopped_at
 		FROM tasks
 		ORDER BY created_at DESC
 		`
 	} else {
 		query = `
-		SELECT id, name, repo, ref, command, status, vmid, created_at, stopped_at
+		SELECT id, name, repo, ref, command, status, vmid, tailscale_hostname, created_at, stopped_at
 		FROM tasks
 		WHERE status = ?
 		ORDER BY created_at DESC
@@ -209,6 +232,7 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 		var stoppedAt sql.NullTime
 		var vmid sql.NullString
 		var name sql.NullString
+		var tailscaleHostname sql.NullString
 
 		err := rows.Scan(
 			&task.ID,
@@ -218,6 +242,7 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 			&task.Command,
 			&task.Status,
 			&vmid,
+			&tailscaleHostname,
 			&task.CreatedAt,
 			&stoppedAt,
 		)
@@ -230,6 +255,9 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 		}
 		if vmid.Valid {
 			task.VMID = vmid.String
+		}
+		if tailscaleHostname.Valid {
+			task.TailscaleHostname = tailscaleHostname.String
 		}
 		if stoppedAt.Valid {
 			task.StoppedAt = &stoppedAt.Time

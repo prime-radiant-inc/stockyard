@@ -13,13 +13,14 @@ func TestState_CreateAndGetTask(t *testing.T) {
 	defer state.Close()
 
 	task := &Task{
-		ID:        "task-123",
-		Name:      "test-task",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
-		Command:   "claude-code",
-		Status:    "running",
-		CreatedAt: time.Now(),
+		ID:                "task-123",
+		Name:              "test-task",
+		Repo:              "github.com/test/repo",
+		Ref:               "main",
+		Command:           "claude-code",
+		Status:            "running",
+		TailscaleHostname: "stockyard-task-123",
+		CreatedAt:         time.Now(),
 	}
 
 	err = state.CreateTask(task)
@@ -49,6 +50,9 @@ func TestState_CreateAndGetTask(t *testing.T) {
 	}
 	if got.Status != "running" {
 		t.Errorf("Status mismatch: got %q, want %q", got.Status, "running")
+	}
+	if got.TailscaleHostname != task.TailscaleHostname {
+		t.Errorf("TailscaleHostname mismatch: got %q, want %q", got.TailscaleHostname, task.TailscaleHostname)
 	}
 }
 
