@@ -169,7 +169,7 @@
                 <div class="bg-white rounded-lg shadow border border-gray-200">
                     <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                         <h2 class="text-lg font-medium">Snapshots</h2>
-                        <button hx-post="/api/vm/{{.Task.ID}}/snapshot" hx-swap="none" class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        <button hx-post="/api/vm/{{.Task.ID}}/snapshots" hx-swap="none" class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                             </svg>
@@ -192,9 +192,9 @@
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">{{.Name}}</td>
                                     <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{{.Label}}</td>
-                                    <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{{.Created}}</td>
+                                    <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{{.CreatedAt}}</td>
                                     <td class="px-3 py-2 whitespace-nowrap text-right">
-                                        <button hx-post="/api/vm/{{$.Task.ID}}/snapshot/{{.Name}}/restore" hx-swap="none" hx-confirm="Are you sure you want to restore this snapshot?" class="text-sm text-blue-600 hover:text-blue-800">Restore</button>
+                                        <button hx-post="/api/vm/{{$.Task.ID}}/snapshots/{{.Name}}/restore" hx-swap="none" hx-confirm="Are you sure you want to restore this snapshot?" class="text-sm text-blue-600 hover:text-blue-800">Restore</button>
                                     </td>
                                 </tr>
                                 {{end}}
