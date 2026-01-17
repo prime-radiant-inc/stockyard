@@ -135,3 +135,41 @@ func TestAPIClient_SetDrive(t *testing.T) {
 		t.Errorf("wrong is_read_only: %v", receivedBody)
 	}
 }
+
+func TestAPIClient_SetNetworkInterface(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, _ := net.Listen("unix", socketPath)
+	defer listener.Close()
+
+	var receivedPath string
+	var receivedBody map[string]interface{}
+
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewAPIClient(socketPath)
+	err := client.SetNetworkInterface(context.Background(), "eth0", "02:FC:00:00:00:01", "tap-abc123")
+	if err != nil {
+		t.Fatalf("SetNetworkInterface failed: %v", err)
+	}
+
+	if receivedPath != "/network-interfaces/eth0" {
+		t.Errorf("expected path /network-interfaces/eth0, got %s", receivedPath)
+	}
+	if receivedBody["iface_id"] != "eth0" {
+		t.Errorf("wrong iface_id: %v", receivedBody)
+	}
+	if receivedBody["guest_mac"] != "02:FC:00:00:00:01" {
+		t.Errorf("wrong guest_mac: %v", receivedBody)
+	}
+	if receivedBody["host_dev_name"] != "tap-abc123" {
+		t.Errorf("wrong host_dev_name: %v", receivedBody)
+	}
+}

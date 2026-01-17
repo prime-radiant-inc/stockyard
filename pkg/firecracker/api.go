@@ -77,3 +77,12 @@ func (a *APIClient) SetDrive(ctx context.Context, driveID, path string, isRoot, 
 		"is_read_only":   isReadOnly,
 	})
 }
+
+// SetNetworkInterface configures a network interface.
+func (a *APIClient) SetNetworkInterface(ctx context.Context, ifaceID, guestMAC, hostDevName string) error {
+	return a.put(ctx, "/network-interfaces/"+ifaceID, map[string]interface{}{
+		"iface_id":      ifaceID,
+		"guest_mac":     guestMAC,
+		"host_dev_name": hostDevName,
+	})
+}
