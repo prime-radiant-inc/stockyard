@@ -16,6 +16,11 @@ import (
 const (
 	StatusSuccess = 0
 	StatusFailure = 1
+
+	// MaxLabelLength is the maximum length of a snapshot label
+	MaxLabelLength = 1024
+	// MaxMessageLength is the maximum length of a response message
+	MaxMessageLength = 4096
 )
 
 // EncodeSnapshotRequest encodes a snapshot request
@@ -37,7 +42,7 @@ func DecodeSnapshotRequest(r io.Reader) (string, error) {
 		return "", fmt.Errorf("read label length: %w", err)
 	}
 
-	if labelLen > 1024 {
+	if labelLen > MaxLabelLength {
 		return "", fmt.Errorf("label too long: %d", labelLen)
 	}
 
@@ -65,10 +70,8 @@ func EncodeSnapshotResponse(w io.Writer, success bool, message string) error {
 		return fmt.Errorf("write message length: %w", err)
 	}
 
-	if len(msgBytes) > 0 {
-		if _, err := w.Write(msgBytes); err != nil {
-			return fmt.Errorf("write message: %w", err)
-		}
+	if _, err := w.Write(msgBytes); err != nil {
+		return fmt.Errorf("write message: %w", err)
 	}
 
 	return nil
@@ -87,7 +90,7 @@ func DecodeSnapshotResponse(r io.Reader) (success bool, message string, err erro
 	}
 
 	if msgLen > 0 {
-		if msgLen > 4096 {
+		if msgLen > MaxMessageLength {
 			return false, "", fmt.Errorf("message too long: %d", msgLen)
 		}
 

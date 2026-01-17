@@ -132,3 +132,39 @@ func TestProtocol_EmptyMessage(t *testing.T) {
 		t.Errorf("got %q, want empty string", message)
 	}
 }
+
+func TestProtocol_LabelExactlyAtLimit(t *testing.T) {
+	label := string(make([]byte, MaxLabelLength)) // Exactly 1024 bytes
+
+	var buf bytes.Buffer
+	if err := EncodeSnapshotRequest(&buf, label); err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	decoded, err := DecodeSnapshotRequest(&buf)
+	if err != nil {
+		t.Fatalf("decode should succeed for label exactly at limit: %v", err)
+	}
+
+	if decoded != label {
+		t.Error("decoded label doesn't match")
+	}
+}
+
+func TestProtocol_MessageExactlyAtLimit(t *testing.T) {
+	msg := string(make([]byte, MaxMessageLength)) // Exactly 4096 bytes
+
+	var buf bytes.Buffer
+	if err := EncodeSnapshotResponse(&buf, true, msg); err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	success, decoded, err := DecodeSnapshotResponse(&buf)
+	if err != nil {
+		t.Fatalf("decode should succeed for message exactly at limit: %v", err)
+	}
+
+	if !success || decoded != msg {
+		t.Error("decoded response doesn't match")
+	}
+}
