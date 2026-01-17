@@ -21,6 +21,7 @@ type Daemon struct {
 	secrets  secrets.Provider
 	zfs      *zfs.Manager
 	state    *State
+	tasks    *TaskManager
 
 	listener   net.Listener
 	grpcServer *grpc.Server
@@ -133,4 +134,14 @@ func (d *Daemon) Secrets() secrets.Provider {
 // Config returns the daemon's configuration.
 func (d *Daemon) Config() *config.Config {
 	return d.cfg
+}
+
+// Tasks returns the daemon's task manager.
+func (d *Daemon) Tasks() *TaskManager {
+	return d.tasks
+}
+
+// SetTaskManager sets the daemon's task manager.
+func (d *Daemon) SetTaskManager(tm *TaskManager) {
+	d.tasks = tm
 }

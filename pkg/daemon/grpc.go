@@ -27,8 +27,33 @@ func (s *grpcServer) Register(srv *grpc.Server) {
 }
 
 func (s *grpcServer) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) (*pb.CreateTaskResponse, error) {
-	// TODO: Implement with Flintlock
-	return nil, status.Error(codes.Unimplemented, "not implemented")
+	if s.daemon.tasks == nil {
+		return nil, status.Error(codes.Unavailable, "task manager not initialized")
+	}
+
+	task, err := s.daemon.tasks.CreateTask(ctx, &CreateTaskRequest{
+		Repo:        req.Repo,
+		Ref:         req.Ref,
+		Name:        req.Name,
+		Command:     req.Command,
+		Env:         req.Env,
+		CPUs:        req.Cpus,
+		MemoryMB:    parseMemory(req.Memory),
+		NoTailscale: req.NoTailscale,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create task: %v", err)
+	}
+
+	hostname := ""
+	if !req.NoTailscale {
+		hostname = fmt.Sprintf("stockyard-%s", task.ID)
+	}
+
+	return &pb.CreateTaskResponse{
+		TaskId:            task.ID,
+		TailscaleHostname: hostname,
+	}, nil
 }
 
 func (s *grpcServer) GetTask(ctx context.Context, req *pb.GetTaskRequest) (*pb.GetTaskResponse, error) {
