@@ -37,10 +37,35 @@ ROOTFS_SIZE=20G sudo ./convert-to-rootfs.sh
 
 ## What's Included
 
-- **Languages**: Python 3, Node.js 20, Go 1.22, Rust
-- **Tools**: git, gh (GitHub CLI), Claude Code
-- **Networking**: Tailscale (userspace mode for Firecracker)
-- **User**: `mooby` with passwordless sudo (configurable via `VM_USER`)
+### Languages & Runtimes
+- **Python 3** with uv (modern package manager)
+- **Node.js 20** (LTS)
+- **Go 1.22**
+- **Rust** (via rustup)
+- **C/C++** (clang, cmake, build-essential)
+
+### AI Coding Assistants
+- **Claude Code** (Anthropic)
+- **Codex** (OpenAI)
+
+### Cloud CLIs
+- **AWS CLI v2**
+- **Azure CLI**
+- **Google Cloud CLI**
+- **GitHub CLI** (gh)
+
+### Linters & Formatters
+- **Go**: golangci-lint
+- **Python**: ruff
+- **JavaScript/TypeScript**: eslint, prettier, typescript
+- **C/C++**: clang-format, clang-tidy
+
+### System Tools
+- git, tmux, vim, jq, yq
+- Tailscale (userspace mode for Firecracker)
+
+### User
+- `mooby` with passwordless sudo (configurable via `VM_USER`)
 
 ## VM Configuration
 

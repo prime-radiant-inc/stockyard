@@ -38,6 +38,11 @@ RUN apt-get update && apt-get install -y \
     # Build essentials
     build-essential \
     pkg-config \
+    cmake \
+    # C/C++ tools
+    clang \
+    clang-format \
+    clang-tidy \
     # Networking tools
     iproute2 \
     iptables \
@@ -46,7 +51,12 @@ RUN apt-get update && apt-get install -y \
     sudo \
     vim \
     less \
+    tmux \
     && rm -rf /var/lib/apt/lists/*
+
+# yq (YAML processor) - install from GitHub releases
+RUN curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq \
+    && chmod +x /usr/local/bin/yq
 
 # ============================================================================
 # Section 2: Programming Languages
@@ -58,6 +68,9 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-venv \
     && rm -rf /var/lib/apt/lists/*
+
+# uv - modern Python package manager (much faster than pip)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Node.js 20
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
@@ -87,6 +100,22 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
+# AWS CLI v2
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
+    && unzip awscliv2.zip \
+    && ./aws/install \
+    && rm -rf aws awscliv2.zip
+
+# Azure CLI
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+
+# Google Cloud CLI
+RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee /etc/apt/sources.list.d/google-cloud-sdk.list \
+    && apt-get update \
+    && apt-get install -y google-cloud-cli \
+    && rm -rf /var/lib/apt/lists/*
+
 # Tailscale (for secure networking)
 RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg > /dev/null \
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list \
@@ -104,6 +133,23 @@ RUN echo 'FLAGS="--tun=userspace-networking"' >> /etc/default/tailscaled
 
 # Claude Code (Anthropic's CLI for Claude)
 RUN npm install -g @anthropic-ai/claude-code
+
+# OpenAI Codex CLI
+RUN npm install -g @openai/codex
+
+# ============================================================================
+# Section 4b: Linters and Formatters
+# ============================================================================
+
+# Go linter (golangci-lint)
+RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin
+
+# Python linter/formatter (ruff - extremely fast)
+RUN /usr/local/bin/uv tool install ruff \
+    && ln -s /root/.local/bin/ruff /usr/local/bin/ruff
+
+# JavaScript/TypeScript linters and formatters
+RUN npm install -g eslint prettier typescript
 
 # ============================================================================
 # Section 5: User Setup
