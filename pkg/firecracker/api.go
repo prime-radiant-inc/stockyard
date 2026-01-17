@@ -122,3 +122,22 @@ func (a *APIClient) SendCtrlAltDel(ctx context.Context) error {
 		"action_type": "SendCtrlAltDel",
 	})
 }
+
+// WaitForSocket waits for the API socket to become available.
+func (a *APIClient) WaitForSocket(ctx context.Context) error {
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for socket %s: %w", a.socketPath, ctx.Err())
+		case <-ticker.C:
+			conn, err := net.Dial("unix", a.socketPath)
+			if err == nil {
+				conn.Close()
+				return nil
+			}
+		}
+	}
+}

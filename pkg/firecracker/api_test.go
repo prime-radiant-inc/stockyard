@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewAPIClient(t *testing.T) {
@@ -344,5 +345,39 @@ func TestAPIClient_SendCtrlAltDel(t *testing.T) {
 
 	if receivedBody["action_type"] != "SendCtrlAltDel" {
 		t.Errorf("wrong action_type: %v", receivedBody)
+	}
+}
+
+func TestAPIClient_WaitForSocket(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "delayed.sock")
+
+	// Start listener after delay
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		listener, _ := net.Listen("unix", socketPath)
+		defer listener.Close()
+		time.Sleep(2 * time.Second) // Keep alive
+	}()
+
+	client := NewAPIClient(socketPath)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := client.WaitForSocket(ctx)
+	if err != nil {
+		t.Fatalf("WaitForSocket failed: %v", err)
+	}
+}
+
+func TestAPIClient_WaitForSocket_Timeout(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "never.sock")
+	client := NewAPIClient(socketPath)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	err := client.WaitForSocket(ctx)
+	if err == nil {
+		t.Fatal("expected timeout error")
 	}
 }
