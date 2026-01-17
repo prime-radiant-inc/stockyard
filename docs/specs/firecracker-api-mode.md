@@ -18,6 +18,31 @@ The refactor was completed with the following changes:
 
 See implementation plan: `docs/plans/2026-01-17-firecracker-api-mode.md`
 
+### Integration Test Results
+
+The API mode refactor works correctly:
+- VM creation via Firecracker API socket ✓
+- MMDS config sent to `/mmds/config` ✓
+- MMDS data sent to `/mmds` ✓
+- VM boots successfully ✓
+- Graceful shutdown via `SendCtrlAltDel` ✓
+
+### Remaining Work (VM Image)
+
+The VM image needs to be updated to configure cloud-init for IMDS datasource.
+Currently cloud-init only uses NoCloud. Add to `vm-image/Dockerfile`:
+
+```dockerfile
+# Configure cloud-init to use IMDS for Firecracker MMDS
+RUN mkdir -p /etc/cloud/cloud.cfg.d && \
+    echo 'datasource_list: [ IMDS, NoCloud, None ]' > /etc/cloud/cloud.cfg.d/99-datasource.cfg && \
+    echo 'datasource:' >> /etc/cloud/cloud.cfg.d/99-datasource.cfg && \
+    echo '  IMDS:' >> /etc/cloud/cloud.cfg.d/99-datasource.cfg && \
+    echo '    metadata_urls: ["http://169.254.169.254"]' >> /etc/cloud/cloud.cfg.d/99-datasource.cfg
+```
+
+This is tracked separately from the API mode refactor.
+
 ## Original State
 
 - `pkg/firecracker/client.go` started firecracker with `--no-api --config-file`
