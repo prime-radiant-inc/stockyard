@@ -341,9 +341,23 @@ func (c *Client) StopVM(ctx context.Context, namespace, id string) error {
 		return nil // Already stopped
 	}
 
-	// Send SIGTERM
-	syscall.Kill(vm.PID, syscall.SIGTERM)
-	time.Sleep(time.Second)
+	vmDir := filepath.Join(c.config.StateDir, namespace, id)
+
+	// Try graceful shutdown via API if socket exists
+	apiSocketPath := filepath.Join(vmDir, "api.sock")
+	if _, err := os.Stat(apiSocketPath); err == nil {
+		apiClient := NewAPIClient(apiSocketPath)
+		if err := apiClient.SendCtrlAltDel(ctx); err == nil {
+			// Wait briefly for graceful shutdown
+			time.Sleep(2 * time.Second)
+		}
+	}
+
+	// Fall back to SIGTERM/SIGKILL
+	if processRunning(vm.PID) {
+		syscall.Kill(vm.PID, syscall.SIGTERM)
+		time.Sleep(time.Second)
+	}
 
 	// Force kill if still running
 	if processRunning(vm.PID) {
@@ -356,7 +370,7 @@ func (c *Client) StopVM(ctx context.Context, namespace, id string) error {
 	}
 
 	// Remove PID file
-	os.Remove(filepath.Join(vm.StateDir, "firecracker.pid"))
+	os.Remove(filepath.Join(vmDir, "firecracker.pid"))
 
 	return nil
 }
