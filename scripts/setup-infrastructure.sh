@@ -171,7 +171,7 @@ fi
 log "Setting up networking..."
 
 # Install CNI plugins if not present
-CNI_VERSION="v1.6.1"
+CNI_VERSION="v1.9.0"
 CNI_DIR="/opt/cni/bin"
 
 if [ ! -d "$CNI_DIR" ] || [ -z "$(ls -A $CNI_DIR 2>/dev/null)" ]; then
