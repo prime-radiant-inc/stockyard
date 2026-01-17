@@ -1,0 +1,100 @@
+#cloud-config
+
+# Configure users
+users:
+  - name: vscode
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    groups: [sudo, docker]
+    ssh_authorized_keys:
+{{- range .SSHKeys }}
+      - {{ . }}
+{{- end }}
+
+# Write configuration files
+write_files:
+  # Stockyard VM configuration
+  - path: /etc/stockyard/vm-config.yaml
+    owner: root:root
+    permissions: '0644'
+    content: |
+      session_id: {{ .SessionID }}
+      instance_id: {{ .InstanceID }}
+      hostname: {{ .Hostname }}
+      vsock_port: {{ .VSockPort }}
+      api_endpoint: {{ .APIEndpoint }}
+
+  # Environment variables for Claude Code
+  - path: /home/vscode/.config/environment.d/stockyard.conf
+    owner: vscode:vscode
+    permissions: '0644'
+    content: |
+      STOCKYARD_SESSION_ID={{ .SessionID }}
+      STOCKYARD_INSTANCE_ID={{ .InstanceID }}
+      STOCKYARD_VSOCK_PORT={{ .VSockPort }}
+
+  # Git configuration
+  - path: /home/vscode/.gitconfig
+    owner: vscode:vscode
+    permissions: '0644'
+    content: |
+      [user]
+          name = {{ .GitName }}
+          email = {{ .GitEmail }}
+      [init]
+          defaultBranch = main
+      [core]
+          editor = code --wait
+      [safe]
+          directory = *
+
+{{- if .TailscaleAuthKey }}
+  # Tailscale auth key
+  - path: /etc/stockyard/tailscale-auth
+    owner: root:root
+    permissions: '0600'
+    content: |
+      {{ .TailscaleAuthKey }}
+{{- end }}
+
+{{- if .GithubToken }}
+  # GitHub CLI authentication
+  - path: /home/vscode/.config/gh/hosts.yml
+    owner: vscode:vscode
+    permissions: '0600'
+    content: |
+      github.com:
+          oauth_token: {{ .GithubToken }}
+          user: {{ .GithubUser }}
+          git_protocol: https
+{{- end }}
+
+# Run commands on first boot
+runcmd:
+  # Ensure stockyard config directory exists
+  - mkdir -p /etc/stockyard
+
+  # Set up Claude Code hooks for vscode user
+  - /usr/local/bin/setup-claude-hooks.sh
+
+  # Start stockyard init service
+  - systemctl daemon-reload
+  - systemctl enable stockyard-init.service
+  - systemctl start stockyard-init.service
+
+{{- if .TailscaleAuthKey }}
+  # Set up Tailscale
+  - tailscale up --authkey=$(cat /etc/stockyard/tailscale-auth) --hostname={{ .Hostname }}
+{{- end }}
+
+{{- if .CloneRepo }}
+  # Clone the repository
+  - su - vscode -c "git clone {{ .CloneRepo }} /home/vscode/workspace"
+  - chown -R vscode:vscode /home/vscode/workspace
+{{- end }}
+
+  # Signal that VM is ready
+  - /usr/local/bin/stockyard-snapshot --event=vm-ready
+
+# Final message
+final_message: "Stockyard VM is ready after $UPTIME seconds"
