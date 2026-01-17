@@ -3,7 +3,6 @@ package daemon
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -127,9 +126,9 @@ func (d *Daemon) Start(ctx context.Context) error {
 			}),
 		}
 		go func() {
-			log.Printf("Starting HTTP server on %s", d.cfg.HTTP.Addr)
+			fmt.Printf("Starting HTTP server on %s\n", d.cfg.HTTP.Addr)
 			if err := d.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Printf("HTTP server error: %v", err)
+				fmt.Printf("HTTP server error: %v\n", err)
 			}
 		}()
 	}
