@@ -208,3 +208,39 @@ func TestAPIClient_SetMachineConfig(t *testing.T) {
 		t.Errorf("wrong mem_size_mib: %v", receivedBody)
 	}
 }
+
+func TestAPIClient_SetMMDSConfig(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, _ := net.Listen("unix", socketPath)
+	defer listener.Close()
+
+	var receivedPath string
+	var receivedBody map[string]interface{}
+
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewAPIClient(socketPath)
+	err := client.SetMMDSConfig(context.Background(), []string{"eth0"})
+	if err != nil {
+		t.Fatalf("SetMMDSConfig failed: %v", err)
+	}
+
+	if receivedPath != "/mmds/config" {
+		t.Errorf("expected path /mmds/config, got %s", receivedPath)
+	}
+	ifaces := receivedBody["network_interfaces"].([]interface{})
+	if len(ifaces) != 1 || ifaces[0] != "eth0" {
+		t.Errorf("wrong network_interfaces: %v", receivedBody)
+	}
+	if receivedBody["version"] != "V2" {
+		t.Errorf("wrong version: %v", receivedBody)
+	}
+}

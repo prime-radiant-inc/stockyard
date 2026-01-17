@@ -95,3 +95,11 @@ func (a *APIClient) SetMachineConfig(ctx context.Context, vcpus, memMB int32) er
 		"smt":          false,
 	})
 }
+
+// SetMMDSConfig enables MMDS on the specified network interfaces.
+func (a *APIClient) SetMMDSConfig(ctx context.Context, networkInterfaces []string) error {
+	return a.put(ctx, "/mmds/config", map[string]interface{}{
+		"network_interfaces": networkInterfaces,
+		"version":            "V2",
+	})
+}
