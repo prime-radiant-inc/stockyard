@@ -45,9 +45,10 @@ func (m *MockDaemon) ListTasks(ctx context.Context) ([]Task, error) {
 }
 
 func (m *MockDaemon) GetTask(ctx context.Context, id string) (*Task, error) {
-	for _, t := range m.tasks {
-		if t.ID == id {
-			return &t, nil
+	for i := range m.tasks {
+		if m.tasks[i].ID == id {
+			task := m.tasks[i]
+			return &task, nil
 		}
 	}
 	return nil, nil
