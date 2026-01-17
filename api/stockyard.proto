@@ -27,6 +27,7 @@ message CreateTaskRequest {
     int32 cpus = 6;
     string memory = 7;
     bool no_tailscale = 8;
+    string tailscale_auth_key = 9;  // Optional: override 1Password lookup
 }
 
 message CreateTaskResponse {

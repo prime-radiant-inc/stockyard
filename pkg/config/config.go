@@ -8,10 +8,11 @@ import (
 )
 
 type Config struct {
-	InstanceID string        `json:"instance_id"`
-	Secrets    SecretsConfig `json:"secrets"`
-	Daemon     DaemonConfig  `json:"daemon"`
-	ZFS        ZFSConfig     `json:"zfs"`
+	InstanceID  string            `json:"instance_id"`
+	Secrets     SecretsConfig     `json:"secrets"`
+	Daemon      DaemonConfig      `json:"daemon"`
+	ZFS         ZFSConfig         `json:"zfs"`
+	Firecracker FirecrackerConfig `json:"firecracker"`
 }
 
 type SecretsConfig struct {
@@ -29,6 +30,12 @@ type ZFSConfig struct {
 	BasePath string `json:"base_path"`
 }
 
+type FirecrackerConfig struct {
+	KernelPath string `json:"kernel_path"`
+	RootfsPath string `json:"rootfs_path"`
+	BridgeName string `json:"bridge_name"`
+}
+
 func DefaultConfig() *Config {
 	return &Config{
 		Secrets: SecretsConfig{
@@ -41,6 +48,11 @@ func DefaultConfig() *Config {
 		ZFS: ZFSConfig{
 			Pool:     "tank",
 			BasePath: "stockyard/workspaces",
+		},
+		Firecracker: FirecrackerConfig{
+			KernelPath: "/tmp/vmlinux.bin",
+			RootfsPath: "/var/lib/stockyard/rootfs.ext4",
+			BridgeName: "flbr0",
 		},
 	}
 }

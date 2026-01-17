@@ -60,8 +60,8 @@ func TestNewTaskManager(t *testing.T) {
 		state:   state,
 	}
 
-	// Test with empty endpoint (no flintlock client)
-	tm := NewTaskManager(d, "")
+	// Test with nil config (no firecracker client)
+	tm := NewTaskManager(d, nil)
 	if tm == nil {
 		t.Fatal("NewTaskManager returned nil")
 	}
@@ -93,7 +93,7 @@ func TestTaskManager_CreateTaskRequest_Validation(t *testing.T) {
 		state:   state,
 	}
 
-	tm := NewTaskManager(d, "")
+	tm := NewTaskManager(d, nil)
 
 	// Test missing repo
 	_, err = tm.CreateTask(context.Background(), &CreateTaskRequest{

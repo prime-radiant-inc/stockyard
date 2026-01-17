@@ -39,12 +39,25 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 		return nil, fmt.Errorf("failed to initialize state: %w", err)
 	}
 
-	return &Daemon{
+	d := &Daemon{
 		cfg:     cfg,
 		secrets: secretsProvider,
 		zfs:     zfsMgr,
 		state:   state,
-	}, nil
+	}
+
+	// Initialize task manager with firecracker configuration
+	var fcConfig *FirecrackerConfig
+	if cfg.Firecracker.KernelPath != "" && cfg.Firecracker.RootfsPath != "" {
+		fcConfig = &FirecrackerConfig{
+			KernelPath: cfg.Firecracker.KernelPath,
+			RootfsPath: cfg.Firecracker.RootfsPath,
+			BridgeName: cfg.Firecracker.BridgeName,
+		}
+	}
+	d.tasks = NewTaskManager(d, fcConfig)
+
+	return d, nil
 }
 
 // Start begins the daemon, listening on the configured Unix socket.
@@ -72,6 +85,11 @@ func (d *Daemon) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to listen on socket: %w", err)
 	}
 	d.listener = listener
+
+	// Make socket accessible to non-root users (requires write permission to connect)
+	if err := os.Chmod(d.cfg.Daemon.SocketPath, 0666); err != nil {
+		return fmt.Errorf("failed to set socket permissions: %w", err)
+	}
 
 	fmt.Printf("Daemon listening on %s\n", d.cfg.Daemon.SocketPath)
 

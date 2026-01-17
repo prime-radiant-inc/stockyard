@@ -14,13 +14,14 @@ import (
 )
 
 var (
-	runRepo        string
-	runRef         string
-	runName        string
-	runCPUs        int32
-	runMemory      string
-	runNoTailscale bool
-	runEnv         []string
+	runRepo             string
+	runRef              string
+	runName             string
+	runCPUs             int32
+	runMemory           string
+	runNoTailscale      bool
+	runTailscaleAuthKey string
+	runEnv              []string
 )
 
 var runCmd = &cobra.Command{
@@ -75,14 +76,15 @@ Examples:
 		}
 
 		req := &pb.CreateTaskRequest{
-			Repo:        runRepo,
-			Ref:         ref,
-			Name:        runName,
-			Command:     command,
-			Env:         env,
-			Cpus:        runCPUs,
-			Memory:      runMemory,
-			NoTailscale: runNoTailscale,
+			Repo:             runRepo,
+			Ref:              ref,
+			Name:             runName,
+			Command:          command,
+			Env:              env,
+			Cpus:             runCPUs,
+			Memory:           runMemory,
+			NoTailscale:      runNoTailscale,
+			TailscaleAuthKey: runTailscaleAuthKey,
 		}
 
 		fmt.Printf("Creating task for %s@%s...\n", runRepo, ref)
@@ -109,6 +111,7 @@ func init() {
 	runCmd.Flags().Int32Var(&runCPUs, "cpus", 2, "Number of CPU cores")
 	runCmd.Flags().StringVar(&runMemory, "memory", "4G", "Memory allocation")
 	runCmd.Flags().BoolVar(&runNoTailscale, "no-tailscale", false, "Skip Tailscale")
+	runCmd.Flags().StringVar(&runTailscaleAuthKey, "tailscale-auth-key", "", "Tailscale auth key (overrides 1Password)")
 	runCmd.Flags().StringArrayVar(&runEnv, "env", nil, "Environment variables (KEY=value)")
 	rootCmd.AddCommand(runCmd)
 }
