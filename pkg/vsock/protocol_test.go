@@ -57,3 +57,78 @@ func TestProtocol_EncodeDecodeResponse(t *testing.T) {
 		})
 	}
 }
+
+func TestProtocol_LabelTooLong(t *testing.T) {
+	// Create a label > 1024 bytes
+	longLabel := make([]byte, 1025)
+	for i := range longLabel {
+		longLabel[i] = 'x'
+	}
+
+	// Encode it (should succeed)
+	var buf bytes.Buffer
+	if err := EncodeSnapshotRequest(&buf, string(longLabel)); err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	// Decode should fail
+	_, err := DecodeSnapshotRequest(&buf)
+	if err == nil {
+		t.Error("expected error for label > 1024 bytes, got nil")
+	}
+}
+
+func TestProtocol_MessageTooLong(t *testing.T) {
+	// Create a message > 4096 bytes
+	longMsg := make([]byte, 4097)
+	for i := range longMsg {
+		longMsg[i] = 'y'
+	}
+
+	// Encode it
+	var buf bytes.Buffer
+	if err := EncodeSnapshotResponse(&buf, true, string(longMsg)); err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	// Decode should fail
+	_, _, err := DecodeSnapshotResponse(&buf)
+	if err == nil {
+		t.Error("expected error for message > 4096 bytes, got nil")
+	}
+}
+
+func TestProtocol_EmptyLabel(t *testing.T) {
+	var buf bytes.Buffer
+	if err := EncodeSnapshotRequest(&buf, ""); err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	decoded, err := DecodeSnapshotRequest(&buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if decoded != "" {
+		t.Errorf("got %q, want empty string", decoded)
+	}
+}
+
+func TestProtocol_EmptyMessage(t *testing.T) {
+	var buf bytes.Buffer
+	if err := EncodeSnapshotResponse(&buf, true, ""); err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	success, message, err := DecodeSnapshotResponse(&buf)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if !success {
+		t.Error("expected success=true")
+	}
+	if message != "" {
+		t.Errorf("got %q, want empty string", message)
+	}
+}
