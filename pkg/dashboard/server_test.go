@@ -150,3 +150,35 @@ func TestServer_VMDetailPage_NotFound(t *testing.T) {
 		t.Errorf("expected status 404, got %d", w.Code)
 	}
 }
+
+func TestServer_StopVM(t *testing.T) {
+	mock := &MockDaemon{
+		tasks: []Task{{ID: "task-1", Status: "running"}},
+	}
+	srv := NewServer(mock)
+
+	req := httptest.NewRequest("POST", "/api/vm/task-1/stop", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+}
+
+func TestServer_DestroyVM(t *testing.T) {
+	mock := &MockDaemon{
+		tasks: []Task{{ID: "task-1", Status: "running"}},
+	}
+	srv := NewServer(mock)
+
+	req := httptest.NewRequest("DELETE", "/api/vm/task-1", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+}

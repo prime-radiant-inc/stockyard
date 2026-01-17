@@ -31,6 +31,7 @@ func NewServer(daemon DaemonAPI) *Server {
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/health", s.handleHealth)
+	s.mux.HandleFunc("/api/vm/", s.handleAPIVM)
 	s.mux.HandleFunc("/vm/", s.handleVMDetail)
 	s.mux.HandleFunc("/", s.handleFleet)
 }
@@ -143,4 +144,63 @@ func (s *Server) handleVMDetail(w http.ResponseWriter, r *http.Request) {
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
+}
+
+func (s *Server) handleAPIVM(w http.ResponseWriter, r *http.Request) {
+	if s.daemon == nil {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Parse path: /api/vm/{id} or /api/vm/{id}/action
+	path := strings.TrimPrefix(r.URL.Path, "/api/vm/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	id := parts[0]
+	action := ""
+	if len(parts) > 1 {
+		action = parts[1]
+	}
+
+	ctx := r.Context()
+
+	switch {
+	case r.Method == "POST" && action == "stop":
+		if err := s.daemon.StopTask(ctx, id); err != nil {
+			http.Error(w, "Failed to stop task", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("HX-Redirect", "/")
+		w.WriteHeader(http.StatusOK)
+
+	case r.Method == "DELETE" && action == "":
+		if err := s.daemon.DestroyTask(ctx, id); err != nil {
+			http.Error(w, "Failed to destroy task", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("HX-Redirect", "/")
+		w.WriteHeader(http.StatusOK)
+
+	case r.Method == "POST" && action == "snapshots":
+		label := r.FormValue("label")
+		if _, err := s.daemon.CreateSnapshot(ctx, id, label); err != nil {
+			http.Error(w, "Failed to create snapshot", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("HX-Refresh", "true")
+		w.WriteHeader(http.StatusOK)
+
+	case r.Method == "POST" && len(parts) >= 3 && parts[1] == "snapshots" && parts[len(parts)-1] == "restore":
+		// /api/vm/{id}/snapshots/{name}/restore
+		// TODO: Implement restore
+		w.Header().Set("HX-Refresh", "true")
+		w.WriteHeader(http.StatusOK)
+
+	default:
+		http.NotFound(w, r)
+	}
 }
