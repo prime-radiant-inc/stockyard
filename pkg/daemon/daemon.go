@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	"google.golang.org/grpc"
+
 	"github.com/obra/stockyard/pkg/config"
 	"github.com/obra/stockyard/pkg/secrets"
 	"github.com/obra/stockyard/pkg/zfs"
@@ -20,9 +22,10 @@ type Daemon struct {
 	zfs      *zfs.Manager
 	state    *State
 
-	listener net.Listener
-	mu       sync.Mutex
-	running  bool
+	listener   net.Listener
+	grpcServer *grpc.Server
+	mu         sync.Mutex
+	running    bool
 }
 
 // New creates a new Daemon instance with the given configuration and secrets provider.
@@ -69,7 +72,18 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 	fmt.Printf("Daemon listening on %s\n", d.cfg.Daemon.SocketPath)
 
-	// TODO: Start gRPC server here
+	grpcSrv := grpc.NewServer()
+	grpcHandler := newGRPCServer(d)
+	grpcHandler.Register(grpcSrv)
+	d.grpcServer = grpcSrv
+
+	go func() {
+		if err := grpcSrv.Serve(listener); err != nil {
+			fmt.Printf("gRPC server error: %v\n", err)
+		}
+	}()
+
+	fmt.Printf("gRPC server started on %s\n", d.cfg.Daemon.SocketPath)
 
 	<-ctx.Done()
 	return d.Stop()
@@ -85,6 +99,10 @@ func (d *Daemon) Stop() error {
 	}
 
 	d.running = false
+
+	if d.grpcServer != nil {
+		d.grpcServer.GracefulStop()
+	}
 
 	if d.listener != nil {
 		d.listener.Close()
