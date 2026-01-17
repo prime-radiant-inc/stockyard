@@ -1,12 +1,22 @@
 # Stockyard VM Image
 # Ubuntu 24.04 with development tools for Claude Code sessions
+#
+# This image is designed to be converted to a Firecracker rootfs.
+# Build with: ./build.sh
+# Convert with: ./convert-to-rootfs.sh
 
 FROM ubuntu:24.04
+
+LABEL maintainer="Stockyard Project"
+LABEL description="Development VM image for Claude Code sessions with Firecracker"
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install base system packages
+# ============================================================================
+# Section 1: Base System
+# ============================================================================
+
 RUN apt-get update && apt-get install -y \
     # Essential tools
     curl \
@@ -25,33 +35,48 @@ RUN apt-get update && apt-get install -y \
     # Build essentials
     build-essential \
     pkg-config \
-    # Python 3.11+
-    python3 \
-    python3-pip \
-    python3-venv \
     # Networking tools
     iproute2 \
     iptables \
     dnsutils \
+    # System utilities
+    sudo \
+    vim \
+    less \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 20
+# ============================================================================
+# Section 2: Programming Languages
+# ============================================================================
+
+# Python 3.11+
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 20
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Go 1.22
+# Go 1.22
 RUN curl -fsSL https://go.dev/dl/go1.22.10.linux-amd64.tar.gz | tar -C /usr/local -xzf - \
     && ln -s /usr/local/go/bin/go /usr/local/bin/go \
     && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
-# Install Rust
+# Rust (system-wide for root, user install happens later)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
     && ln -s /root/.cargo/bin/rustc /usr/local/bin/rustc \
     && ln -s /root/.cargo/bin/cargo /usr/local/bin/cargo \
     && ln -s /root/.cargo/bin/rustup /usr/local/bin/rustup
 
-# Install GitHub CLI
+# ============================================================================
+# Section 3: Developer Tools
+# ============================================================================
+
+# GitHub CLI
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
@@ -59,15 +84,23 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Tailscale
+# Tailscale (for secure networking)
 RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg > /dev/null \
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list \
     && apt-get update \
     && apt-get install -y tailscale \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code
+# ============================================================================
+# Section 4: Coding Agents
+# ============================================================================
+
+# Claude Code (Anthropic's CLI for Claude)
 RUN npm install -g @anthropic-ai/claude-code
+
+# ============================================================================
+# Section 5: User Setup
+# ============================================================================
 
 # Create vscode user with sudo privileges
 RUN useradd -m -s /bin/bash -G sudo vscode \
@@ -77,16 +110,26 @@ RUN useradd -m -s /bin/bash -G sudo vscode \
 # Set up Rust for vscode user
 RUN su - vscode -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
 
-# Configure SSH server
+# Create workspace directory
+RUN mkdir -p /workspace && chown vscode:vscode /workspace
+
+# ============================================================================
+# Section 6: SSH Configuration
+# ============================================================================
+
 RUN mkdir -p /var/run/sshd \
     && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config \
     && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config \
     && sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 
-# Configure cloud-init for VM initialization
-RUN mkdir -p /var/lib/cloud/seed/nocloud
+# ============================================================================
+# Section 7: Stockyard Integration
+# ============================================================================
 
-# Copy stockyard-snapshot binary (built externally)
+# Create stockyard directories
+RUN mkdir -p /etc/stockyard /var/log/stockyard /run/stockyard
+
+# Copy stockyard-snapshot binary (built externally by build.sh)
 COPY scripts/stockyard-snapshot/stockyard-snapshot /usr/local/bin/stockyard-snapshot
 RUN chmod +x /usr/local/bin/stockyard-snapshot
 
@@ -99,7 +142,14 @@ COPY init/stockyard-init.sh /usr/local/bin/stockyard-init.sh
 RUN chmod +x /usr/local/bin/stockyard-init.sh
 
 COPY init/stockyard-init.service /etc/systemd/system/stockyard-init.service
-RUN systemctl enable stockyard-init.service || true
+RUN systemctl enable stockyard-init.service 2>/dev/null || true
+
+# Configure cloud-init for VM initialization
+RUN mkdir -p /var/lib/cloud/seed/nocloud
+
+# ============================================================================
+# Section 8: Finalize
+# ============================================================================
 
 # Set environment variables
 ENV GOPATH=/home/vscode/go
