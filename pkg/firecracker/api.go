@@ -103,3 +103,8 @@ func (a *APIClient) SetMMDSConfig(ctx context.Context, networkInterfaces []strin
 		"version":            "V2",
 	})
 }
+
+// SetMMDSData sets the MMDS data that will be available to the guest.
+func (a *APIClient) SetMMDSData(ctx context.Context, data map[string]interface{}) error {
+	return a.put(ctx, "/mmds", data)
+}

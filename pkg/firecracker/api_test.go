@@ -244,3 +244,46 @@ func TestAPIClient_SetMMDSConfig(t *testing.T) {
 		t.Errorf("wrong version: %v", receivedBody)
 	}
 }
+
+func TestAPIClient_SetMMDSData(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, _ := net.Listen("unix", socketPath)
+	defer listener.Close()
+
+	var receivedPath string
+	var receivedBody map[string]interface{}
+
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewAPIClient(socketPath)
+	data := map[string]interface{}{
+		"latest": map[string]interface{}{
+			"meta-data": map[string]string{
+				"instance-id":    "i-test123",
+				"local-hostname": "stockyard-test123",
+			},
+			"user-data": "#cloud-config\nhostname: test\n",
+		},
+	}
+	err := client.SetMMDSData(context.Background(), data)
+	if err != nil {
+		t.Fatalf("SetMMDSData failed: %v", err)
+	}
+
+	if receivedPath != "/mmds" {
+		t.Errorf("expected path /mmds, got %s", receivedPath)
+	}
+	latest := receivedBody["latest"].(map[string]interface{})
+	metadata := latest["meta-data"].(map[string]interface{})
+	if metadata["instance-id"] != "i-test123" {
+		t.Errorf("wrong instance-id: %v", receivedBody)
+	}
+}
