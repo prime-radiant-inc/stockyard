@@ -340,3 +340,36 @@ func (s *State) RecordSnapshot(taskID, snapshotName string) error {
 	}
 	return nil
 }
+
+// SnapshotRecord represents a snapshot in the database
+type SnapshotRecord struct {
+	Name      string
+	CreatedAt time.Time
+}
+
+// ListTaskSnapshots lists all snapshots for a task
+func (s *State) ListTaskSnapshots(taskID string) ([]SnapshotRecord, error) {
+	rows, err := s.db.Query(
+		`SELECT snapshot_name, created_at FROM snapshots WHERE task_id = ? ORDER BY created_at DESC`,
+		taskID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list snapshots: %w", err)
+	}
+	defer rows.Close()
+
+	var snapshots []SnapshotRecord
+	for rows.Next() {
+		var snap SnapshotRecord
+		if err := rows.Scan(&snap.Name, &snap.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan snapshot: %w", err)
+		}
+		snapshots = append(snapshots, snap)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating snapshots: %w", err)
+	}
+
+	return snapshots, nil
+}

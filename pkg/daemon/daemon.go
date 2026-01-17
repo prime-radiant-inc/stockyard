@@ -17,11 +17,12 @@ import (
 
 // Daemon is the core daemon process that manages workspaces and tasks.
 type Daemon struct {
-	cfg      *config.Config
-	secrets  secrets.Provider
-	zfs      *zfs.Manager
-	state    *State
-	tasks    *TaskManager
+	cfg       *config.Config
+	secrets   secrets.Provider
+	zfs       *zfs.Manager
+	state     *State
+	tasks     *TaskManager
+	snapshots *SnapshotService
 
 	listener   net.Listener
 	grpcServer *grpc.Server
@@ -85,6 +86,14 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}()
 
 	fmt.Printf("gRPC server started on %s\n", d.cfg.Daemon.SocketPath)
+
+	// Start snapshot service
+	d.snapshots = NewSnapshotService(d)
+	go func() {
+		if err := d.snapshots.Start(ctx); err != nil {
+			fmt.Printf("Snapshot service error: %v\n", err)
+		}
+	}()
 
 	<-ctx.Done()
 	return d.Stop()
