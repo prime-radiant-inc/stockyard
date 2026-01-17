@@ -17,9 +17,11 @@ cd "${SCRIPT_DIR}"
 # Configuration with defaults
 IMAGE_NAME="${IMAGE_NAME:-stockyard-vm}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
+VM_USER="${VM_USER:-mooby}"
 
 echo "=== Building Stockyard VM Image ==="
 echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+echo "VM User: ${VM_USER}"
 echo ""
 
 # Step 1: Build the stockyard-snapshot Go binary
@@ -45,6 +47,7 @@ cd "${SCRIPT_DIR}"
 echo ""
 echo "=== Step 2: Building Docker image ==="
 docker build \
+    --build-arg VM_USER="${VM_USER}" \
     -t "${IMAGE_NAME}:${IMAGE_TAG}" \
     -f Dockerfile \
     .

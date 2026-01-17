@@ -5,6 +5,9 @@
 
 set -e
 
+# VM_USER is set in Dockerfile, default to mooby if not set
+VM_USER="${VM_USER:-mooby}"
+
 LOG_FILE="/var/log/stockyard/init.log"
 mkdir -p /var/log/stockyard
 
@@ -72,7 +75,7 @@ done
 
 # Setup workspace permissions
 if [ -d /workspace ]; then
-    chown -R vscode:vscode /workspace 2>/dev/null || true
+    chown -R "${VM_USER}:${VM_USER}" /workspace 2>/dev/null || true
     echo "Workspace permissions set"
 fi
 
@@ -87,9 +90,9 @@ if command -v tailscale &>/dev/null; then
     fi
 fi
 
-# Setup Claude Code hooks for vscode user
+# Setup Claude Code hooks for VM user
 if [ -f /etc/stockyard/claude-hooks.json ]; then
-    su - vscode -c "/usr/local/bin/setup-claude-hooks.sh" 2>/dev/null || true
+    su - "${VM_USER}" -c "/usr/local/bin/setup-claude-hooks.sh" 2>/dev/null || true
 fi
 
 # Create run directory for snapshot socket

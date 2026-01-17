@@ -53,7 +53,7 @@ var cpCmd = &cobra.Command{
 			return fmt.Errorf("task has no Tailscale hostname")
 		}
 
-		scpSource := fmt.Sprintf("vscode@%s:%s", task.TailscaleHostname, remotePath)
+		scpSource := fmt.Sprintf("%s@%s:%s", cfg.VM.User, task.TailscaleHostname, remotePath)
 
 		scpCmd := exec.Command("scp",
 			"-o", "StrictHostKeyChecking=accept-new",

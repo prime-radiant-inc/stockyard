@@ -48,11 +48,11 @@ var logsCmd = &cobra.Command{
 			return fmt.Errorf("task is not running or has no Tailscale access")
 		}
 
-		return streamLogsSSH(task.TailscaleHostname, logsFollow, logsSystem)
+		return streamLogsSSH(task.TailscaleHostname, cfg.VM.User, logsFollow, logsSystem)
 	},
 }
 
-func streamLogsSSH(hostname string, follow bool, system bool) error {
+func streamLogsSSH(hostname string, user string, follow bool, system bool) error {
 	var logPath string
 	if system {
 		logPath = "/var/log/cloud-init-output.log"
@@ -62,7 +62,7 @@ func streamLogsSSH(hostname string, follow bool, system bool) error {
 
 	sshArgs := []string{
 		"-o", "StrictHostKeyChecking=accept-new",
-		fmt.Sprintf("vscode@%s", hostname),
+		fmt.Sprintf("%s@%s", user, hostname),
 	}
 
 	if follow {

@@ -25,6 +25,9 @@ Output: `output/rootfs.ext4` (~4GB)
 ### Configuration Options
 
 ```bash
+# Custom VM user (default: mooby)
+VM_USER=myuser ./build.sh
+
 # Custom image name/tag
 IMAGE_NAME=my-vm IMAGE_TAG=v1 ./build.sh
 
@@ -37,7 +40,7 @@ ROOTFS_SIZE=20G sudo ./convert-to-rootfs.sh
 - **Languages**: Python 3, Node.js 20, Go 1.22, Rust
 - **Tools**: git, gh (GitHub CLI), Claude Code
 - **Networking**: Tailscale (userspace mode for Firecracker)
-- **User**: `vscode` with passwordless sudo
+- **User**: `mooby` with passwordless sudo (configurable via `VM_USER`)
 
 ## VM Configuration
 

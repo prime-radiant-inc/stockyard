@@ -13,6 +13,9 @@ LABEL description="Development VM image for Claude Code sessions with Firecracke
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Configurable VM user (default: mooby)
+ARG VM_USER=mooby
+
 # ============================================================================
 # Section 1: Base System
 # ============================================================================
@@ -106,16 +109,16 @@ RUN npm install -g @anthropic-ai/claude-code
 # Section 5: User Setup
 # ============================================================================
 
-# Create vscode user with sudo privileges
-RUN useradd -m -s /bin/bash -G sudo vscode \
-    && echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/vscode \
-    && chmod 0440 /etc/sudoers.d/vscode
+# Create VM user with sudo privileges
+RUN useradd -m -s /bin/bash -G sudo ${VM_USER} \
+    && echo "${VM_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/${VM_USER} \
+    && chmod 0440 /etc/sudoers.d/${VM_USER}
 
-# Set up Rust for vscode user
-RUN su - vscode -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+# Set up Rust for VM user
+RUN su - ${VM_USER} -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
 
 # Create workspace directory
-RUN mkdir -p /workspace && chown vscode:vscode /workspace
+RUN mkdir -p /workspace && chown ${VM_USER}:${VM_USER} /workspace
 
 # ============================================================================
 # Section 6: SSH Configuration
@@ -126,12 +129,12 @@ RUN mkdir -p /var/run/sshd \
     && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config \
     && sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 
-# Add SSH key for vscode user (for debugging)
-RUN mkdir -p /home/vscode/.ssh \
-    && echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH3MQD2+f46FzfwZLiouCPkmcQGWmFBkc2d9aA4qjIMZ jesse@paradise-park.local" > /home/vscode/.ssh/authorized_keys \
-    && chmod 700 /home/vscode/.ssh \
-    && chmod 600 /home/vscode/.ssh/authorized_keys \
-    && chown -R vscode:vscode /home/vscode/.ssh
+# Add SSH key for VM user (for debugging)
+RUN mkdir -p /home/${VM_USER}/.ssh \
+    && echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH3MQD2+f46FzfwZLiouCPkmcQGWmFBkc2d9aA4qjIMZ jesse@paradise-park.local" > /home/${VM_USER}/.ssh/authorized_keys \
+    && chmod 700 /home/${VM_USER}/.ssh \
+    && chmod 600 /home/${VM_USER}/.ssh/authorized_keys \
+    && chown -R ${VM_USER}:${VM_USER} /home/${VM_USER}/.ssh
 
 # ============================================================================
 # Section 7: Stockyard Integration
@@ -197,12 +200,15 @@ RUN curl -fsSL -o /boot/vmlinuz \
 # Section 9: Finalize
 # ============================================================================
 
+# Persist VM_USER for runtime scripts
+ENV VM_USER=${VM_USER}
+
 # Set environment variables
-ENV GOPATH=/home/vscode/go
-ENV PATH="/home/vscode/.cargo/bin:/usr/local/go/bin:${PATH}"
+ENV GOPATH=/home/${VM_USER}/go
+ENV PATH="/home/${VM_USER}/.cargo/bin:/usr/local/go/bin:${PATH}"
 
 # Default working directory
-WORKDIR /home/vscode
+WORKDIR /home/${VM_USER}
 
 # Expose SSH port
 EXPOSE 22

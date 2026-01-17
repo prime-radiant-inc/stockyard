@@ -1,7 +1,7 @@
 #!/bin/bash
 # setup-claude-hooks.sh
 # Sets up Claude Code hooks for auto-snapshots
-# This script should be run as the vscode user
+# This script should be run as the VM user (mooby)
 
 set -e
 

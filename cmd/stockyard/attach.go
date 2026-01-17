@@ -52,7 +52,7 @@ var attachCmd = &cobra.Command{
 
 		// Build SSH command
 		sshHost := task.TailscaleHostname
-		sshUser := "vscode"
+		sshUser := cfg.VM.User
 
 		fmt.Printf("Connecting to %s@%s...\n", sshUser, sshHost)
 

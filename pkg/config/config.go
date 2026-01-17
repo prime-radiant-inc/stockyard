@@ -13,6 +13,11 @@ type Config struct {
 	Daemon      DaemonConfig      `json:"daemon"`
 	ZFS         ZFSConfig         `json:"zfs"`
 	Firecracker FirecrackerConfig `json:"firecracker"`
+	VM          VMConfig          `json:"vm"`
+}
+
+type VMConfig struct {
+	User string `json:"user"`
 }
 
 type SecretsConfig struct {
@@ -53,6 +58,9 @@ func DefaultConfig() *Config {
 			KernelPath: "/tmp/vmlinux.bin",
 			RootfsPath: "/var/lib/stockyard/rootfs.ext4",
 			BridgeName: "flbr0",
+		},
+		VM: VMConfig{
+			User: "mooby",
 		},
 	}
 }
