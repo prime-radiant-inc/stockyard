@@ -14,6 +14,7 @@ import (
 type SnapshotService struct {
 	daemon *Daemon
 	server *vsock.SnapshotServer
+	ctx    context.Context
 }
 
 // NewSnapshotService creates a new snapshot service
@@ -25,6 +26,7 @@ func NewSnapshotService(d *Daemon) *SnapshotService {
 
 // Start starts the snapshot service
 func (ss *SnapshotService) Start(ctx context.Context) error {
+	ss.ctx = ctx
 	return ss.server.Listen(ctx)
 }
 
@@ -39,17 +41,19 @@ func (ss *SnapshotService) handleSnapshot(vmID, label string) error {
 	log.Printf("Creating snapshot for task %s: %s", taskID, label)
 
 	// Create ZFS snapshot
-	snapName, err := ss.daemon.zfs.CreateSnapshot(context.Background(), taskID, label)
+	snapName, err := ss.daemon.zfs.CreateSnapshot(ss.ctx, taskID, label)
 	if err != nil {
 		return fmt.Errorf("failed to create snapshot: %w", err)
 	}
 
 	log.Printf("Created snapshot: %s", snapName)
 
-	// Record in database (snapshot name already encodes the label)
+	// Record in database. We log but don't fail here because:
+	// 1. The ZFS snapshot (the actual data) was successfully created
+	// 2. The database is just an index/cache that can be rebuilt
+	// 3. Returning an error would tell the VM to retry, but the snapshot already exists
 	if err := ss.daemon.state.RecordSnapshot(taskID, snapName); err != nil {
-		log.Printf("Warning: failed to record snapshot in database: %v", err)
-		// Don't fail - snapshot was created
+		log.Printf("Warning: failed to record snapshot in database: %v (ZFS snapshot %s was created)", err, snapName)
 	}
 
 	return nil

@@ -231,6 +231,48 @@ func TestState_UpdateTaskVMID(t *testing.T) {
 	}
 }
 
+func TestState_ListTaskSnapshots(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("failed to create state: %v", err)
+	}
+	defer state.Close()
+
+	// Create a task first
+	task := &Task{
+		ID:        "test-task-1",
+		Name:      "test",
+		Status:    "running",
+		CreatedAt: time.Now(),
+	}
+	if err := state.CreateTask(task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	// Record some snapshots
+	if err := state.RecordSnapshot("test-task-1", "snap-1"); err != nil {
+		t.Fatalf("record snapshot 1: %v", err)
+	}
+	if err := state.RecordSnapshot("test-task-1", "snap-2"); err != nil {
+		t.Fatalf("record snapshot 2: %v", err)
+	}
+
+	// List snapshots
+	snaps, err := state.ListTaskSnapshots("test-task-1")
+	if err != nil {
+		t.Fatalf("list snapshots: %v", err)
+	}
+
+	if len(snaps) != 2 {
+		t.Errorf("expected 2 snapshots, got %d", len(snaps))
+	}
+
+	// Should be ordered by created_at DESC
+	if len(snaps) >= 2 && snaps[0].Name != "snap-2" {
+		t.Errorf("expected snap-2 first (most recent), got %s", snaps[0].Name)
+	}
+}
+
 func TestDataDir(t *testing.T) {
 	dir := DataDir()
 	if dir == "" {

@@ -56,6 +56,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 		return fmt.Errorf("daemon already running")
 	}
 	d.running = true
+	d.snapshots = NewSnapshotService(d)
 	d.mu.Unlock()
 
 	socketDir := filepath.Dir(d.cfg.Daemon.SocketPath)
@@ -88,7 +89,6 @@ func (d *Daemon) Start(ctx context.Context) error {
 	fmt.Printf("gRPC server started on %s\n", d.cfg.Daemon.SocketPath)
 
 	// Start snapshot service
-	d.snapshots = NewSnapshotService(d)
 	go func() {
 		if err := d.snapshots.Start(ctx); err != nil {
 			fmt.Printf("Snapshot service error: %v\n", err)
