@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - Stockyard</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 h-screen flex flex-col">
+    <!-- Top bar -->
+    <header class="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <button id="sidebar-toggle" class="p-2 hover:bg-gray-100 rounded">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+            </button>
+            <span class="font-semibold text-lg">Stockyard</span>
+        </div>
+        <div class="flex items-center gap-4">
+            <button class="p-2 hover:bg-gray-100 rounded relative">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                </svg>
+                {{if .AlertCount}}<span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{{.AlertCount}}</span>{{end}}
+            </button>
+            <span class="text-sm text-gray-600">{{.User}}</span>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar -->
+        <nav id="sidebar" class="w-48 bg-white border-r border-gray-200 flex flex-col" x-data="{ collapsed: false }">
+            <div class="flex-1 py-4">
+                <a href="/" class="flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-100 {{if eq .ActiveNav "fleet"}}bg-blue-50 text-blue-700 border-r-2 border-blue-700{{end}}">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                    </svg>
+                    <span>Fleet</span>
+                </a>
+                <a href="/activity" class="flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-100 {{if eq .ActiveNav "activity"}}bg-blue-50 text-blue-700 border-r-2 border-blue-700{{end}}">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                    <span>Activity</span>
+                </a>
+                <a href="/settings" class="flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-100 {{if eq .ActiveNav "settings"}}bg-blue-50 text-blue-700 border-r-2 border-blue-700{{end}}">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <span>Settings</span>
+                </a>
+            </div>
+        </nav>
+
+        <!-- Main content -->
+        <main class="flex-1 overflow-auto p-6">
+            <h1 class="text-2xl font-semibold mb-6">Fleet Overview</h1>
+
+            {{if .GroupedTasks}}
+            <div class="space-y-4">
+                {{range $repo, $tasks := .GroupedTasks}}
+                <div class="bg-white rounded-lg shadow border border-gray-200" x-data="{ open: true }">
+                    <button @click="open = !open" class="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50 rounded-t-lg">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 transition-transform" :class="{ 'rotate-90': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                            </svg>
+                            <span class="font-medium text-gray-900">{{$repo}}</span>
+                            <span class="text-sm text-gray-500">({{len $tasks}} VMs)</span>
+                        </div>
+                    </button>
+                    <div x-show="open" x-cloak class="border-t border-gray-200">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {{range $tasks}}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <a href="/vm/{{.ID}}" class="text-blue-600 hover:text-blue-800 hover:underline">{{.ID}}</a>
+                                    </td>
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{{.Name}}</td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        {{if eq .Status "running"}}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">running</span>
+                                        {{else if eq .Status "stopped"}}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">stopped</span>
+                                        {{else if eq .Status "error"}}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">error</span>
+                                        {{else}}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">{{.Status}}</span>
+                                        {{end}}
+                                    </td>
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm" x-data="{ actionsOpen: false }">
+                                        <div class="relative">
+                                            <button @click="actionsOpen = !actionsOpen" @click.outside="actionsOpen = false" class="text-gray-500 hover:text-gray-700">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                                                </svg>
+                                            </button>
+                                            <div x-show="actionsOpen" x-cloak class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
+                                                <div class="py-1">
+                                                    <button @click="copySSH('{{.ID}}')" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Copy SSH Command</button>
+                                                    {{if eq .Status "running"}}
+                                                    <button hx-post="/vm/{{.ID}}/stop" hx-swap="none" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Stop</button>
+                                                    {{end}}
+                                                    <button hx-delete="/vm/{{.ID}}" hx-swap="none" hx-confirm="Are you sure you want to destroy this VM?" class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Destroy</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+            {{else}}
+            <div class="text-center py-12">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">No VMs</h3>
+                <p class="mt-1 text-sm text-gray-500">No virtual machines are currently running.</p>
+            </div>
+            {{end}}
+        </main>
+    </div>
+
+    <script>
+        function copySSH(vmId) {
+            const sshCommand = 'ssh ' + vmId;
+            navigator.clipboard.writeText(sshCommand).then(function() {
+                alert('SSH command copied to clipboard: ' + sshCommand);
+            }, function(err) {
+                console.error('Could not copy text: ', err);
+            });
+        }
+    </script>
+</body>
+</html>

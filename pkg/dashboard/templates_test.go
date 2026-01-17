@@ -61,3 +61,36 @@ func TestTemplates_RenderLayout(t *testing.T) {
 		t.Error("expected username in output")
 	}
 }
+
+func TestTemplates_FleetWithTasks(t *testing.T) {
+	tmpl, err := LoadTemplates()
+	if err != nil {
+		t.Fatalf("failed to load templates: %v", err)
+	}
+
+	var buf bytes.Buffer
+	data := map[string]interface{}{
+		"Title":     "Fleet",
+		"User":      "jesse",
+		"ActiveNav": "fleet",
+		"GroupedTasks": map[string][]map[string]interface{}{
+			"github.com/test/repo": {
+				{"ID": "vm-1", "Name": "test", "Status": "running"},
+				{"ID": "vm-2", "Name": "test2", "Status": "stopped"},
+			},
+		},
+	}
+
+	err = tmpl.ExecuteTemplate(&buf, "fleet.html", data)
+	if err != nil {
+		t.Fatalf("failed to execute template: %v", err)
+	}
+
+	html := buf.String()
+	if !strings.Contains(html, "vm-1") {
+		t.Error("expected vm-1 in output")
+	}
+	if !strings.Contains(html, "github.com/test/repo") {
+		t.Error("expected repo name in output")
+	}
+}
