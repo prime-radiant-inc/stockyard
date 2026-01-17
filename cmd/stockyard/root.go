@@ -11,7 +11,24 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "stockyard",
 	Short: "Coding agent VM orchestrator",
-	Long:  `Stockyard runs coding agents in isolated Firecracker micro-VMs with ZFS-based audit trail snapshots.`,
+	Long: `Stockyard runs coding agents in isolated Firecracker micro-VMs
+with ZFS-based audit trail snapshots.
+
+Quick Start:
+  # Initialize stockyard
+  stockyard init --instance my-dev
+
+  # Start the daemon (in another terminal)
+  stockyardd
+
+  # Run a coding agent
+  stockyard run --repo github.com/org/repo -- claude-code -p "your prompt"
+
+  # Attach to the running VM
+  stockyard attach <task-id>
+
+  # List running tasks
+  stockyard list`,
 }
 
 func Execute() {
