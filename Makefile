@@ -1,4 +1,4 @@
-.PHONY: all build proto clean test
+.PHONY: all build proto clean test test-unit lint fmt
 
 all: proto build
 
@@ -16,5 +16,19 @@ proto:
 clean:
 	rm -rf bin/
 
-test:
-	go test ./...
+test: test-unit
+
+test-unit:
+	go test ./pkg/... -v
+
+# Development helpers
+dev-daemon: build
+	./bin/stockyardd
+
+lint:
+	golangci-lint run
+
+fmt:
+	go fmt ./...
+
+.DEFAULT_GOAL := build
