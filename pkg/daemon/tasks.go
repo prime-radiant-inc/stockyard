@@ -3,11 +3,13 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/obra/stockyard/pkg/flintlock"
+	"github.com/obra/stockyard/pkg/tailscale"
 )
 
 // TaskManager handles the lifecycle of VM-based tasks.
@@ -97,9 +99,18 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 	// Get Tailscale auth key if enabled
 	var tailscaleAuthKey string
+	var tailscaleHostname string
 	if !req.NoTailscale {
-		if key, err := tm.daemon.secrets.GetSecret(ctx, "tailscale-auth-key"); err == nil {
+		key, err := tm.daemon.secrets.GetSecret(ctx, "tailscale-auth-key")
+		if err != nil {
+			log.Printf("Warning: could not get Tailscale auth key: %v", err)
+			// Continue without Tailscale
+		} else if err := tailscale.ValidateAuthKey(key); err != nil {
+			log.Printf("Warning: invalid Tailscale auth key: %v", err)
+			// Continue without Tailscale
+		} else {
 			tailscaleAuthKey = key
+			tailscaleHostname = tailscale.BuildHostname(taskID)
 		}
 	}
 
@@ -108,10 +119,11 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 	// Generate cloud-init config
 	cloudInitCfg := &flintlock.CloudInitConfig{
-		Hostname:         hostname,
-		Environment:      env,
-		TailscaleAuthKey: tailscaleAuthKey,
-		WorkspacePath:    workspacePath,
+		Hostname:          hostname,
+		Environment:       env,
+		TailscaleAuthKey:  tailscaleAuthKey,
+		TailscaleHostname: tailscaleHostname,
+		WorkspacePath:     workspacePath,
 	}
 
 	cloudInitData, err := cloudInitCfg.Generate()
@@ -159,14 +171,15 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 	// Record task in database
 	task := &Task{
-		ID:        taskID,
-		Name:      req.Name,
-		Repo:      req.Repo,
-		Ref:       req.Ref,
-		Command:   commandStr,
-		Status:    "running",
-		VMID:      vmUID,
-		CreatedAt: time.Now(),
+		ID:                taskID,
+		Name:              req.Name,
+		Repo:              req.Repo,
+		Ref:               req.Ref,
+		Command:           commandStr,
+		Status:            "running",
+		VMID:              vmUID,
+		TailscaleHostname: tailscaleHostname,
+		CreatedAt:         time.Now(),
 	}
 
 	if err := tm.daemon.state.CreateTask(task); err != nil {
