@@ -4,6 +4,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"text/tabwriter"
 
 	"github.com/obra/stockyard/pkg/client"
 	"github.com/obra/stockyard/pkg/config"
@@ -38,9 +40,13 @@ var snapshotsCmd = &cobra.Command{
 			return nil
 		}
 
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "NAME\tCREATED")
 		for _, s := range snapshots {
-			fmt.Println(s.Name)
+			fmt.Fprintf(w, "%s\t%s\n", s.Name, s.CreatedAt)
 		}
+		w.Flush()
+
 		return nil
 	},
 }
