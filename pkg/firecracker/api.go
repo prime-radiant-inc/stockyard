@@ -2,7 +2,11 @@
 package firecracker
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"time"
@@ -27,4 +31,31 @@ func NewAPIClient(socketPath string) *APIClient {
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// put sends a PUT request to the Firecracker API.
+func (a *APIClient) put(ctx context.Context, path string, body interface{}) error {
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, "http://localhost"+path, bytes.NewReader(jsonBody))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
 }
