@@ -3,10 +3,13 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -26,6 +29,7 @@ type Daemon struct {
 
 	listener   net.Listener
 	grpcServer *grpc.Server
+	httpServer *http.Server
 	mu         sync.Mutex
 	running    bool
 }
@@ -106,6 +110,22 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 	fmt.Printf("gRPC server started on %s\n", d.cfg.Daemon.SocketPath)
 
+	// Start HTTP server if enabled
+	if d.cfg.HTTP.Enabled {
+		d.httpServer = &http.Server{
+			Addr: d.cfg.HTTP.Addr,
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte("dashboard placeholder"))
+			}),
+		}
+		go func() {
+			log.Printf("Starting HTTP server on %s", d.cfg.HTTP.Addr)
+			if err := d.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Printf("HTTP server error: %v", err)
+			}
+		}()
+	}
+
 	// Start snapshot service
 	go func() {
 		if err := d.snapshots.Start(ctx); err != nil {
@@ -127,6 +147,13 @@ func (d *Daemon) Stop() error {
 	}
 
 	d.running = false
+
+	// Shutdown HTTP server if running
+	if d.httpServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		d.httpServer.Shutdown(ctx)
+	}
 
 	if d.grpcServer != nil {
 		d.grpcServer.GracefulStop()
