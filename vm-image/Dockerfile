@@ -91,6 +91,10 @@ RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | tee 
     && apt-get install -y tailscale \
     && rm -rf /var/lib/apt/lists/*
 
+# Configure tailscaled for Firecracker (no netfilter support)
+# Use userspace networking mode since the kernel lacks iptables/nftables
+RUN echo 'FLAGS="--tun=userspace-networking"' >> /etc/default/tailscaled
+
 # ============================================================================
 # Section 4: Coding Agents
 # ============================================================================
@@ -121,6 +125,13 @@ RUN mkdir -p /var/run/sshd \
     && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config \
     && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config \
     && sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+
+# Add SSH key for vscode user (for debugging)
+RUN mkdir -p /home/vscode/.ssh \
+    && echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH3MQD2+f46FzfwZLiouCPkmcQGWmFBkc2d9aA4qjIMZ jesse@paradise-park.local" > /home/vscode/.ssh/authorized_keys \
+    && chmod 700 /home/vscode/.ssh \
+    && chmod 600 /home/vscode/.ssh/authorized_keys \
+    && chown -R vscode:vscode /home/vscode/.ssh
 
 # ============================================================================
 # Section 7: Stockyard Integration

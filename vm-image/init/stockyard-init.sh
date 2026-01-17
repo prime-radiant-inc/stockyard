@@ -25,18 +25,39 @@ done
 MMDS_URL="http://169.254.169.254/latest"
 echo "Fetching metadata from MMDS..."
 
+# Helper function to strip JSON quotes from MMDS responses
+# Firecracker MMDS returns values as JSON strings: "value" -> value
+strip_json_quotes() {
+    sed 's/^"//;s/"$//'
+}
+
 # Get hostname
-HOSTNAME=$(curl -sf "${MMDS_URL}/meta-data/local-hostname" 2>/dev/null || echo "")
+HOSTNAME_RAW=$(curl -sf "${MMDS_URL}/meta-data/local-hostname" 2>/dev/null || echo "")
+HOSTNAME=$(echo "$HOSTNAME_RAW" | strip_json_quotes)
+echo "Raw hostname response: $HOSTNAME_RAW"
 if [ -n "$HOSTNAME" ]; then
     echo "Setting hostname to: $HOSTNAME"
     hostnamectl set-hostname "$HOSTNAME"
 fi
 
 # Get Tailscale auth key from meta-data
-TS_AUTH_KEY=$(curl -sf "${MMDS_URL}/meta-data/tailscale-auth-key" 2>/dev/null || echo "")
+TS_AUTH_KEY_RAW=$(curl -sf "${MMDS_URL}/meta-data/tailscale-auth-key" 2>/dev/null || echo "")
+TS_AUTH_KEY=$(echo "$TS_AUTH_KEY_RAW" | strip_json_quotes)
+echo "Raw auth key response length: ${#TS_AUTH_KEY_RAW}"
 if [ -n "$TS_AUTH_KEY" ]; then
-    echo "Found Tailscale auth key, connecting..."
-    tailscale up --authkey="$TS_AUTH_KEY" --hostname="$HOSTNAME" --accept-routes --ssh &
+    echo "Found Tailscale auth key (${#TS_AUTH_KEY} chars), waiting for tailscaled..."
+    # Wait for tailscaled to be ready (up to 30 seconds)
+    for i in {1..30}; do
+        if tailscale status &>/dev/null; then
+            echo "tailscaled is ready"
+            break
+        fi
+        sleep 1
+    done
+    echo "Connecting to Tailscale..."
+    tailscale up --authkey="$TS_AUTH_KEY" --hostname="$HOSTNAME" --accept-routes --ssh 2>&1 | tee -a "$LOG_FILE" &
+else
+    echo "No Tailscale auth key found in MMDS"
 fi
 
 # Wait for external network
