@@ -173,3 +173,38 @@ func TestAPIClient_SetNetworkInterface(t *testing.T) {
 		t.Errorf("wrong host_dev_name: %v", receivedBody)
 	}
 }
+
+func TestAPIClient_SetMachineConfig(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, _ := net.Listen("unix", socketPath)
+	defer listener.Close()
+
+	var receivedPath string
+	var receivedBody map[string]interface{}
+
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewAPIClient(socketPath)
+	err := client.SetMachineConfig(context.Background(), 2, 1024)
+	if err != nil {
+		t.Fatalf("SetMachineConfig failed: %v", err)
+	}
+
+	if receivedPath != "/machine-config" {
+		t.Errorf("expected path /machine-config, got %s", receivedPath)
+	}
+	if int(receivedBody["vcpu_count"].(float64)) != 2 {
+		t.Errorf("wrong vcpu_count: %v", receivedBody)
+	}
+	if int(receivedBody["mem_size_mib"].(float64)) != 1024 {
+		t.Errorf("wrong mem_size_mib: %v", receivedBody)
+	}
+}

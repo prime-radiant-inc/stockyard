@@ -86,3 +86,12 @@ func (a *APIClient) SetNetworkInterface(ctx context.Context, ifaceID, guestMAC, 
 		"host_dev_name": hostDevName,
 	})
 }
+
+// SetMachineConfig configures vCPUs and memory.
+func (a *APIClient) SetMachineConfig(ctx context.Context, vcpus, memMB int32) error {
+	return a.put(ctx, "/machine-config", map[string]interface{}{
+		"vcpu_count":   vcpus,
+		"mem_size_mib": memMB,
+		"smt":          false,
+	})
+}
