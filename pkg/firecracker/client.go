@@ -121,6 +121,10 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 		// Full clone target: tank/stockyard/vms/<vmID>
 		vmDatasetPath = fmt.Sprintf("%s/%s/%s", c.zfs.PoolName, c.config.VMsPath, config.ID)
 
+		// Ensure parent dataset exists (zfs clone doesn't create parents like zfs create -p)
+		parentDataset := fmt.Sprintf("%s/%s", c.zfs.PoolName, c.config.VMsPath)
+		exec.CommandContext(ctx, "zfs", "create", "-p", parentDataset).Run() // Ignore error - may already exist
+
 		// Clone: zfs clone <snapshot> <target>
 		cmd := exec.CommandContext(ctx, "zfs", "clone", snapshotPath, vmDatasetPath)
 		if output, err := cmd.CombinedOutput(); err != nil {
