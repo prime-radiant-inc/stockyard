@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -108,12 +109,39 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	kernelPath := config.KernelPath
 	rootfsPath := config.RootfsPath
 
-	// Copy rootfs for this VM (each VM needs its own writable copy)
-	vmRootfs := filepath.Join(vmDir, "rootfs.ext4")
-	if _, err := os.Stat(vmRootfs); os.IsNotExist(err) {
-		if err := copyFile(rootfsPath, vmRootfs); err != nil {
+	// Create rootfs for this VM (each VM needs its own writable copy)
+	var vmRootfs string
+	if c.zfs != nil {
+		// Use ZFS clone for copy-on-write rootfs
+		// Full snapshot path: tank/stockyard/images/rootfs@base
+		snapshotPath := fmt.Sprintf("%s/stockyard/images/rootfs@base", c.zfs.PoolName)
+		// Full clone target: tank/stockyard/vms/<vmID>
+		vmDatasetPath := fmt.Sprintf("%s/stockyard/vms/%s", c.zfs.PoolName, config.ID)
+
+		// Clone: zfs clone <snapshot> <target>
+		cmd := exec.CommandContext(ctx, "zfs", "clone", snapshotPath, vmDatasetPath)
+		if output, err := cmd.CombinedOutput(); err != nil {
 			c.network.DeleteTap(tapName)
-			return nil, fmt.Errorf("failed to copy rootfs: %w", err)
+			return nil, fmt.Errorf("failed to clone rootfs: %w: %s", err, string(output))
+		}
+
+		// Get mountpoint: zfs get -H -o value mountpoint <dataset>
+		cmd = exec.CommandContext(ctx, "zfs", "get", "-H", "-o", "value", "mountpoint", vmDatasetPath)
+		output, err := cmd.Output()
+		if err != nil {
+			c.network.DeleteTap(tapName)
+			return nil, fmt.Errorf("failed to get clone mountpoint: %w", err)
+		}
+		mountpoint := strings.TrimSpace(string(output))
+		vmRootfs = filepath.Join(mountpoint, "rootfs.ext4")
+	} else {
+		// Fallback to file copy if no ZFS manager
+		vmRootfs = filepath.Join(vmDir, "rootfs.ext4")
+		if _, err := os.Stat(vmRootfs); os.IsNotExist(err) {
+			if err := copyFile(rootfsPath, vmRootfs); err != nil {
+				c.network.DeleteTap(tapName)
+				return nil, fmt.Errorf("failed to copy rootfs: %w", err)
+			}
 		}
 	}
 
