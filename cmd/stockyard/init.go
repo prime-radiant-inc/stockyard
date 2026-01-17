@@ -15,10 +15,6 @@ var initCmd = &cobra.Command{
 	Short: "Initialize stockyard configuration",
 	Long:  `Initialize stockyard configuration with an instance name.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if initInstanceName == "" {
-			return fmt.Errorf("--instance is required")
-		}
-
 		cfg, err := config.Load()
 		if err != nil {
 			return fmt.Errorf("failed to load config: %w", err)
@@ -35,7 +31,10 @@ var initCmd = &cobra.Command{
 			return fmt.Errorf("failed to save config: %w", err)
 		}
 
-		configDir, _ := config.ConfigDir()
+		configDir, err := config.ConfigDir()
+		if err != nil {
+			configDir = "~/.config/stockyard"
+		}
 		fmt.Printf("Initialized stockyard instance %q\n", initInstanceName)
 		fmt.Printf("Config saved to %s/config.json\n", configDir)
 		fmt.Printf("\nNext steps:\n")
