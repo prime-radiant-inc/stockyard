@@ -41,6 +41,23 @@ func TestBuildSnapshotName(t *testing.T) {
 	}
 }
 
+func TestBuildSnapshotName_Sanitization(t *testing.T) {
+	name := BuildSnapshotName("task-123", "foo/bar:baz")
+
+	// Verify problematic characters are replaced
+	if strings.Contains(name, "/") {
+		t.Errorf("snapshot name should not contain slashes: %q", name)
+	}
+	if strings.Contains(name, ":") {
+		t.Errorf("snapshot name should not contain colons: %q", name)
+	}
+
+	// Verify the sanitized label is present (as foo-bar-baz)
+	if !strings.Contains(name, "foo-bar-baz") {
+		t.Errorf("snapshot name should contain sanitized label: %q", name)
+	}
+}
+
 func TestDatasetPath(t *testing.T) {
 	m := NewManager("tank", "stockyard/workspaces")
 	path := m.DatasetPath("task-abc123")

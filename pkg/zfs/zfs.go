@@ -140,7 +140,12 @@ func (m *Manager) Sync(ctx context.Context, taskID string) error {
 		return err
 	}
 	cmd := exec.CommandContext(ctx, "sync", "-f", mountpoint)
-	return cmd.Run()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("sync failed: %w: %s", err, stderr.String())
+	}
+	return nil
 }
 
 // runZFS executes a zfs command with the given arguments.
