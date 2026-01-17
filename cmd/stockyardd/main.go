@@ -36,7 +36,10 @@ func run() error {
 		return fmt.Errorf("stockyard not initialized. Run: stockyard init --instance <name>")
 	}
 
-	secretsProvider := secrets.NewOnePasswordProvider(cfg.Secrets.Vault, cfg.Secrets.Prefix)
+	// Use fallback provider: try 1Password first, then file-based secrets
+	opProvider := secrets.NewOnePasswordProvider(cfg.Secrets.Vault, cfg.Secrets.Prefix)
+	fileProvider := secrets.NewFileProvider("/etc/stockyard")
+	secretsProvider := secrets.NewFallbackProvider(opProvider, fileProvider)
 
 	d, err := daemon.New(cfg, secretsProvider)
 	if err != nil {
