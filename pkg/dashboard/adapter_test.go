@@ -97,6 +97,10 @@ func (m *MockRealDaemon) GetVMCID(ctx context.Context, taskID string) (uint32, e
 	return m.vmCID, nil
 }
 
+func (m *MockRealDaemon) GetVsockPath(ctx context.Context, taskID string) (string, error) {
+	return "/run/stockyard/" + taskID + ".vsock", nil
+}
+
 func TestDaemonAdapter_ListTasks(t *testing.T) {
 	now := time.Now()
 	mock := &MockRealDaemon{

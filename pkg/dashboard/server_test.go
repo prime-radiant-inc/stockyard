@@ -113,6 +113,10 @@ func (m *MockDaemon) GetVMCID(ctx context.Context, taskID string) (uint32, error
 	return 42, nil
 }
 
+func (m *MockDaemon) GetVsockPath(ctx context.Context, taskID string) (string, error) {
+	return "/run/stockyard/task-123.vsock", nil
+}
+
 func TestServer_FleetPage(t *testing.T) {
 	mock := &MockDaemon{
 		tasks: []Task{

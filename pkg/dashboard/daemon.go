@@ -51,4 +51,5 @@ type DaemonAPI interface {
 	RestoreSnapshot(ctx context.Context, taskID, snapshotName string) error
 	GetVMIP(ctx context.Context, taskID string) (string, error)
 	GetVMCID(ctx context.Context, taskID string) (uint32, error)
+	GetVsockPath(ctx context.Context, taskID string) (string, error)
 }

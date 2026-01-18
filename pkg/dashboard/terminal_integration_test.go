@@ -46,6 +46,9 @@ func (m *mockDaemonForTerminal) GetVMIP(ctx context.Context, taskID string) (str
 func (m *mockDaemonForTerminal) GetVMCID(ctx context.Context, taskID string) (uint32, error) {
 	return m.cid, nil
 }
+func (m *mockDaemonForTerminal) GetVsockPath(ctx context.Context, taskID string) (string, error) {
+	return "", nil
+}
 
 func TestTerminalHandler_Integration_CID0(t *testing.T) {
 	// This test validates the message flow without actual vsock.

@@ -219,6 +219,21 @@ func (f *DashboardFacade) GetVMCID(ctx context.Context, taskID string) (uint32, 
 	return task.CID, nil
 }
 
+// GetVsockPath returns the vsock UDS path for a VM.
+func (f *DashboardFacade) GetVsockPath(ctx context.Context, taskID string) (string, error) {
+	task, err := f.state.GetTask(taskID)
+	if err != nil {
+		return "", err
+	}
+	if task == nil {
+		return "", fmt.Errorf("task not found: %s", taskID)
+	}
+	if task.VsockPath == "" {
+		return "", fmt.Errorf("vsock path not available (VM may not be running)")
+	}
+	return task.VsockPath, nil
+}
+
 // convertToDashboardTask converts a daemon Task to a dashboard DaemonTask.
 func convertToDashboardTask(t *Task) *dashboard.DaemonTask {
 	return &dashboard.DaemonTask{
