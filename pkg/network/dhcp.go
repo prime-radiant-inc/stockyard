@@ -3,9 +3,11 @@ package network
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"text/template"
 )
 
 // DHCPConfig holds configuration for the DHCP server.
@@ -44,6 +46,63 @@ func NewDHCPServer(config DHCPConfig, dataDir string) (*DHCPServer, error) {
 		logPath:    filepath.Join(dataDir, "dnsmasq.log"),
 		dataDir:    dataDir,
 	}, nil
+}
+
+// dnsmasqConfigTemplate is the template for generating dnsmasq configuration.
+const dnsmasqConfigTemplate = `interface={{.Bridge}}
+bind-interfaces
+dhcp-range={{.RangeStart}},{{.RangeEnd}},{{.Netmask}},{{.LeaseTime}}
+dhcp-option=option:router,{{.Gateway}}
+dhcp-option=option:dns-server,{{.DNS}}
+dhcp-authoritative
+dhcp-leasefile={{.LeasePath}}
+log-dhcp
+log-facility={{.LogPath}}
+`
+
+// configTemplateData holds the data for rendering the dnsmasq config template.
+type configTemplateData struct {
+	Bridge     string
+	Gateway    string
+	RangeStart string
+	RangeEnd   string
+	Netmask    string
+	LeaseTime  string
+	DNS        string
+	LeasePath  string
+	LogPath    string
+}
+
+// WriteConfig generates and writes the dnsmasq configuration file.
+func (s *DHCPServer) WriteConfig() error {
+	tmpl, err := template.New("dnsmasq").Parse(dnsmasqConfigTemplate)
+	if err != nil {
+		return fmt.Errorf("dhcp: failed to parse config template: %w", err)
+	}
+
+	data := configTemplateData{
+		Bridge:     s.config.Bridge,
+		Gateway:    s.config.Gateway,
+		RangeStart: s.config.RangeStart,
+		RangeEnd:   s.config.RangeEnd,
+		Netmask:    s.config.Netmask,
+		LeaseTime:  s.config.LeaseTime,
+		DNS:        s.config.DNS,
+		LeasePath:  s.leasePath,
+		LogPath:    s.logPath,
+	}
+
+	f, err := os.Create(s.configPath)
+	if err != nil {
+		return fmt.Errorf("dhcp: failed to create config file: %w", err)
+	}
+	defer f.Close()
+
+	if err := tmpl.Execute(f, data); err != nil {
+		return fmt.Errorf("dhcp: failed to write config: %w", err)
+	}
+
+	return nil
 }
 
 // validateDHCPConfig checks that all required fields are present.
