@@ -20,7 +20,39 @@
           viewTab: 'all',
           showActivity: false,
           showSidebar: window.innerWidth >= 1024,
-          alerts: {}
+          alerts: {},
+          showCreateModal: false,
+          creating: false,
+          createError: '',
+          newVM: {
+              repo: '',
+              ref: 'main',
+              name: '',
+              cpus: 2,
+              memory_mb: 4096
+          },
+          async createVM() {
+              this.creating = true;
+              this.createError = '';
+              try {
+                  const resp = await fetch('/api/vm/create', {
+                      method: 'POST',
+                      headers: {'Content-Type': 'application/json'},
+                      body: JSON.stringify(this.newVM)
+                  });
+                  if (!resp.ok) {
+                      const text = await resp.text();
+                      throw new Error(text);
+                  }
+                  this.showCreateModal = false;
+                  this.newVM = {repo: '', ref: 'main', name: '', cpus: 2, memory_mb: 4096};
+                  location.reload();
+              } catch (e) {
+                  this.createError = e.message;
+              } finally {
+                  this.creating = false;
+              }
+          }
       }"
       @resize.window="showSidebar = window.innerWidth >= 1024"
       x-init="
@@ -179,7 +211,13 @@
             <div class="overflow-auto p-6 transition-all duration-300"
                  :class="selectedVM ? 'w-3/5' : 'w-full'">
                 <div class="mb-6 flex items-center justify-between">
-                    <h1 class="text-2xl font-semibold">Fleet Overview</h1>
+                    <div class="flex items-center gap-4">
+                        <h1 class="text-2xl font-semibold">Fleet Overview</h1>
+                        <button @click="showCreateModal = true"
+                                class="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+                            + New VM
+                        </button>
+                    </div>
                     <span x-show="connected" class="text-xs text-green-600 flex items-center gap-1">
                         <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                         Live
@@ -602,6 +640,70 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Create VM Modal -->
+    <div x-show="showCreateModal"
+         x-cloak
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+         @keydown.escape.window="showCreateModal = false">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6"
+             @click.outside="showCreateModal = false">
+            <h2 class="text-lg font-semibold mb-4">Create New VM</h2>
+
+            <form @submit.prevent="createVM()">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Repository URL *</label>
+                        <input type="text" x-model="newVM.repo" required
+                               placeholder="github.com/owner/repo"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Git Ref</label>
+                        <input type="text" x-model="newVM.ref"
+                               placeholder="main"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Name (optional)</label>
+                        <input type="text" x-model="newVM.name"
+                               placeholder="my-task"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">CPUs</label>
+                            <input type="number" x-model="newVM.cpus" min="1" max="8"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Memory (MB)</label>
+                            <input type="number" x-model="newVM.memory_mb" min="512" max="16384" step="512"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" @click="showCreateModal = false"
+                            class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            :disabled="creating"
+                            class="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                        <span x-show="!creating">Create VM</span>
+                        <span x-show="creating">Creating...</span>
+                    </button>
+                </div>
+            </form>
+
+            <div x-show="createError" class="mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm" x-text="createError"></div>
+        </div>
     </div>
 
     <!-- Mobile bottom nav -->
