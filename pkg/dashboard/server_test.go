@@ -109,6 +109,10 @@ func (m *MockDaemon) GetVMIP(ctx context.Context, taskID string) (string, error)
 	return "10.0.100.1", nil
 }
 
+func (m *MockDaemon) GetVMCID(ctx context.Context, taskID string) (uint32, error) {
+	return 42, nil
+}
+
 func TestServer_FleetPage(t *testing.T) {
 	mock := &MockDaemon{
 		tasks: []Task{

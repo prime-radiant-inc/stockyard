@@ -21,6 +21,7 @@ type MockRealDaemon struct {
 	created      []string
 	restored     []string
 	createdTasks []*DaemonCreateTaskRequest
+	vmCID        uint32
 }
 
 func (m *MockRealDaemon) ListTasks(ctx context.Context, status string) ([]*DaemonTask, error) {
@@ -90,6 +91,10 @@ func (m *MockRealDaemon) RestoreSnapshot(ctx context.Context, taskID, snapshotNa
 
 func (m *MockRealDaemon) GetVMIP(ctx context.Context, taskID string) (string, error) {
 	return "10.0.100.1", nil
+}
+
+func (m *MockRealDaemon) GetVMCID(ctx context.Context, taskID string) (uint32, error) {
+	return m.vmCID, nil
 }
 
 func TestDaemonAdapter_ListTasks(t *testing.T) {
@@ -358,5 +363,20 @@ func TestDaemonAdapter_RestoreSnapshot(t *testing.T) {
 
 	if len(mock.restored) != 1 || mock.restored[0] != "task-1:task-1@my-label" {
 		t.Errorf("expected RestoreSnapshot called with task-1:task-1@my-label, got %v", mock.restored)
+	}
+}
+
+func TestDaemonAdapter_GetVMCID(t *testing.T) {
+	mock := &MockRealDaemon{
+		vmCID: 42,
+	}
+	adapter := NewDaemonAdapter(mock)
+
+	cid, err := adapter.GetVMCID(context.Background(), "task-123")
+	if err != nil {
+		t.Fatalf("GetVMCID failed: %v", err)
+	}
+	if cid != 42 {
+		t.Errorf("got CID %d, want 42", cid)
 	}
 }

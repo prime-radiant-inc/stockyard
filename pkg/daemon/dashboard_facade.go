@@ -204,6 +204,21 @@ func (f *DashboardFacade) GetVMIP(ctx context.Context, taskID string) (string, e
 	return f.tasks.GetVMIP("stockyard", taskID)
 }
 
+// GetVMCID returns the vsock CID for a VM.
+func (f *DashboardFacade) GetVMCID(ctx context.Context, taskID string) (uint32, error) {
+	task, err := f.state.GetTask(taskID)
+	if err != nil {
+		return 0, err
+	}
+	if task == nil {
+		return 0, fmt.Errorf("task not found: %s", taskID)
+	}
+	if task.CID == 0 {
+		return 0, fmt.Errorf("VM CID not available (VM may not be running)")
+	}
+	return task.CID, nil
+}
+
 // convertToDashboardTask converts a daemon Task to a dashboard DaemonTask.
 func convertToDashboardTask(t *Task) *dashboard.DaemonTask {
 	return &dashboard.DaemonTask{

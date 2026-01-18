@@ -24,6 +24,7 @@ type RealDaemon interface {
 
 	// Network operations
 	GetVMIP(ctx context.Context, taskID string) (string, error)
+	GetVMCID(ctx context.Context, taskID string) (uint32, error)
 }
 
 // DaemonTask mirrors daemon.Task to avoid import cycles.
@@ -184,4 +185,8 @@ func convertSnapshot(taskID string, ds DaemonSnapshot) Snapshot {
 
 func (a *DaemonAdapter) GetVMIP(ctx context.Context, taskID string) (string, error) {
 	return a.daemon.GetVMIP(ctx, taskID)
+}
+
+func (a *DaemonAdapter) GetVMCID(ctx context.Context, taskID string) (uint32, error) {
+	return a.daemon.GetVMCID(ctx, taskID)
 }
