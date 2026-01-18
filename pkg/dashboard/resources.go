@@ -95,18 +95,24 @@ func (rc *ResourceCollector) collectVMDirs(taskStatus map[string]string) []Resou
 
 // collectTapInterfaces runs ip link show and finds tap-* interfaces.
 func (rc *ResourceCollector) collectTapInterfaces(taskStatus map[string]string) []Resource {
-	var resources []Resource
-
 	// Build map of tap name -> task ID from VM directories
 	tapToTask := rc.buildTapToTaskMap()
 
 	cmd := exec.Command("ip", "-o", "link", "show")
 	output, err := cmd.Output()
 	if err != nil {
-		return resources
+		return []Resource{}
 	}
 
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	return parseTapOutput(string(output), tapToTask, taskStatus)
+}
+
+// parseTapOutput parses the output of "ip -o link show" and extracts tap interfaces.
+// This is separated from collectTapInterfaces for testability.
+func parseTapOutput(output string, tapToTask, taskStatus map[string]string) []Resource {
+	var resources []Resource
+
+	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
 		line := scanner.Text()
 		// Format: "N: tap-xxxxxxxx: <FLAGS> ..."
@@ -183,15 +189,21 @@ func (rc *ResourceCollector) collectZFSDatasets(taskStatus map[string]string) []
 
 // collectZFSDatasetsFromPath collects ZFS datasets from a specific path.
 func (rc *ResourceCollector) collectZFSDatasetsFromPath(basePath, resourceType string, taskStatus map[string]string) []Resource {
-	var resources []Resource
-
 	cmd := exec.Command("zfs", "list", "-H", "-r", "-d", "1", "-o", "name,used", basePath)
 	output, err := cmd.Output()
 	if err != nil {
-		return resources
+		return []Resource{}
 	}
 
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	return parseZfsOutput(string(output), basePath, resourceType, taskStatus)
+}
+
+// parseZfsOutput parses the output of "zfs list" and extracts dataset information.
+// This is separated from collectZFSDatasetsFromPath for testability.
+func parseZfsOutput(output, basePath, resourceType string, taskStatus map[string]string) []Resource {
+	var resources []Resource
+
+	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
 		line := scanner.Text()
 		fields := strings.Fields(line)

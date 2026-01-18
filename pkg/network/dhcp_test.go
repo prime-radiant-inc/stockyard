@@ -12,10 +12,10 @@ func TestNewDHCPServer(t *testing.T) {
 
 	srv, err := NewDHCPServer(DHCPConfig{
 		Bridge:     "flbr0",
-		Gateway:    "192.168.64.1",
-		RangeStart: "192.168.64.2",
-		RangeEnd:   "192.168.127.254",
-		Netmask:    "255.255.192.0",
+		Gateway:    "10.0.100.1",
+		RangeStart: "10.0.100.2",
+		RangeEnd:   "10.0.100.254",
+		Netmask:    "255.255.255.0",
 		LeaseTime:  "12h",
 		DNS:        "8.8.8.8",
 	}, dataDir)
@@ -38,11 +38,11 @@ func TestNewDHCPServer_ValidationErrors(t *testing.T) {
 		name   string
 		config DHCPConfig
 	}{
-		{"missing bridge", DHCPConfig{Gateway: "192.168.64.1", RangeStart: "192.168.64.2", RangeEnd: "192.168.127.254", Netmask: "255.255.192.0", LeaseTime: "12h"}},
-		{"missing gateway", DHCPConfig{Bridge: "flbr0", RangeStart: "192.168.64.2", RangeEnd: "192.168.127.254", Netmask: "255.255.192.0", LeaseTime: "12h"}},
-		{"missing range start", DHCPConfig{Bridge: "flbr0", Gateway: "192.168.64.1", RangeEnd: "192.168.127.254", Netmask: "255.255.192.0", LeaseTime: "12h"}},
-		{"missing range end", DHCPConfig{Bridge: "flbr0", Gateway: "192.168.64.1", RangeStart: "192.168.64.2", Netmask: "255.255.192.0", LeaseTime: "12h"}},
-		{"missing netmask", DHCPConfig{Bridge: "flbr0", Gateway: "192.168.64.1", RangeStart: "192.168.64.2", RangeEnd: "192.168.127.254", LeaseTime: "12h"}},
+		{"missing bridge", DHCPConfig{Gateway: "10.0.100.1", RangeStart: "10.0.100.2", RangeEnd: "10.0.100.254", Netmask: "255.255.255.0", LeaseTime: "12h"}},
+		{"missing gateway", DHCPConfig{Bridge: "flbr0", RangeStart: "10.0.100.2", RangeEnd: "10.0.100.254", Netmask: "255.255.255.0", LeaseTime: "12h"}},
+		{"missing range start", DHCPConfig{Bridge: "flbr0", Gateway: "10.0.100.1", RangeEnd: "10.0.100.254", Netmask: "255.255.255.0", LeaseTime: "12h"}},
+		{"missing range end", DHCPConfig{Bridge: "flbr0", Gateway: "10.0.100.1", RangeStart: "10.0.100.2", Netmask: "255.255.255.0", LeaseTime: "12h"}},
+		{"missing netmask", DHCPConfig{Bridge: "flbr0", Gateway: "10.0.100.1", RangeStart: "10.0.100.2", RangeEnd: "10.0.100.254", LeaseTime: "12h"}},
 	}
 
 	for _, tt := range tests {
@@ -60,10 +60,10 @@ func TestDHCPServer_WriteConfig(t *testing.T) {
 
 	srv, err := NewDHCPServer(DHCPConfig{
 		Bridge:     "flbr0",
-		Gateway:    "192.168.64.1",
-		RangeStart: "192.168.64.2",
-		RangeEnd:   "192.168.127.254",
-		Netmask:    "255.255.192.0",
+		Gateway:    "10.0.100.1",
+		RangeStart: "10.0.100.2",
+		RangeEnd:   "10.0.100.254",
+		Netmask:    "255.255.255.0",
 		LeaseTime:  "12h",
 		DNS:        "8.8.8.8",
 	}, dataDir)
@@ -85,8 +85,8 @@ func TestDHCPServer_WriteConfig(t *testing.T) {
 	expectedLines := []string{
 		"interface=flbr0",
 		"bind-interfaces",
-		"dhcp-range=192.168.64.2,192.168.127.254,255.255.192.0,12h",
-		"dhcp-option=option:router,192.168.64.1",
+		"dhcp-range=10.0.100.2,10.0.100.254,255.255.255.0,12h",
+		"dhcp-option=option:router,10.0.100.1",
 		"dhcp-option=option:dns-server,8.8.8.8",
 		"dhcp-authoritative",
 	}
@@ -103,10 +103,10 @@ func TestDHCPServer_StartStop_NoBinary(t *testing.T) {
 
 	srv, err := NewDHCPServer(DHCPConfig{
 		Bridge:     "flbr0",
-		Gateway:    "192.168.64.1",
-		RangeStart: "192.168.64.2",
-		RangeEnd:   "192.168.127.254",
-		Netmask:    "255.255.192.0",
+		Gateway:    "10.0.100.1",
+		RangeStart: "10.0.100.2",
+		RangeEnd:   "10.0.100.254",
+		Netmask:    "255.255.255.0",
 		LeaseTime:  "12h",
 		DNS:        "8.8.8.8",
 	}, dataDir)
@@ -128,10 +128,10 @@ func TestDHCPServer_IsRunning(t *testing.T) {
 
 	srv, err := NewDHCPServer(DHCPConfig{
 		Bridge:     "flbr0",
-		Gateway:    "192.168.64.1",
-		RangeStart: "192.168.64.2",
-		RangeEnd:   "192.168.127.254",
-		Netmask:    "255.255.192.0",
+		Gateway:    "10.0.100.1",
+		RangeStart: "10.0.100.2",
+		RangeEnd:   "10.0.100.254",
+		Netmask:    "255.255.255.0",
 		LeaseTime:  "12h",
 		DNS:        "8.8.8.8",
 	}, dataDir)
@@ -149,10 +149,10 @@ func TestDHCPServer_GetIPForMAC(t *testing.T) {
 
 	srv, err := NewDHCPServer(DHCPConfig{
 		Bridge:     "flbr0",
-		Gateway:    "192.168.64.1",
-		RangeStart: "192.168.64.2",
-		RangeEnd:   "192.168.127.254",
-		Netmask:    "255.255.192.0",
+		Gateway:    "10.0.100.1",
+		RangeStart: "10.0.100.2",
+		RangeEnd:   "10.0.100.254",
+		Netmask:    "255.255.255.0",
 		LeaseTime:  "12h",
 		DNS:        "8.8.8.8",
 	}, dataDir)
@@ -162,8 +162,8 @@ func TestDHCPServer_GetIPForMAC(t *testing.T) {
 
 	// Create a fake lease file
 	// Format: <expiry> <MAC> <IP> <hostname> <client-id>
-	leaseContent := `1737200000 02:7a:77:e8:87:9e 192.168.64.2 stockyard-abc123 *
-1737200000 02:8d:3f:70:39:a9 192.168.64.3 stockyard-def456 *
+	leaseContent := `1737200000 02:7a:77:e8:87:9e 10.0.100.2 stockyard-abc123 *
+1737200000 02:8d:3f:70:39:a9 10.0.100.3 stockyard-def456 *
 `
 	if err := os.WriteFile(srv.leasePath, []byte(leaseContent), 0644); err != nil {
 		t.Fatalf("failed to write lease file: %v", err)
@@ -174,8 +174,8 @@ func TestDHCPServer_GetIPForMAC(t *testing.T) {
 		wantIP   string
 		wantFind bool
 	}{
-		{"02:7a:77:e8:87:9e", "192.168.64.2", true},
-		{"02:8d:3f:70:39:a9", "192.168.64.3", true},
+		{"02:7a:77:e8:87:9e", "10.0.100.2", true},
+		{"02:8d:3f:70:39:a9", "10.0.100.3", true},
 		{"02:00:00:00:00:00", "", false},
 	}
 
@@ -197,10 +197,10 @@ func TestDHCPServer_GetIPForMAC_CaseInsensitive(t *testing.T) {
 
 	srv, err := NewDHCPServer(DHCPConfig{
 		Bridge:     "flbr0",
-		Gateway:    "192.168.64.1",
-		RangeStart: "192.168.64.2",
-		RangeEnd:   "192.168.127.254",
-		Netmask:    "255.255.192.0",
+		Gateway:    "10.0.100.1",
+		RangeStart: "10.0.100.2",
+		RangeEnd:   "10.0.100.254",
+		Netmask:    "255.255.255.0",
 		LeaseTime:  "12h",
 		DNS:        "8.8.8.8",
 	}, dataDir)
@@ -208,7 +208,7 @@ func TestDHCPServer_GetIPForMAC_CaseInsensitive(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	leaseContent := `1737200000 02:7a:77:e8:87:9e 192.168.64.2 vm1 *
+	leaseContent := `1737200000 02:7a:77:e8:87:9e 10.0.100.2 vm1 *
 `
 	if err := os.WriteFile(srv.leasePath, []byte(leaseContent), 0644); err != nil {
 		t.Fatalf("failed to write lease file: %v", err)
@@ -219,8 +219,8 @@ func TestDHCPServer_GetIPForMAC_CaseInsensitive(t *testing.T) {
 	if !found {
 		t.Error("expected to find MAC with uppercase")
 	}
-	if ip != "192.168.64.2" {
-		t.Errorf("got IP %s, want 192.168.64.2", ip)
+	if ip != "10.0.100.2" {
+		t.Errorf("got IP %s, want 10.0.100.2", ip)
 	}
 }
 
@@ -229,10 +229,10 @@ func TestDHCPServer_ListLeases(t *testing.T) {
 
 	srv, err := NewDHCPServer(DHCPConfig{
 		Bridge:     "flbr0",
-		Gateway:    "192.168.64.1",
-		RangeStart: "192.168.64.2",
-		RangeEnd:   "192.168.127.254",
-		Netmask:    "255.255.192.0",
+		Gateway:    "10.0.100.1",
+		RangeStart: "10.0.100.2",
+		RangeEnd:   "10.0.100.254",
+		Netmask:    "255.255.255.0",
 		LeaseTime:  "12h",
 		DNS:        "8.8.8.8",
 	}, dataDir)
@@ -240,8 +240,8 @@ func TestDHCPServer_ListLeases(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	leaseContent := `1737200000 02:7a:77:e8:87:9e 192.168.64.2 stockyard-abc123 *
-1737200000 02:8d:3f:70:39:a9 192.168.64.3 stockyard-def456 *
+	leaseContent := `1737200000 02:7a:77:e8:87:9e 10.0.100.2 stockyard-abc123 *
+1737200000 02:8d:3f:70:39:a9 10.0.100.3 stockyard-def456 *
 `
 	if err := os.WriteFile(srv.leasePath, []byte(leaseContent), 0644); err != nil {
 		t.Fatalf("failed to write lease file: %v", err)
@@ -259,7 +259,7 @@ func TestDHCPServer_ListLeases(t *testing.T) {
 	if leases[0].MAC != "02:7a:77:e8:87:9e" {
 		t.Errorf("unexpected MAC: %s", leases[0].MAC)
 	}
-	if leases[0].IP != "192.168.64.2" {
+	if leases[0].IP != "10.0.100.2" {
 		t.Errorf("unexpected IP: %s", leases[0].IP)
 	}
 	if leases[0].Hostname != "stockyard-abc123" {

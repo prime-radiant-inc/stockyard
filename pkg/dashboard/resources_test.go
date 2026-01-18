@@ -71,8 +71,8 @@ func TestResourceCollector_CollectDHCPLeases(t *testing.T) {
 
 	// Write sample lease file
 	// Format: <expiry_timestamp> <MAC> <IP> <hostname> <client-id>
-	leaseContent := "9999999999 aa:bb:cc:dd:ee:ff 192.168.64.100 vm-1 *\n"
-	leaseContent += "9999999999 11:22:33:44:55:66 192.168.64.101 vm-2 *\n"
+	leaseContent := "9999999999 aa:bb:cc:dd:ee:ff 10.0.100.100 vm-1 *\n"
+	leaseContent += "9999999999 11:22:33:44:55:66 10.0.100.101 vm-2 *\n"
 	if err := os.WriteFile(leaseFile, []byte(leaseContent), 0644); err != nil {
 		t.Fatal(err)
 	}
