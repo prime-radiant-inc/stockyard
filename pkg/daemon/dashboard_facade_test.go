@@ -184,3 +184,18 @@ func TestDashboardFacade_CreateSnapshot(t *testing.T) {
 		t.Errorf("expected 1 snapshot recorded, got %d", len(snaps))
 	}
 }
+
+func TestDashboardFacade_RestoreSnapshot_NotImplemented(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("failed to create state: %v", err)
+	}
+	defer state.Close()
+
+	facade := NewDashboardFacade(state, nil)
+
+	err = facade.RestoreSnapshot(context.Background(), "task-1", "task-1@snap1")
+	if err == nil {
+		t.Error("expected error for unimplemented restore")
+	}
+}

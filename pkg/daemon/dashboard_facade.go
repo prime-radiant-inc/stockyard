@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/obra/stockyard/pkg/dashboard"
@@ -93,6 +94,13 @@ func (f *DashboardFacade) CreateSnapshot(ctx context.Context, taskID, label stri
 		return "", err
 	}
 	return snapName, nil
+}
+
+// RestoreSnapshot restores a task to a previous snapshot.
+func (f *DashboardFacade) RestoreSnapshot(ctx context.Context, taskID, snapshotName string) error {
+	// For now, return not implemented error
+	// Full implementation requires ZFS rollback + VM restart
+	return fmt.Errorf("snapshot restore not yet implemented")
 }
 
 // convertToDashboardTask converts a daemon Task to a dashboard DaemonTask.
