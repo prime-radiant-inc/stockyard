@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/obra/stockyard/pkg/vsock"
@@ -65,7 +66,7 @@ func (ss *SnapshotService) resolveTaskID(vmID string) (string, error) {
 	// For unix fallback, vmID is "unix-client" (for testing)
 
 	if vmID == "unix-client" {
-		// In testing, just use the first running task
+		// Testing fallback
 		tasks, err := ss.daemon.state.ListTasks("running")
 		if err != nil || len(tasks) == 0 {
 			return "", fmt.Errorf("no running tasks")
@@ -73,20 +74,18 @@ func (ss *SnapshotService) resolveTaskID(vmID string) (string, error) {
 		return tasks[0].ID, nil
 	}
 
-	// Extract CID and look up in task table
-	// The VM CID is stored when we create the VM
 	if strings.HasPrefix(vmID, "cid-") {
-		// TODO: Implement CID to task ID mapping
-		// For now, scan running tasks
-		tasks, err := ss.daemon.state.ListTasks("running")
+		cidStr := strings.TrimPrefix(vmID, "cid-")
+		cid, err := strconv.ParseUint(cidStr, 10, 32)
+		if err != nil {
+			return "", fmt.Errorf("invalid CID: %s", vmID)
+		}
+
+		task, err := ss.daemon.state.GetTaskByCID(uint32(cid))
 		if err != nil {
 			return "", err
 		}
-		if len(tasks) == 0 {
-			return "", fmt.Errorf("no running tasks")
-		}
-		// TODO: Match by CID
-		return tasks[0].ID, nil
+		return task.ID, nil
 	}
 
 	return "", fmt.Errorf("unknown VM ID format: %s", vmID)

@@ -343,3 +343,183 @@ func TestState_StatusChangeCallback(t *testing.T) {
 		t.Errorf("expected new status running, got %s", receivedNew)
 	}
 }
+
+func TestState_GetTaskByCID(t *testing.T) {
+	s, err := NewStateInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	task := &Task{
+		ID:        "task-123",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "test",
+		Status:    "running",
+		CID:       100,
+		CreatedAt: time.Now(),
+	}
+	if err := s.CreateTask(task); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := s.GetTaskByCID(100)
+	if err != nil {
+		t.Fatalf("GetTaskByCID failed: %v", err)
+	}
+	if found.ID != "task-123" {
+		t.Errorf("expected task-123, got %s", found.ID)
+	}
+	if found.CID != 100 {
+		t.Errorf("expected CID 100, got %d", found.CID)
+	}
+}
+
+func TestState_GetTaskByCID_NotFound(t *testing.T) {
+	s, err := NewStateInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	_, err = s.GetTaskByCID(999)
+	if err == nil {
+		t.Error("expected error for non-existent CID")
+	}
+}
+
+func TestState_GetTaskByCID_NotRunning(t *testing.T) {
+	s, err := NewStateInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	// Create a stopped task with a CID
+	task := &Task{
+		ID:        "task-stopped",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "test",
+		Status:    "stopped",
+		CID:       150,
+		CreatedAt: time.Now(),
+	}
+	if err := s.CreateTask(task); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should not find it because it's not running
+	_, err = s.GetTaskByCID(150)
+	if err == nil {
+		t.Error("expected error for stopped task CID")
+	}
+}
+
+func TestState_UpdateTaskCID(t *testing.T) {
+	s, err := NewStateInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	task := &Task{
+		ID:        "task-123",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "test",
+		Status:    "running",
+		CID:       0,
+		CreatedAt: time.Now(),
+	}
+	if err := s.CreateTask(task); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.UpdateTaskCID("task-123", 200); err != nil {
+		t.Fatalf("UpdateTaskCID failed: %v", err)
+	}
+
+	found, err := s.GetTaskByCID(200)
+	if err != nil {
+		t.Fatalf("GetTaskByCID after update failed: %v", err)
+	}
+	if found.CID != 200 {
+		t.Errorf("expected CID 200, got %d", found.CID)
+	}
+}
+
+func TestState_UpdateTaskCID_NotFound(t *testing.T) {
+	s, err := NewStateInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	err = s.UpdateTaskCID("nonexistent", 100)
+	if err == nil {
+		t.Error("expected error for nonexistent task")
+	}
+}
+
+func TestState_CID_PreservedInGetTask(t *testing.T) {
+	s, err := NewStateInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	task := &Task{
+		ID:        "task-cid-get",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "test",
+		Status:    "running",
+		CID:       300,
+		CreatedAt: time.Now(),
+	}
+	if err := s.CreateTask(task); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetTask("task-cid-get")
+	if err != nil {
+		t.Fatalf("GetTask failed: %v", err)
+	}
+	if got.CID != 300 {
+		t.Errorf("expected CID 300, got %d", got.CID)
+	}
+}
+
+func TestState_CID_PreservedInListTasks(t *testing.T) {
+	s, err := NewStateInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	task := &Task{
+		ID:        "task-cid-list",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "test",
+		Status:    "running",
+		CID:       400,
+		CreatedAt: time.Now(),
+	}
+	if err := s.CreateTask(task); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks, err := s.ListTasks("running")
+	if err != nil {
+		t.Fatalf("ListTasks failed: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(tasks))
+	}
+	if tasks[0].CID != 400 {
+		t.Errorf("expected CID 400, got %d", tasks[0].CID)
+	}
+}
