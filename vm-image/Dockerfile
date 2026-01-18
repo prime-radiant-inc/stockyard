@@ -210,18 +210,21 @@ datasource:
     metadata_urls: ["http://169.254.169.254"]
 EOF
 
-# Configure network for Firecracker MMDS access
-# Static IP on 192.168.100.0/24 network, plus route to 169.254.169.254 for MMDS
-# The IP will be set by cloud-init, but we need the MMDS route to be available early
+# Configure network for DHCP with MMDS route
+# IP is obtained via DHCP from stockyard daemon's dnsmasq
+# MMDS route is added for Firecracker metadata access
 RUN mkdir -p /etc/systemd/network \
     && cat > /etc/systemd/network/10-eth0.network <<'EOF'
 [Match]
 Name=eth0
 
 [Network]
-Address=192.168.100.2/24
-Gateway=192.168.100.1
+DHCP=yes
 DNS=8.8.8.8
+
+[DHCP]
+UseDNS=false
+UseRoutes=true
 
 [Route]
 Destination=169.254.169.254/32
