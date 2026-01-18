@@ -87,9 +87,11 @@ func (s *grpcServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) (*
 }
 
 func (s *grpcServer) StopTask(ctx context.Context, req *pb.StopTaskRequest) (*pb.StopTaskResponse, error) {
-	// TODO: Stop VM via Flintlock
-	err := s.daemon.state.UpdateTaskStatus(req.TaskId, "stopped")
-	if err != nil {
+	if s.daemon.tasks == nil {
+		return nil, status.Error(codes.Unavailable, "task manager not initialized")
+	}
+
+	if err := s.daemon.tasks.StopTask(ctx, req.TaskId); err != nil {
 		if strings.Contains(err.Error(), "task not found") {
 			return nil, status.Error(codes.NotFound, "task not found")
 		}
@@ -99,18 +101,15 @@ func (s *grpcServer) StopTask(ctx context.Context, req *pb.StopTaskRequest) (*pb
 }
 
 func (s *grpcServer) DestroyTask(ctx context.Context, req *pb.DestroyTaskRequest) (*pb.DestroyTaskResponse, error) {
-	// TODO: Destroy VM via Flintlock
-	// Destroy ZFS dataset
-	if err := s.daemon.zfs.DestroyDataset(ctx, req.TaskId); err != nil {
-		// Log but don't fail - dataset may not exist
-		fmt.Printf("Warning: failed to destroy ZFS dataset: %v\n", err)
+	if s.daemon.tasks == nil {
+		return nil, status.Error(codes.Unavailable, "task manager not initialized")
 	}
 
-	if err := s.daemon.state.DeleteTask(req.TaskId); err != nil {
+	if err := s.daemon.tasks.DestroyTask(ctx, req.TaskId); err != nil {
 		if strings.Contains(err.Error(), "task not found") {
 			return nil, status.Error(codes.NotFound, "task not found")
 		}
-		return nil, status.Errorf(codes.Internal, "failed to delete task: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to destroy task: %v", err)
 	}
 	return &pb.DestroyTaskResponse{}, nil
 }
