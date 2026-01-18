@@ -16,15 +16,23 @@
         [x-cloak] { display: none !important; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900 h-screen flex flex-col">
+<body class="bg-gray-50 text-gray-900 h-screen flex flex-col"
+      x-data="{showSidebar: window.innerWidth >= 1024}"
+      @resize.window="showSidebar = window.innerWidth >= 1024">
     <!-- Top bar -->
     <header class="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
         <div class="flex items-center gap-4">
+            <!-- Mobile hamburger menu -->
+            <button @click="showSidebar = !showSidebar" class="lg:hidden p-2 hover:bg-gray-100 rounded">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+            </button>
             <a href="/" class="p-2 hover:bg-gray-100 rounded flex items-center gap-2 text-gray-600 hover:text-gray-900">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
                 </svg>
-                <span class="text-sm">Back to Fleet</span>
+                <span class="text-sm hidden sm:inline">Back to Fleet</span>
             </a>
             <span class="font-semibold text-lg">Stockyard</span>
         </div>
@@ -43,6 +51,7 @@
     </header>
 
     <div class="flex flex-1 overflow-hidden">
+        {{template "mobile-backdrop"}}
         <!-- Sidebar -->
         {{template "sidebar" .}}
 
@@ -779,5 +788,6 @@ document.addEventListener('alpine:initialized', () => {
         }));
     });
     </script>
+    {{template "mobile-nav" .}}
 </body>
 </html>

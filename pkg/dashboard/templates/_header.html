@@ -1,0 +1,23 @@
+{{define "header"}}
+<header class="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+        <!-- Mobile hamburger menu -->
+        <button @click="showSidebar = !showSidebar" class="lg:hidden p-2 hover:bg-gray-100 rounded">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+        </button>
+        <span class="font-semibold text-lg">Stockyard</span>
+    </div>
+    <div class="flex items-center gap-2">
+        {{if .UserAvatar}}
+        <img src="{{.UserAvatar}}" alt="{{.User}}" class="w-8 h-8 rounded-full">
+        {{else}}
+        <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-bold uppercase">
+            {{if .User}}{{slice .User 0 1}}{{else}}?{{end}}
+        </div>
+        {{end}}
+        <span class="text-sm text-gray-600 hidden sm:inline">{{.User}}</span>
+    </div>
+</header>
+{{end}}

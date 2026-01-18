@@ -1,40 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Code}} - Stockyard</title>
-    <script src="/static/js/htmx.min.js"></script>
-    <script defer src="/static/js/alpine.min.js"></script>
-    <script src="/static/js/tailwind.min.js"></script>
-    <style>
-        [x-cloak] { display: none !important; }
-    </style>
-</head>
-<body class="bg-gray-50 text-gray-900 h-screen flex flex-col">
-    <!-- Top bar -->
-    <header class="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
-        <div class="flex items-center gap-4">
-            <span class="font-semibold text-lg">Stockyard</span>
-        </div>
-        <div class="flex items-center gap-2">
-            {{if .UserAvatar}}
-            <img src="{{.UserAvatar}}" alt="{{.User}}" class="w-8 h-8 rounded-full">
-            {{else}}
-            <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-bold uppercase">
-                {{if .User}}{{slice .User 0 1}}{{else}}?{{end}}
-            </div>
-            {{end}}
-            <span class="text-sm text-gray-600 hidden sm:inline">{{.User}}</span>
-        </div>
-    </header>
-
-    <div class="flex flex-1 overflow-hidden">
-        <!-- Sidebar -->
-        {{template "sidebar" .}}
-
-        <!-- Main content -->
-        <main class="flex-1 overflow-auto p-6">
+{{template "layout-start" .}}
             <div class="max-w-lg mx-auto mt-16">
                 <div class="text-center">
                     <h1 class="text-6xl font-bold text-gray-300">{{.Code}}</h1>
@@ -50,7 +14,4 @@
                     </div>
                 </div>
             </div>
-        </main>
-    </div>
-</body>
-</html>
+{{template "layout-end" .}}
