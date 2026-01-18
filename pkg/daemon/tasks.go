@@ -103,14 +103,20 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 	// Create ZFS dataset for workspace
 	if err := tm.daemon.zfs.CreateDataset(ctx, taskID); err != nil {
+		if tm.daemon.IPPool() != nil {
+			tm.daemon.IPPool().Release(taskID)
+		}
 		return nil, fmt.Errorf("failed to create ZFS dataset: %w", err)
 	}
 
 	// Get workspace mountpoint
 	workspacePath, err := tm.daemon.zfs.GetMountpoint(ctx, taskID)
 	if err != nil {
-		// Clean up dataset on failure
+		// Clean up dataset and IP on failure
 		tm.daemon.zfs.DestroyDataset(ctx, taskID)
+		if tm.daemon.IPPool() != nil {
+			tm.daemon.IPPool().Release(taskID)
+		}
 		return nil, fmt.Errorf("failed to get workspace mountpoint: %w", err)
 	}
 
@@ -172,6 +178,9 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	cloudInitData, err := cloudInitCfg.Generate()
 	if err != nil {
 		tm.daemon.zfs.DestroyDataset(ctx, taskID)
+		if tm.daemon.IPPool() != nil {
+			tm.daemon.IPPool().Release(taskID)
+		}
 		return nil, fmt.Errorf("failed to generate cloud-init config: %w", err)
 	}
 
@@ -213,6 +222,9 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		vm, err := tm.fc.CreateVM(ctx, vmCfg)
 		if err != nil {
 			tm.daemon.zfs.DestroyDataset(ctx, taskID)
+			if tm.daemon.IPPool() != nil {
+				tm.daemon.IPPool().Release(taskID)
+			}
 			return nil, fmt.Errorf("failed to create VM: %w", err)
 		}
 		vmID = vm.ID
@@ -248,6 +260,9 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			tm.fc.DeleteVM(ctx, "stockyard", vmID)
 		}
 		tm.daemon.zfs.DestroyDataset(ctx, taskID)
+		if tm.daemon.IPPool() != nil {
+			tm.daemon.IPPool().Release(taskID)
+		}
 		return nil, fmt.Errorf("failed to record task: %w", err)
 	}
 
