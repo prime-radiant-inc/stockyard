@@ -137,6 +137,52 @@ func TestGRPCServer_DestroyTask_TaskNotFound(t *testing.T) {
 	}
 }
 
+func TestGRPCServer_RestartTask_NoTaskManager(t *testing.T) {
+	s := newTestGRPCServer(t, false)
+
+	_, err := s.RestartTask(context.Background(), &pb.RestartTaskRequest{
+		TaskId: "test-task",
+	})
+
+	if err == nil {
+		t.Fatal("expected error when task manager not initialized")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got: %v", err)
+	}
+
+	if st.Code() != codes.Unavailable {
+		t.Errorf("expected Unavailable code, got %v", st.Code())
+	}
+
+	if st.Message() != "task manager not initialized" {
+		t.Errorf("unexpected message: %s", st.Message())
+	}
+}
+
+func TestGRPCServer_RestartTask_TaskNotFound(t *testing.T) {
+	s := newTestGRPCServer(t, true)
+
+	_, err := s.RestartTask(context.Background(), &pb.RestartTaskRequest{
+		TaskId: "nonexistent-task",
+	})
+
+	if err == nil {
+		t.Fatal("expected error for nonexistent task")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got: %v", err)
+	}
+
+	if st.Code() != codes.NotFound {
+		t.Errorf("expected NotFound code, got %v", st.Code())
+	}
+}
+
 func TestGRPCServer_CreateTask_NoTaskManager(t *testing.T) {
 	s := newTestGRPCServer(t, false)
 
