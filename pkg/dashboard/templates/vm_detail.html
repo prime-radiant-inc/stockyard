@@ -101,12 +101,18 @@
                 <!-- Resources Panel -->
                 <div class="bg-white rounded-lg shadow border border-gray-200"
                      x-data="{
-                         cpu: '--',
-                         memory: '--',
-                         memoryMax: '--',
+                         cpu: 0,
+                         memory: 0,
+                         memoryMax: 0,
+                         memoryDisplay: '--',
                          network: '--',
                          disk: '--',
-                         connected: false
+                         connected: false,
+                         expanded: false,
+                         cpuHistory: [],
+                         memHistory: [],
+                         netHistory: [],
+                         maxHistory: 30
                      }"
                      x-init="
                          const ws = new WebSocket('ws://' + window.location.host + '/ws?task={{.Task.ID}}');
@@ -115,38 +121,125 @@
                          ws.onmessage = (e) => {
                              const data = JSON.parse(e.data);
                              if (data.type === 'metrics') {
-                                 cpu = data.metrics.cpu_percent.toFixed(1) + '%';
-                                 memory = formatBytes(data.metrics.memory_bytes);
-                                 memoryMax = formatBytes(data.metrics.memory_max_bytes);
-                                 network = formatBytes(data.metrics.network_rx_bytes + data.metrics.network_tx_bytes) + '/s';
+                                 cpu = data.metrics.cpu_percent;
+                                 memory = data.metrics.memory_bytes;
+                                 memoryMax = data.metrics.memory_max_bytes;
+                                 memoryDisplay = formatBytes(data.metrics.memory_bytes);
+                                 const netTotal = data.metrics.network_rx_bytes + data.metrics.network_tx_bytes;
+                                 network = formatBytes(netTotal) + '/s';
                                  disk = formatBytes(data.metrics.disk_used_bytes);
+
+                                 cpuHistory.push(cpu);
+                                 if (cpuHistory.length > maxHistory) cpuHistory.shift();
+
+                                 const memPercent = memoryMax > 0 ? (memory / memoryMax) * 100 : 0;
+                                 memHistory.push(memPercent);
+                                 if (memHistory.length > maxHistory) memHistory.shift();
+
+                                 netHistory.push(Math.min(netTotal / 1048576, 100));
+                                 if (netHistory.length > maxHistory) netHistory.shift();
+
+                                 if (window.cpuSparkline) {
+                                     window.cpuSparkline.data.labels = cpuHistory.map((_, i) => i);
+                                     window.cpuSparkline.data.datasets[0].data = cpuHistory;
+                                     window.cpuSparkline.update('none');
+                                 }
+                                 if (window.memSparkline) {
+                                     window.memSparkline.data.labels = memHistory.map((_, i) => i);
+                                     window.memSparkline.data.datasets[0].data = memHistory;
+                                     window.memSparkline.update('none');
+                                 }
+                                 if (window.netSparkline) {
+                                     window.netSparkline.data.labels = netHistory.map((_, i) => i);
+                                     window.netSparkline.data.datasets[0].data = netHistory;
+                                     window.netSparkline.update('none');
+                                 }
                              }
                          };
                      ">
                     <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                         <h2 class="text-lg font-medium">Resources</h2>
-                        <span x-show="connected" class="text-xs text-green-600 flex items-center gap-1">
-                            <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                            Live
-                        </span>
+                        <div class="flex items-center gap-2">
+                            <span x-show="connected" class="text-xs text-green-600 flex items-center gap-1">
+                                <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                Live
+                            </span>
+                            <button @click="expanded = !expanded" class="text-xs text-gray-500 hover:text-gray-700">
+                                <span x-text="expanded ? 'Collapse' : 'Expand'"></span>
+                            </button>
+                        </div>
                     </div>
                     <div class="p-4">
-                        <div class="grid grid-cols-4 gap-4">
+                        <!-- Compact view -->
+                        <div x-show="!expanded" class="grid grid-cols-4 gap-4">
                             <div class="text-center p-3 bg-gray-50 rounded-lg">
-                                <div class="text-2xl font-semibold text-gray-900" x-text="cpu">--</div>
-                                <div class="text-sm text-gray-500">CPU</div>
+                                <div class="text-xl font-bold" :class="cpu > 80 ? 'text-red-600' : cpu > 50 ? 'text-yellow-600' : 'text-gray-900'"
+                                     x-text="cpu.toFixed(1) + '%'">--</div>
+                                <div class="text-xs text-gray-500">CPU</div>
+                                <div class="h-8 mt-2">
+                                    <canvas id="cpuSparkline" class="w-full h-full"></canvas>
+                                </div>
                             </div>
                             <div class="text-center p-3 bg-gray-50 rounded-lg">
-                                <div class="text-2xl font-semibold text-gray-900" x-text="memory">--</div>
-                                <div class="text-sm text-gray-500">Memory</div>
+                                <div class="text-xl font-bold" :class="memoryMax > 0 && (memory / memoryMax) > 0.8 ? 'text-red-600' : memoryMax > 0 && (memory / memoryMax) > 0.5 ? 'text-yellow-600' : 'text-gray-900'"
+                                     x-text="memoryDisplay">--</div>
+                                <div class="text-xs text-gray-500">Memory</div>
+                                <div class="h-8 mt-2">
+                                    <canvas id="memSparkline" class="w-full h-full"></canvas>
+                                </div>
                             </div>
                             <div class="text-center p-3 bg-gray-50 rounded-lg">
-                                <div class="text-2xl font-semibold text-gray-900" x-text="network">--</div>
-                                <div class="text-sm text-gray-500">Network</div>
+                                <div class="text-xl font-bold text-gray-900" x-text="network">--</div>
+                                <div class="text-xs text-gray-500">Network</div>
+                                <div class="h-8 mt-2">
+                                    <canvas id="netSparkline" class="w-full h-full"></canvas>
+                                </div>
                             </div>
                             <div class="text-center p-3 bg-gray-50 rounded-lg">
-                                <div class="text-2xl font-semibold text-gray-900" x-text="disk">--</div>
-                                <div class="text-sm text-gray-500">Disk</div>
+                                <div class="text-xl font-bold text-gray-900" x-text="disk">--</div>
+                                <div class="text-xs text-gray-500">Disk</div>
+                            </div>
+                        </div>
+                        <!-- Expanded view -->
+                        <div x-show="expanded" class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="p-4 bg-gray-50 rounded-lg">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-sm font-medium text-gray-700">CPU</span>
+                                        <span class="text-lg font-bold" :class="cpu > 80 ? 'text-red-600' : cpu > 50 ? 'text-yellow-600' : 'text-gray-900'"
+                                              x-text="cpu.toFixed(1) + '%'">--</span>
+                                    </div>
+                                    <div class="h-24">
+                                        <canvas id="cpuSparklineExpanded" class="w-full h-full"></canvas>
+                                    </div>
+                                </div>
+                                <div class="p-4 bg-gray-50 rounded-lg">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-sm font-medium text-gray-700">Memory</span>
+                                        <span class="text-lg font-bold" :class="memoryMax > 0 && (memory / memoryMax) > 0.8 ? 'text-red-600' : memoryMax > 0 && (memory / memoryMax) > 0.5 ? 'text-yellow-600' : 'text-gray-900'"
+                                              x-text="memoryDisplay">--</span>
+                                    </div>
+                                    <div class="h-24">
+                                        <canvas id="memSparklineExpanded" class="w-full h-full"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="p-4 bg-gray-50 rounded-lg">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-sm font-medium text-gray-700">Network</span>
+                                        <span class="text-lg font-bold text-gray-900" x-text="network">--</span>
+                                    </div>
+                                    <div class="h-24">
+                                        <canvas id="netSparklineExpanded" class="w-full h-full"></canvas>
+                                    </div>
+                                </div>
+                                <div class="p-4 bg-gray-50 rounded-lg">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-sm font-medium text-gray-700">Disk</span>
+                                        <span class="text-lg font-bold text-gray-900" x-text="disk">--</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -320,63 +413,43 @@
     </script>
 
     <script>
-document.addEventListener('alpine:init', () => {
-    Alpine.data('sparkline', (canvasId, color = '#10b981') => ({
-        chart: null,
-        data: [],
-        maxPoints: 30,
-
-        init() {
-            const ctx = document.getElementById(canvasId);
-            if (!ctx) return;
-
-            this.chart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        data: [],
-                        borderColor: color,
-                        backgroundColor: color + '20',
-                        fill: true,
-                        tension: 0.4,
-                        pointRadius: 0,
-                        borderWidth: 2,
-                    }]
+document.addEventListener('alpine:initialized', () => {
+    const createSparkline = (id, color) => {
+        const ctx = document.getElementById(id);
+        if (!ctx) return null;
+        return new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    borderColor: color,
+                    backgroundColor: color + '20',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    borderWidth: 1.5
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: { enabled: false }
-                    },
-                    scales: {
-                        x: { display: false },
-                        y: {
-                            display: false,
-                            min: 0,
-                            max: 100
-                        }
-                    },
-                    animation: { duration: 0 }
-                }
-            });
-        },
-
-        addPoint(value) {
-            this.data.push(value);
-            if (this.data.length > this.maxPoints) {
-                this.data.shift();
+                scales: {
+                    x: { display: false },
+                    y: { display: false, min: 0, max: 100 }
+                },
+                animation: false
             }
+        });
+    };
 
-            if (this.chart) {
-                this.chart.data.labels = this.data.map((_, i) => i);
-                this.chart.data.datasets[0].data = this.data;
-                this.chart.update('none');
-            }
-        }
-    }));
+    window.cpuSparkline = createSparkline('cpuSparkline', '#10b981');
+    window.memSparkline = createSparkline('memSparkline', '#3b82f6');
+    window.netSparkline = createSparkline('netSparkline', '#8b5cf6');
 });
     </script>
 </body>
