@@ -25,45 +25,65 @@ func TestMetricsPoller_StartsAndStops(t *testing.T) {
 
 func TestMetricsPoller_CleanupTask(t *testing.T) {
 	poller := NewMetricsPoller(nil, nil, 100*time.Millisecond)
+	poller.Start()
+	defer poller.Stop()
 
-	// Simulate adding state for a task
-	poller.vmStateMu.Lock()
-	poller.vmState["task-1"] = &vmMetricsState{
+	// Simulate adding a task with both reader and state (as StartTaskMetrics does)
+	poller.mu.Lock()
+	poller.state["task-1"] = &vmMetricsState{
 		lastVCPUExits: 100,
 		lastTimestamp: time.Now(),
 		memoryBytes:   2147483648,
-		vcpuCount:     2,
 	}
-	poller.vmStateMu.Unlock()
+	// Add a nil reader to simulate the reader entry existing
+	// (In real usage, StartTaskMetrics creates an actual reader)
+	poller.readers["task-1"] = nil
+	poller.mu.Unlock()
 
 	// Verify state exists
-	poller.vmStateMu.Lock()
-	_, exists := poller.vmState["task-1"]
-	poller.vmStateMu.Unlock()
-	if !exists {
+	poller.mu.Lock()
+	_, stateExists := poller.state["task-1"]
+	_, readerExists := poller.readers["task-1"]
+	poller.mu.Unlock()
+	if !stateExists {
 		t.Error("expected state to exist before cleanup")
 	}
+	if !readerExists {
+		t.Error("expected reader entry to exist before cleanup")
+	}
 
-	// Cleanup
+	// Cleanup (which now calls StopTaskMetrics)
 	poller.CleanupTask("task-1")
 
-	// Verify state removed
-	poller.vmStateMu.Lock()
-	_, exists = poller.vmState["task-1"]
-	poller.vmStateMu.Unlock()
-	if exists {
+	// Verify state and reader removed
+	poller.mu.Lock()
+	_, stateExists = poller.state["task-1"]
+	_, readerExists = poller.readers["task-1"]
+	poller.mu.Unlock()
+	if stateExists {
 		t.Error("expected state to be removed after cleanup")
+	}
+	if readerExists {
+		t.Error("expected reader entry to be removed after cleanup")
 	}
 }
 
 func TestMetricsPoller_StateInitialization(t *testing.T) {
 	poller := NewMetricsPoller(nil, nil, 100*time.Millisecond)
 
-	if poller.vmState == nil {
-		t.Error("vmState should be initialized")
+	if poller.state == nil {
+		t.Error("state should be initialized")
 	}
 
-	if len(poller.vmState) != 0 {
-		t.Error("vmState should be empty initially")
+	if len(poller.state) != 0 {
+		t.Error("state should be empty initially")
+	}
+
+	if poller.readers == nil {
+		t.Error("readers should be initialized")
+	}
+
+	if len(poller.readers) != 0 {
+		t.Error("readers should be empty initially")
 	}
 }

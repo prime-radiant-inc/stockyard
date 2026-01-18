@@ -164,6 +164,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 	// Create VM if firecracker client is available
 	var vmID string
+	var vmMetricsPath string
 	if tm.fc != nil {
 		vmCfg := &firecracker.VMConfig{
 			ID:                taskID,
@@ -187,6 +188,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			return nil, fmt.Errorf("failed to create VM: %w", err)
 		}
 		vmID = vm.ID
+		vmMetricsPath = vm.MetricsPath
 	}
 
 	// Determine command string for storage
@@ -229,6 +231,12 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		tm.daemon.logTailer.TailFile(taskID, "stderr", filepath.Join(vmDir, "stderr.log"))
 	}
 
+	// Start metrics collection if dashboard is enabled
+	if tm.daemon.metricsPoller != nil && vmMetricsPath != "" {
+		memoryBytes := int64(req.MemoryMB) * 1024 * 1024
+		tm.daemon.metricsPoller.StartTaskMetrics(taskID, vmMetricsPath, memoryBytes)
+	}
+
 	return task, nil
 }
 
@@ -249,6 +257,7 @@ func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
 	}
 
 	// Start VM using existing workspace and rootfs
+	var vmInfo *firecracker.VMInfo
 	if tm.fc != nil && task.VMID != "" {
 		// Build minimal config for restarting - use defaults for CPU/memory
 		vmCfg := &firecracker.VMConfig{
@@ -258,7 +267,8 @@ func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
 			MemoryMB:  1024,   // Default
 		}
 
-		_, err := tm.fc.StartVM(ctx, vmCfg)
+		var err error
+		vmInfo, err = tm.fc.StartVM(ctx, vmCfg)
 		if err != nil {
 			// Revert status on failure
 			tm.daemon.state.UpdateTaskStatus(taskID, "failed")
@@ -276,6 +286,13 @@ func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
 		vmDir := filepath.Join(tm.daemon.cfg.ZFS.VMsPath, task.VMID)
 		tm.daemon.logTailer.TailFile(taskID, "stdout", filepath.Join(vmDir, "stdout.log"))
 		tm.daemon.logTailer.TailFile(taskID, "stderr", filepath.Join(vmDir, "stderr.log"))
+	}
+
+	// Start metrics collection if dashboard is enabled
+	if tm.daemon.metricsPoller != nil && vmInfo != nil && vmInfo.MetricsPath != "" {
+		// Use default memory (1024MB) since we don't store it in the task
+		memoryBytes := int64(1024) * 1024 * 1024
+		tm.daemon.metricsPoller.StartTaskMetrics(taskID, vmInfo.MetricsPath, memoryBytes)
 	}
 
 	// Record activity event for VM started
@@ -296,6 +313,11 @@ func (tm *TaskManager) StopTask(ctx context.Context, taskID string) error {
 	// Stop log tailing
 	if tm.daemon.logTailer != nil {
 		tm.daemon.logTailer.StopTask(taskID)
+	}
+
+	// Stop metrics collection
+	if tm.daemon.metricsPoller != nil {
+		tm.daemon.metricsPoller.StopTaskMetrics(taskID)
 	}
 
 	// Stop VM if firecracker client is available and task has a VM
@@ -331,6 +353,11 @@ func (tm *TaskManager) FailTask(ctx context.Context, taskID string, reason strin
 		tm.daemon.logTailer.StopTask(taskID)
 	}
 
+	// Stop metrics collection
+	if tm.daemon.metricsPoller != nil {
+		tm.daemon.metricsPoller.StopTaskMetrics(taskID)
+	}
+
 	// Update task status to failed
 	if err := tm.daemon.state.UpdateTaskStatus(taskID, "failed"); err != nil {
 		return err
@@ -354,6 +381,11 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 	// Stop log tailing
 	if tm.daemon.logTailer != nil {
 		tm.daemon.logTailer.StopTask(taskID)
+	}
+
+	// Stop metrics collection
+	if tm.daemon.metricsPoller != nil {
+		tm.daemon.metricsPoller.StopTaskMetrics(taskID)
 	}
 
 	// Delete VM if firecracker client is available and task has a VM
