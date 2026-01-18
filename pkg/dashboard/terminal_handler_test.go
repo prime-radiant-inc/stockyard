@@ -99,10 +99,16 @@ func TestTerminalHandler_createVsockSession(t *testing.T) {
 		defaultUser: "mooby",
 	}
 
-	// CID 0 is invalid and won't connect
-	_, err := handler.createVsockSession(0, "testuser", 80, 24)
+	// Empty vsock path is invalid
+	_, err := handler.createVsockSession("", "testuser", 80, 24)
 	if err == nil {
-		t.Error("expected error for CID 0")
+		t.Error("expected error for empty vsock path")
+	}
+
+	// Non-existent vsock path should fail
+	_, err = handler.createVsockSession("/nonexistent/vsock.sock", "testuser", 80, 24)
+	if err == nil {
+		t.Error("expected error for non-existent vsock path")
 	}
 }
 

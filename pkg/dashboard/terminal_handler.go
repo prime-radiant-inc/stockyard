@@ -1,16 +1,17 @@
 package dashboard
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/mdlayher/vsock"
 	"github.com/obra/stockyard/pkg/shell"
 )
 
@@ -82,8 +83,8 @@ func (h *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the VM's CID for vsock connection
-	cid, err := h.daemon.GetVMCID(r.Context(), taskID)
+	// Get the VM's vsock path for connection
+	vsockPath, err := h.daemon.GetVsockPath(r.Context(), taskID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("VM not available: %v", err), http.StatusServiceUnavailable)
 		return
@@ -98,7 +99,7 @@ func (h *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	// Create vsock session
-	session, err := h.createVsockSession(cid, user, cols, rows)
+	session, err := h.createVsockSession(vsockPath, user, cols, rows)
 	if err != nil {
 		h.sendError(conn, fmt.Sprintf("Failed to connect: %v", err))
 		return
@@ -106,8 +107,8 @@ func (h *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	session.TaskID = taskID
 	defer session.Close()
 
-	log.Printf("terminal: vsock session started for task %s (CID %d, user %s, %dx%d)",
-		taskID, cid, user, cols, rows)
+	log.Printf("terminal: vsock session started for task %s (path %s, user %s, %dx%d)",
+		taskID, vsockPath, user, cols, rows)
 
 	// Handle bidirectional I/O
 	h.handleVsockSession(conn, session)
@@ -128,20 +129,40 @@ func extractTaskID(path string) string {
 	return ""
 }
 
-// createVsockSession creates a new vsock connection to the VM.
-func (h *TerminalHandler) createVsockSession(cid uint32, user string, cols, rows int) (*VsockSession, error) {
-	if cid == 0 {
-		return nil, fmt.Errorf("invalid CID: 0")
+// createVsockSession creates a new vsock connection to the VM via Firecracker's UDS.
+// Firecracker vsock uses a Unix socket with CONNECT protocol, not AF_VSOCK.
+func (h *TerminalHandler) createVsockSession(vsockPath string, user string, cols, rows int) (*VsockSession, error) {
+	if vsockPath == "" {
+		return nil, fmt.Errorf("vsock path is empty")
 	}
 
-	conn, err := vsock.Dial(cid, shell.ShellPort, nil)
+	// Connect to Firecracker's vsock UDS
+	conn, err := net.Dial("unix", vsockPath)
 	if err != nil {
-		return nil, fmt.Errorf("vsock dial CID %d: %w", cid, err)
+		return nil, fmt.Errorf("dial vsock UDS %s: %w", vsockPath, err)
+	}
+
+	// Send CONNECT command with shell port
+	connectCmd := fmt.Sprintf("CONNECT %d\n", shell.ShellPort)
+	if _, err := conn.Write([]byte(connectCmd)); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("send CONNECT: %w", err)
+	}
+
+	// Read OK response (format: "OK <port>\n")
+	reader := bufio.NewReader(conn)
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("read CONNECT response: %w", err)
+	}
+	if !strings.HasPrefix(response, "OK ") {
+		conn.Close()
+		return nil, fmt.Errorf("vsock CONNECT failed: %s", strings.TrimSpace(response))
 	}
 
 	session := &VsockSession{
 		ID:   uuid.New().String(),
-		CID:  cid,
 		User: user,
 		conn: conn,
 	}
