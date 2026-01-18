@@ -26,17 +26,123 @@
         {{end}}
     </div>
 
-    <!-- Quick metrics grid -->
+    <!-- Quick metrics with sparklines -->
     <div class="grid grid-cols-2 gap-2">
-        <div class="p-3 bg-white rounded-lg border border-gray-200 text-center">
-            <div class="text-lg font-bold text-gray-900" id="preview-cpu">--</div>
-            <div class="text-xs text-gray-500">CPU</div>
+        <div class="p-3 bg-white rounded-lg border border-gray-200">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-xs text-gray-500">CPU</span>
+                <span class="text-sm font-bold text-gray-900" id="preview-cpu">--</span>
+            </div>
+            <div class="h-8">
+                <canvas id="preview-cpu-sparkline"></canvas>
+            </div>
         </div>
-        <div class="p-3 bg-white rounded-lg border border-gray-200 text-center">
-            <div class="text-lg font-bold text-gray-900" id="preview-memory">--</div>
-            <div class="text-xs text-gray-500">Memory</div>
+        <div class="p-3 bg-white rounded-lg border border-gray-200">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-xs text-gray-500">Memory</span>
+                <span class="text-sm font-bold text-gray-900" id="preview-mem">--</span>
+            </div>
+            <div class="h-8">
+                <canvas id="preview-mem-sparkline"></canvas>
+            </div>
         </div>
     </div>
+
+    <script>
+    (function() {
+        const taskId = '{{.Task.ID}}';
+        const cpuData = [];
+        const memData = [];
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        const createMiniSparkline = (id, color) => {
+            const ctx = document.getElementById(id);
+            if (!ctx) return null;
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        borderColor: color,
+                        backgroundColor: 'transparent',
+                        tension: 0.4,
+                        pointRadius: 0,
+                        borderWidth: 1.5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: false }
+                    },
+                    scales: {
+                        x: { display: false },
+                        y: { display: false, min: 0, max: 100 }
+                    },
+                    animation: false
+                }
+            });
+        };
+
+        const cpuChart = createMiniSparkline('preview-cpu-sparkline', '#10b981');
+        const memChart = createMiniSparkline('preview-mem-sparkline', '#3b82f6');
+
+        const handler = (e) => {
+            if (e.detail.taskId === taskId) {
+                const m = e.detail.metrics;
+
+                // Update CPU display and sparkline
+                document.getElementById('preview-cpu').textContent = m.cpu_percent.toFixed(0) + '%';
+                cpuData.push(m.cpu_percent);
+                if (cpuData.length > 20) cpuData.shift();
+                if (cpuChart) {
+                    cpuChart.data.labels = cpuData.map((_, i) => i);
+                    cpuChart.data.datasets[0].data = cpuData;
+                    cpuChart.update('none');
+                }
+
+                // Update memory display and sparkline
+                document.getElementById('preview-mem').textContent = formatBytes(m.memory_bytes);
+                const memPct = m.memory_max_bytes > 0 ? (m.memory_bytes / m.memory_max_bytes) * 100 : 0;
+                memData.push(memPct);
+                if (memData.length > 20) memData.shift();
+                if (memChart) {
+                    memChart.data.labels = memData.map((_, i) => i);
+                    memChart.data.datasets[0].data = memData;
+                    memChart.update('none');
+                }
+            }
+        };
+
+        window.addEventListener('preview-metrics', handler);
+
+        // Cleanup when this partial is replaced
+        const observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                for (const node of mutation.removedNodes) {
+                    if (node.contains && node.contains(document.getElementById('preview-cpu-sparkline'))) {
+                        window.removeEventListener('preview-metrics', handler);
+                        if (cpuChart) cpuChart.destroy();
+                        if (memChart) memChart.destroy();
+                        observer.disconnect();
+                        return;
+                    }
+                }
+            }
+        });
+        observer.observe(document.getElementById('vm-preview-content'), { childList: true });
+    })();
+    </script>
 
     <!-- Details -->
     <div class="bg-white rounded-lg border border-gray-200 p-3">

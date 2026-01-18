@@ -7,6 +7,7 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         [x-cloak] { display: none !important; }
     </style>
@@ -30,6 +31,11 @@
                   if (data.new_status === 'destroyed' || data.old_status === '') {
                       setTimeout(() => location.reload(), 500);
                   }
+              } else if (data.type === 'metrics') {
+                  // Dispatch metrics to preview panel sparklines
+                  window.dispatchEvent(new CustomEvent('preview-metrics', {
+                      detail: { taskId: data.task_id, metrics: data.metrics }
+                  }));
               }
           };
       ">
