@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -38,7 +39,11 @@ func TestServer_WithMockDaemon(t *testing.T) {
 }
 
 type MockDaemon struct {
-	tasks []Task
+	tasks        []Task
+	snapshots    []Snapshot
+	stoppedIDs   []string
+	destroyedIDs []string
+	err          error // For simulating errors
 }
 
 func (m *MockDaemon) ListTasks(ctx context.Context) ([]Task, error) {
@@ -56,11 +61,13 @@ func (m *MockDaemon) GetTask(ctx context.Context, id string) (*Task, error) {
 }
 
 func (m *MockDaemon) StopTask(ctx context.Context, id string) error {
-	return nil
+	m.stoppedIDs = append(m.stoppedIDs, id)
+	return m.err
 }
 
 func (m *MockDaemon) DestroyTask(ctx context.Context, id string) error {
-	return nil
+	m.destroyedIDs = append(m.destroyedIDs, id)
+	return m.err
 }
 
 func (m *MockDaemon) ListSnapshots(ctx context.Context, taskID string) ([]Snapshot, error) {
@@ -165,6 +172,9 @@ func TestServer_StopVM(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", w.Code)
 	}
+	if len(mock.stoppedIDs) != 1 || mock.stoppedIDs[0] != "task-1" {
+		t.Errorf("expected StopTask called with task-1, got %v", mock.stoppedIDs)
+	}
 }
 
 func TestServer_DestroyVM(t *testing.T) {
@@ -180,5 +190,42 @@ func TestServer_DestroyVM(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", w.Code)
+	}
+	if len(mock.destroyedIDs) != 1 || mock.destroyedIDs[0] != "task-1" {
+		t.Errorf("expected DestroyTask called with task-1, got %v", mock.destroyedIDs)
+	}
+}
+
+func TestServer_StopVM_Error(t *testing.T) {
+	mock := &MockDaemon{
+		tasks: []Task{{ID: "task-1", Status: "running"}},
+		err:   errors.New("stop failed"),
+	}
+	srv := NewServer(mock)
+
+	req := httptest.NewRequest("POST", "/api/vm/task-1/stop", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", w.Code)
+	}
+}
+
+func TestServer_DestroyVM_Error(t *testing.T) {
+	mock := &MockDaemon{
+		tasks: []Task{{ID: "task-1", Status: "running"}},
+		err:   errors.New("destroy failed"),
+	}
+	srv := NewServer(mock)
+
+	req := httptest.NewRequest("DELETE", "/api/vm/task-1", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", w.Code)
 	}
 }
