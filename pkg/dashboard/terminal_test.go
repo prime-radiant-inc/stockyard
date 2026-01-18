@@ -56,3 +56,52 @@ func TestTerminalResizeMessage(t *testing.T) {
 		t.Errorf("expected 120x40, got %dx%d", msg.Cols, msg.Rows)
 	}
 }
+
+func TestTerminalManager_CreateSession(t *testing.T) {
+	tm := NewTerminalManager()
+
+	session := &TerminalSession{
+		ID:       "test-session",
+		TaskID:   "task-123",
+		Hostname: "stockyard-task-123",
+		User:     "vscode",
+	}
+
+	tm.AddSession(session)
+
+	found := tm.GetSession("test-session")
+	if found == nil {
+		t.Fatal("expected to find session")
+	}
+	if found.TaskID != "task-123" {
+		t.Errorf("expected task-123, got %s", found.TaskID)
+	}
+}
+
+func TestTerminalManager_RemoveSession(t *testing.T) {
+	tm := NewTerminalManager()
+
+	session := &TerminalSession{
+		ID:     "test-session",
+		TaskID: "task-123",
+	}
+	tm.AddSession(session)
+	tm.RemoveSession("test-session")
+
+	if tm.GetSession("test-session") != nil {
+		t.Error("expected session to be removed")
+	}
+}
+
+func TestTerminalManager_GetSessionsByTask(t *testing.T) {
+	tm := NewTerminalManager()
+
+	tm.AddSession(&TerminalSession{ID: "s1", TaskID: "task-1"})
+	tm.AddSession(&TerminalSession{ID: "s2", TaskID: "task-1"})
+	tm.AddSession(&TerminalSession{ID: "s3", TaskID: "task-2"})
+
+	sessions := tm.GetSessionsByTask("task-1")
+	if len(sessions) != 2 {
+		t.Errorf("expected 2 sessions for task-1, got %d", len(sessions))
+	}
+}
