@@ -1,9 +1,10 @@
-// pkg/client/resolve.go
 package client
 
-import "os"
+import (
+	"os"
 
-const DefaultSocketPath = "/var/run/stockyard/stockyard.sock"
+	"github.com/obra/stockyard/pkg/config"
+)
 
 // ResolveURL determines the daemon URL using the following precedence:
 // 1. flagURL (from --url flag)
@@ -27,5 +28,5 @@ func ResolveURL(flagURL, configSocketPath string) string {
 	}
 
 	// 4. Default
-	return "unix://" + DefaultSocketPath
+	return "unix://" + config.DefaultSocketPath
 }

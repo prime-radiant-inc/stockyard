@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -44,13 +43,7 @@ func NewFromURL(url string) (*Client, error) {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	// For unix sockets, use the full URL; for TCP, just the host:port
-	target := addr
-	if strings.HasPrefix(addr, "unix://") {
-		target = addr
-	}
-
-	conn, err := grpc.NewClient(target, opts...)
+	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to daemon: %w", err)
 	}
@@ -63,18 +56,7 @@ func NewFromURL(url string) (*Client, error) {
 
 // New creates a new client connected to the daemon at the given Unix socket path.
 func New(socketPath string) (*Client, error) {
-	conn, err := grpc.NewClient(
-		"unix://"+socketPath,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to daemon: %w", err)
-	}
-
-	return &Client{
-		conn:   conn,
-		client: pb.NewStockyardClient(conn),
-	}, nil
+	return NewFromURL("unix://" + socketPath)
 }
 
 // NewWithDialer creates a new client with a custom dialer (useful for testing).

@@ -20,6 +20,7 @@ func TestParseURL(t *testing.T) {
 		{"bare host:port defaults to grpc", "myhost:65432", "myhost:65432", false, false},
 		{"empty string", "", "", false, true},
 		{"invalid scheme", "http://localhost:65432", "", false, true},
+		{"bare hostname without port", "myhost", "", false, true},
 	}
 
 	for _, tt := range tests {
@@ -99,5 +100,19 @@ func TestNewFromURL_EmptyURL(t *testing.T) {
 	_, err := NewFromURL("")
 	if err == nil {
 		t.Error("expected error for empty URL")
+	}
+}
+
+func TestParseURL_BareHostnameError(t *testing.T) {
+	_, _, err := ParseURL("stockyard-server")
+	if err == nil {
+		t.Error("expected error for bare hostname without port")
+	}
+	// Error should suggest adding a port
+	if !strings.Contains(err.Error(), "must include port") {
+		t.Errorf("expected helpful error about missing port, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "stockyard-server:65433") {
+		t.Errorf("expected example with port in error, got: %v", err)
 	}
 }

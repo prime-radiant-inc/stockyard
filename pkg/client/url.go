@@ -40,5 +40,5 @@ func ParseURL(rawURL string) (addr string, tls bool, err error) {
 		return rawURL, false, nil
 	}
 
-	return "", false, fmt.Errorf("invalid URL format: %s", rawURL)
+	return "", false, fmt.Errorf("invalid URL: %s (must include port, e.g., %s:65433)", rawURL, rawURL)
 }

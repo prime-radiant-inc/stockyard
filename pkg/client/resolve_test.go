@@ -1,9 +1,10 @@
-// pkg/client/resolve_test.go
 package client
 
 import (
 	"os"
 	"testing"
+
+	"github.com/obra/stockyard/pkg/config"
 )
 
 func TestResolveURL(t *testing.T) {
@@ -42,7 +43,7 @@ func TestResolveURL(t *testing.T) {
 			flagURL:    "",
 			envURL:     "",
 			configPath: "",
-			want:       "unix:///var/run/stockyard/stockyard.sock",
+			want:       "unix://" + config.DefaultSocketPath,
 		},
 	}
 

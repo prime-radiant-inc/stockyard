@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 )
 
+// DefaultSocketPath is the default Unix socket path for the daemon.
+const DefaultSocketPath = "/var/run/stockyard/stockyard.sock"
+
 type Config struct {
 	InstanceID  string            `json:"instance_id"`
 	Secrets     SecretsConfig     `json:"secrets"`
@@ -65,7 +68,7 @@ func DefaultConfig() *Config {
 			Vault:    "Stockyard",
 		},
 		Daemon: DaemonConfig{
-			SocketPath: "/var/run/stockyard/stockyard.sock",
+			SocketPath: DefaultSocketPath,
 			DataDir:    "/var/lib/stockyard",
 		},
 		ZFS: ZFSConfig{
