@@ -23,6 +23,7 @@ var (
 	gcEverything bool
 	gcForce      bool
 	gcDryRun     bool
+	gcVerbose    bool
 )
 
 var gcCmd = &cobra.Command{
@@ -62,6 +63,7 @@ Note: This command will NOT clean up running VMs - they must be stopped first.`,
 			dryRun:       gcDryRun || (!gcAll && !gcOrphans),
 			cleanAll:     gcAll,
 			cleanOrphans: gcOrphans,
+			verbose:      gcVerbose,
 		}
 
 		// Get task list from daemon
@@ -123,6 +125,7 @@ type GarbageCollector struct {
 	cleanAll     bool
 	cleanOrphans bool
 	client       *client.Client
+	verbose      bool
 }
 
 func (gc *GarbageCollector) loadTasks() error {
@@ -171,6 +174,9 @@ func (gc *GarbageCollector) findResources() {
 func (gc *GarbageCollector) findOrphanVMDirs() {
 	entries, err := os.ReadDir(gc.vmDir)
 	if err != nil {
+		if gc.verbose {
+			fmt.Fprintf(os.Stderr, "Warning: could not read VM directory %s: %v\n", gc.vmDir, err)
+		}
 		return
 	}
 
@@ -215,6 +221,9 @@ func (gc *GarbageCollector) findOrphanDatasetsIn(basePath, resourceType string) 
 	cmd := exec.Command("zfs", "list", "-H", "-r", "-o", "name", basePath)
 	output, err := cmd.Output()
 	if err != nil {
+		if gc.verbose {
+			fmt.Fprintf(os.Stderr, "Warning: could not list ZFS datasets %s: %v\n", basePath, err)
+		}
 		return
 	}
 
@@ -253,6 +262,9 @@ func (gc *GarbageCollector) findOrphanTaps() {
 	cmd := exec.Command("ip", "-o", "link", "show")
 	output, err := cmd.Output()
 	if err != nil {
+		if gc.verbose {
+			fmt.Fprintf(os.Stderr, "Warning: could not list network interfaces: %v\n", err)
+		}
 		return
 	}
 
@@ -290,6 +302,9 @@ func (gc *GarbageCollector) buildTapToTaskMap() map[string]string {
 	tapToTask := make(map[string]string)
 	entries, err := os.ReadDir(gc.vmDir)
 	if err != nil {
+		if gc.verbose {
+			fmt.Fprintf(os.Stderr, "Warning: could not read VM directory for tap mapping: %v\n", err)
+		}
 		return tapToTask
 	}
 
@@ -472,5 +487,6 @@ func init() {
 	gcCmd.Flags().BoolVar(&gcEverything, "everything", false, "Clean up both stopped tasks and orphans")
 	gcCmd.Flags().BoolVarP(&gcForce, "force", "f", false, "Skip confirmation prompts")
 	gcCmd.Flags().BoolVar(&gcDryRun, "dry-run", false, "Show what would be cleaned without making changes")
+	gcCmd.Flags().BoolVarP(&gcVerbose, "verbose", "v", false, "Show verbose output including warnings")
 	rootCmd.AddCommand(gcCmd)
 }

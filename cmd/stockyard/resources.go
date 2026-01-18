@@ -46,6 +46,8 @@ type DHCPLease struct {
 	Hostname string
 }
 
+var resourcesVerbose bool
+
 var resourcesCmd = &cobra.Command{
 	Use:   "resources",
 	Short: "Show all stockyard resources",
@@ -65,6 +67,7 @@ DHCP leases, and identify orphaned resources that are not tracked by the daemon.
 			taskIDs:   make(map[string]string),
 			taskInfo:  make(map[string]*TaskInfo),
 			macToIP:   make(map[string]string),
+			verbose:   resourcesVerbose,
 		}
 
 		// Load DHCP leases first (for IP lookup)
@@ -72,7 +75,9 @@ DHCP leases, and identify orphaned resources that are not tracked by the daemon.
 
 		// Try to get tasks from daemon (optional - might not be running)
 		if err := rc.collectFromDaemon(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: could not connect to daemon: %v\n", err)
+			if resourcesVerbose {
+				fmt.Fprintf(os.Stderr, "Warning: could not connect to daemon: %v\n", err)
+			}
 		}
 
 		// Collect from filesystem and ZFS
@@ -96,11 +101,15 @@ type ResourceCollector struct {
 	resources []Resource
 	leases    []DHCPLease
 	macToIP   map[string]string // MAC -> IP mapping from DHCP leases
+	verbose   bool
 }
 
 func (rc *ResourceCollector) loadDHCPLeases() {
 	file, err := os.Open(rc.leaseFile)
 	if err != nil {
+		if rc.verbose {
+			fmt.Fprintf(os.Stderr, "Warning: could not open DHCP lease file: %v\n", err)
+		}
 		return
 	}
 	defer file.Close()
@@ -174,6 +183,9 @@ func (rc *ResourceCollector) collectFromDaemon() error {
 func (rc *ResourceCollector) collectVMDirs() {
 	entries, err := os.ReadDir(rc.vmDir)
 	if err != nil {
+		if rc.verbose {
+			fmt.Fprintf(os.Stderr, "Warning: could not read VM directory %s: %v\n", rc.vmDir, err)
+		}
 		return
 	}
 
@@ -227,6 +239,9 @@ func (rc *ResourceCollector) collectZFSDatasetsFromPath(basePath, resourceType s
 	cmd := exec.Command("zfs", "list", "-H", "-r", "-o", "name,used", basePath)
 	output, err := cmd.Output()
 	if err != nil {
+		if rc.verbose {
+			fmt.Fprintf(os.Stderr, "Warning: could not list ZFS datasets %s: %v\n", basePath, err)
+		}
 		return
 	}
 
@@ -278,6 +293,9 @@ func (rc *ResourceCollector) collectTapInterfaces() {
 	cmd := exec.Command("ip", "-o", "link", "show")
 	output, err := cmd.Output()
 	if err != nil {
+		if rc.verbose {
+			fmt.Fprintf(os.Stderr, "Warning: could not list network interfaces: %v\n", err)
+		}
 		return
 	}
 
@@ -320,6 +338,9 @@ func (rc *ResourceCollector) buildTapToTaskMap() map[string]string {
 	tapToTask := make(map[string]string)
 	entries, err := os.ReadDir(rc.vmDir)
 	if err != nil {
+		if rc.verbose {
+			fmt.Fprintf(os.Stderr, "Warning: could not read VM directory for tap mapping: %v\n", err)
+		}
 		return tapToTask
 	}
 
@@ -467,5 +488,6 @@ func formatDuration(d time.Duration) string {
 }
 
 func init() {
+	resourcesCmd.Flags().BoolVarP(&resourcesVerbose, "verbose", "v", false, "Show verbose output including warnings")
 	rootCmd.AddCommand(resourcesCmd)
 }
