@@ -171,6 +171,14 @@ func (c *CloudInitConfig) buildProfileScript() string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
+// MMDSNetworkConfig holds static IP configuration for MMDS.
+type MMDSNetworkConfig struct {
+	IP      string `json:"ip"`
+	Netmask string `json:"netmask"`
+	Gateway string `json:"gateway"`
+	DNS     string `json:"dns"`
+}
+
 // MMDSMetadata holds metadata fields for MMDS.
 type MMDSMetadata struct {
 	InstanceID        string
@@ -178,11 +186,12 @@ type MMDSMetadata struct {
 	TailscaleAuthKey  string
 	SSHAuthorizedKeys []string
 	UserData          string
+	NetworkConfig     *MMDSNetworkConfig // Static IP configuration (optional)
 }
 
 // BuildMMDSData constructs the MMDS data structure for cloud-init.
 func BuildMMDSData(meta MMDSMetadata) map[string]interface{} {
-	metaData := map[string]string{
+	metaData := map[string]interface{}{
 		"instance-id":    meta.InstanceID,
 		"local-hostname": meta.Hostname,
 	}
@@ -191,6 +200,14 @@ func BuildMMDSData(meta MMDSMetadata) map[string]interface{} {
 	}
 	if len(meta.SSHAuthorizedKeys) > 0 {
 		metaData["ssh-authorized-keys"] = strings.Join(meta.SSHAuthorizedKeys, "\n")
+	}
+	if meta.NetworkConfig != nil {
+		metaData["network-config"] = map[string]interface{}{
+			"ip":      meta.NetworkConfig.IP,
+			"netmask": meta.NetworkConfig.Netmask,
+			"gateway": meta.NetworkConfig.Gateway,
+			"dns":     meta.NetworkConfig.DNS,
+		}
 	}
 	return map[string]interface{}{
 		"latest": map[string]interface{}{
