@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"fmt"
 	"io"
 	"sync"
 
@@ -89,4 +90,16 @@ func (tm *TerminalManager) GetSessionsByTask(taskID string) []*TerminalSession {
 		}
 	}
 	return result
+}
+
+// Resize changes the terminal size.
+func (ts *TerminalSession) Resize(cols, rows int) error {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+
+	if ts.session == nil {
+		return fmt.Errorf("session not connected")
+	}
+
+	return ts.session.WindowChange(rows, cols)
 }
