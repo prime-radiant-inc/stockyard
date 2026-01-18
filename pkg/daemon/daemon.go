@@ -32,6 +32,7 @@ type Daemon struct {
 	tasks     *TaskManager
 	snapshots *SnapshotService
 	dhcp      *network.DHCPServer
+	ipPool    *network.IPPool
 
 	listener     net.Listener
 	grpcListener net.Listener // TCP listener for remote gRPC (optional)
@@ -116,6 +117,20 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 		return nil, fmt.Errorf("failed to create DHCP server: %w", err)
 	}
 	d.dhcp = dhcpServer
+
+	// Initialize IP pool for static VM IPs
+	// Use the gateway and a /24 prefix (standard for VM networks)
+	ipPool, err := network.NewIPPoolFromGateway(cfg.Firecracker.VMGateway, 24)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create IP pool: %w", err)
+	}
+	// Persist allocations to survive daemon restarts
+	ipPool.SetPersistPath(filepath.Join(cfg.Daemon.DataDir, "ip_pool.json"))
+	if err := ipPool.LoadState(); err != nil {
+		// Log warning but continue - fresh state is fine
+		fmt.Printf("Warning: could not load IP pool state: %v\n", err)
+	}
+	d.ipPool = ipPool
 
 	return d, nil
 }
@@ -404,6 +419,11 @@ func (d *Daemon) SetTaskManager(tm *TaskManager) {
 // DHCP returns the daemon's DHCP server.
 func (d *Daemon) DHCP() *network.DHCPServer {
 	return d.dhcp
+}
+
+// IPPool returns the daemon's IP pool for static VM IP allocation.
+func (d *Daemon) IPPool() *network.IPPool {
+	return d.ipPool
 }
 
 // ActivityFeed returns the activity feed for recording events.
