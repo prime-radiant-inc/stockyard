@@ -1,5 +1,8 @@
 [Unit]
 Description=Stockyard VM Initialization
+# Only wait for network - tailscaled with userspace networking takes too long
+# to signal ready via sd_notify. We'll wait for it in the script instead.
+# network-online.target now has 10s timeout (see Dockerfile drop-in)
 After=network-online.target
 Wants=network-online.target
 

@@ -54,6 +54,7 @@ RUN apt-get update && apt-get install -y \
     vim \
     less \
     tmux \
+    bc \
     && rm -rf /var/lib/apt/lists/*
 
 # yq (YAML processor) - install from GitHub releases
@@ -125,9 +126,14 @@ RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | tee 
     && apt-get install -y tailscale \
     && rm -rf /var/lib/apt/lists/*
 
-# Configure tailscaled for Firecracker (no netfilter support)
-# Use userspace networking mode since the kernel lacks iptables/nftables
-RUN echo 'FLAGS="--tun=userspace-networking"' >> /etc/default/tailscaled
+# Configure tailscaled for Firecracker
+# DISABLE auto-start - stockyard-init.sh will start tailscaled AFTER DNS is configured
+# This prevents tailscaled from hanging while trying to resolve control.tailscale.com
+RUN systemctl disable tailscaled.service 2>/dev/null || true
+
+# Configure tailscaled to use userspace networking (required for Firecracker's old kernel)
+# The 4.14.x kernel doesn't support TUN properly, so we force userspace networking mode
+RUN sed -i 's/^FLAGS=""/FLAGS="--tun=userspace-networking"/' /etc/default/tailscaled
 
 # ============================================================================
 # Section 4: Coding Agents
@@ -230,6 +236,17 @@ EOF
 # Enable systemd-networkd
 RUN systemctl enable systemd-networkd 2>/dev/null || true
 
+# Configure systemd-networkd-wait-online for fast boot:
+# - Only wait for eth0 (the only interface in Firecracker VMs)
+# - Use 10s timeout instead of default 120s
+# - Accept "degraded" state (has IP but maybe no default route yet)
+RUN mkdir -p /etc/systemd/system/systemd-networkd-wait-online.service.d \
+    && cat > /etc/systemd/system/systemd-networkd-wait-online.service.d/fast-boot.conf <<'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/lib/systemd/systemd-networkd-wait-online --interface=eth0 --timeout=10 --operational-state=degraded
+EOF
+
 # Disable systemd-resolved (causes boot delays and DNS issues in Firecracker)
 # resolv.conf is set up by stockyard-init.sh at boot time
 RUN systemctl disable systemd-resolved 2>/dev/null || true
@@ -238,9 +255,15 @@ RUN systemctl disable systemd-resolved 2>/dev/null || true
 # Section 8: MicroVM Kernel
 # ============================================================================
 
-# Download a prebuilt kernel compatible with Firecracker/Cloud Hypervisor
+# Download the official Firecracker 6.1 kernel from AWS CI bucket
+# The old 4.14 quickstart kernel had issues with tailscaled and modern Go programs
+# Kernel 6.1 is the latest LTS with proper virtio support for Firecracker
+# Note: This kernel is also extracted by convert-to-rootfs.sh for host-side use
+ARG KERNEL_VERSION=6.1.155
+ARG KERNEL_SHA256=e41c7048bd2475e7e788153823fcb9166a7e0b78c4c443bd6446d015fa735f53
 RUN curl -fsSL -o /boot/vmlinuz \
-    https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/x86_64/kernels/vmlinux.bin
+    https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/x86_64/vmlinux-${KERNEL_VERSION} \
+    && echo "${KERNEL_SHA256}  /boot/vmlinuz" | sha256sum -c -
 
 # ============================================================================
 # Section 9: Finalize

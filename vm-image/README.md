@@ -27,7 +27,9 @@ make clean    # Remove build artifacts
 make help     # Show all options
 ```
 
-Output: `output/rootfs.ext4` (~8GB)
+Output:
+- `output/rootfs.ext4` (~8GB) - Root filesystem
+- `output/vmlinux.bin` (~45MB) - Firecracker kernel
 
 ### Configuration Options
 
@@ -74,6 +76,31 @@ ROOTFS_SIZE=20G sudo ./convert-to-rootfs.sh
 ### User
 - `mooby` with passwordless sudo (configurable via `VM_USER`)
 
+## Kernel
+
+The image includes the **official Firecracker 6.1 LTS kernel** from the AWS CI bucket:
+
+| Property | Value |
+|----------|-------|
+| Version | 6.1.155 |
+| URL | `https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/x86_64/vmlinux-6.1.155` |
+| SHA256 | `e41c7048bd2475e7e788153823fcb9166a7e0b78c4c443bd6446d015fa735f53` |
+
+The checksum is verified during Docker build. To upgrade the kernel, update `KERNEL_VERSION` and `KERNEL_SHA256` in the Dockerfile.
+
+**Why 6.1?**
+- Latest LTS kernel with Firecracker support
+- Proper virtio drivers for disk and network
+- Required for modern Go programs (including tailscaled)
+- The older 4.14 quickstart kernel causes Go runtime issues
+
+**Installation:**
+```bash
+sudo cp output/vmlinux.bin /var/lib/stockyard/vmlinux.bin
+```
+
+**Note:** tailscaled uses userspace networking mode (`--tun=userspace-networking`) since the Firecracker kernel configuration doesn't include TUN device support. This is configured in `/etc/default/tailscaled`.
+
 ## VM Configuration
 
 The image expects metadata via Firecracker MMDS at `169.254.169.254`:
@@ -102,3 +129,31 @@ tank/stockyard/
 - Automatic cleanup on VM deletion
 
 The daemon auto-imports the base image on first startup from `Firecracker.RootfsPath` config.
+
+### Initial Setup
+
+After building, install both the rootfs and kernel:
+
+```bash
+# Build the image
+make
+
+# Install rootfs to ZFS (for copy-on-write cloning)
+sudo cp output/rootfs.ext4 /tank/stockyard/images/rootfs/rootfs.ext4
+sudo zfs snapshot tank/stockyard/images/rootfs@base
+
+# Install kernel
+sudo cp output/vmlinux.bin /var/lib/stockyard/vmlinux.bin
+```
+
+### Updating
+
+When rebuilding the image, destroy the old snapshot first:
+
+```bash
+make
+sudo zfs destroy tank/stockyard/images/rootfs@base
+sudo cp output/rootfs.ext4 /tank/stockyard/images/rootfs/rootfs.ext4
+sudo zfs snapshot tank/stockyard/images/rootfs@base
+sudo cp output/vmlinux.bin /var/lib/stockyard/vmlinux.bin
+```
