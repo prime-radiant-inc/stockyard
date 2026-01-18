@@ -44,13 +44,17 @@ type Daemon struct {
 	statusBroadcaster *dashboard.StatusBroadcaster
 }
 
-// dashboardLogSink adapts LogStreamer to the LogSink interface.
+// dashboardLogSink adapts LogStreamer and LogHistory to the LogSink interface.
 type dashboardLogSink struct {
-	streamer *dashboard.LogStreamer
+	streamer   *dashboard.LogStreamer
+	logHistory *dashboard.LogHistory
 }
 
 func (s *dashboardLogSink) SendLog(taskID, stream, line string) {
 	s.streamer.SendLog(taskID, stream, line)
+	if s.logHistory != nil {
+		s.logHistory.AddLine(taskID, stream, line)
+	}
 }
 
 // dashboardMetricsSink adapts MetricsCollector to the MetricsSink interface.
@@ -191,7 +195,10 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 		// Log streamer and tailer
 		logStreamer := dashboard.NewLogStreamer(hub)
-		d.logTailer = NewLogTailer(&dashboardLogSink{logStreamer})
+		d.logTailer = NewLogTailer(&dashboardLogSink{
+			streamer:   logStreamer,
+			logHistory: d.dashboardServer.LogHistory(),
+		})
 
 		// Metrics collector and poller (with alert checking)
 		metricsCollector := dashboard.NewMetricsCollector(hub, d.dashboardServer.AlertChecker())
