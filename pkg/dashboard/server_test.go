@@ -235,6 +235,22 @@ func TestServer_DestroyVM_Error(t *testing.T) {
 	}
 }
 
+func TestServer_HasWebSocketEndpoint(t *testing.T) {
+	mock := &MockDaemon{}
+	srv := NewServer(mock)
+
+	// Just verify the route exists - actual WS testing done in websocket_test.go
+	req := httptest.NewRequest("GET", "/ws", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	// Should get "Bad Request" because we're not upgrading
+	if w.Code == http.StatusNotFound {
+		t.Error("expected /ws endpoint to exist")
+	}
+}
+
 func TestServer_FleetPage_WithAdapter(t *testing.T) {
 	// Use MockRealDaemon from adapter_test.go to test full integration flow:
 	// MockRealDaemon -> DaemonAdapter -> Server -> HTML output

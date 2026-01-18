@@ -14,14 +14,19 @@ type Server struct {
 	mux       *http.ServeMux
 	daemon    DaemonAPI
 	templates *template.Template
+	hub       *Hub
 }
 
 // NewServer creates a new dashboard HTTP server.
 // The daemon parameter will be used for API calls (nil allowed for testing).
 func NewServer(daemon DaemonAPI) *Server {
+	hub := NewHub()
+	go hub.Run()
+
 	s := &Server{
 		mux:    http.NewServeMux(),
 		daemon: daemon,
+		hub:    hub,
 	}
 	// Load templates, but don't fail if they're not available (for testing)
 	s.templates, _ = LoadTemplates()
@@ -31,6 +36,7 @@ func NewServer(daemon DaemonAPI) *Server {
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/health", s.handleHealth)
+	s.mux.HandleFunc("/ws", s.handleWebSocket)
 	s.mux.HandleFunc("/api/vm/", s.handleAPIVM)
 	s.mux.HandleFunc("/vm/", s.handleVMDetail)
 	s.mux.HandleFunc("/", s.handleFleet)
@@ -206,5 +212,22 @@ func (s *Server) handleAPIVM(w http.ResponseWriter, r *http.Request) {
 
 	default:
 		http.NotFound(w, r)
+	}
+}
+
+func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	handler := NewWebSocketHandler(s.hub)
+	handler.ServeHTTP(w, r)
+}
+
+// Hub returns the WebSocket hub for broadcasting messages.
+func (s *Server) Hub() *Hub {
+	return s.hub
+}
+
+// Close shuts down the server and its resources.
+func (s *Server) Close() {
+	if s.hub != nil {
+		s.hub.Stop()
 	}
 }
