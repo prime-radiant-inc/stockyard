@@ -168,3 +168,36 @@ func (a *APIClient) GetMetrics(ctx context.Context) (*FirecrackerMetrics, error)
 
 	return &metrics, nil
 }
+
+// MachineConfig represents the VM's machine configuration.
+type MachineConfig struct {
+	VCPUCount  int32 `json:"vcpu_count"`
+	MemSizeMib int32 `json:"mem_size_mib"`
+	SMT        bool  `json:"smt"`
+}
+
+// GetMachineConfig fetches the machine configuration from the Firecracker API.
+func (a *APIClient) GetMachineConfig(ctx context.Context) (*MachineConfig, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/machine-config", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("get machine-config failed: %s - %s", resp.Status, string(body))
+	}
+
+	var config MachineConfig
+	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
+		return nil, fmt.Errorf("decode machine-config: %w", err)
+	}
+
+	return &config, nil
+}

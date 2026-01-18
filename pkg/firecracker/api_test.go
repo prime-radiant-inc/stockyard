@@ -428,3 +428,41 @@ func TestAPIClient_GetMetrics(t *testing.T) {
 		t.Errorf("expected tx_bytes 512, got %d", metrics.Net.TxBytes)
 	}
 }
+
+func TestAPIClient_GetMachineConfig(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+	defer listener.Close()
+
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/machine-config" && r.Method == "GET" {
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"vcpu_count":   2,
+					"mem_size_mib": 2048,
+					"smt":          false,
+				})
+				return
+			}
+			http.NotFound(w, r)
+		}),
+	}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewAPIClient(socketPath)
+	config, err := client.GetMachineConfig(context.Background())
+	if err != nil {
+		t.Fatalf("GetMachineConfig failed: %v", err)
+	}
+
+	if config.VCPUCount != 2 {
+		t.Errorf("expected vcpu_count 2, got %d", config.VCPUCount)
+	}
+	if config.MemSizeMib != 2048 {
+		t.Errorf("expected mem_size_mib 2048, got %d", config.MemSizeMib)
+	}
+}

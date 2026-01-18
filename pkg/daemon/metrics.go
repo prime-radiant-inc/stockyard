@@ -16,14 +16,24 @@ type MetricsSink interface {
 	SendMetrics(taskID string, metrics dashboard.VMMetrics)
 }
 
+// vmMetricsState tracks previous metrics for delta calculations.
+type vmMetricsState struct {
+	lastVCPUExits int64     // Total vcpu exits (in + out)
+	lastTimestamp time.Time // When we last collected
+	memoryBytes   int64     // Configured memory (cached)
+	vcpuCount     int32     // Configured vcpus (cached)
+}
+
 // MetricsPoller periodically collects metrics from running VMs.
 type MetricsPoller struct {
-	daemon   *Daemon
-	sink     MetricsSink
-	interval time.Duration
-	running  bool
-	stop     chan struct{}
-	mu       sync.RWMutex
+	daemon    *Daemon
+	sink      MetricsSink
+	interval  time.Duration
+	running   bool
+	stop      chan struct{}
+	mu        sync.RWMutex
+	vmState   map[string]*vmMetricsState // taskID -> state
+	vmStateMu sync.Mutex
 }
 
 // NewMetricsPoller creates a new metrics poller.
@@ -33,6 +43,7 @@ func NewMetricsPoller(daemon *Daemon, sink MetricsSink, interval time.Duration) 
 		sink:     sink,
 		interval: interval,
 		stop:     make(chan struct{}),
+		vmState:  make(map[string]*vmMetricsState),
 	}
 }
 
@@ -95,6 +106,8 @@ func (p *MetricsPoller) collectMetrics() {
 		return
 	}
 
+	now := time.Now()
+
 	for _, task := range tasks {
 		if task.Status != "running" || task.VMID == "" {
 			continue
@@ -109,18 +122,66 @@ func (p *MetricsPoller) collectMetrics() {
 			continue
 		}
 
-		// Fetch metrics from Firecracker API
 		apiClient := firecracker.NewAPIClient(apiSocketPath)
+
+		// Get or create state for this VM
+		p.vmStateMu.Lock()
+		state, exists := p.vmState[task.ID]
+		if !exists {
+			state = &vmMetricsState{}
+			p.vmState[task.ID] = state
+		}
+		p.vmStateMu.Unlock()
+
+		// Fetch machine config if we don't have it cached
+		if state.memoryBytes == 0 {
+			if machineConfig, err := apiClient.GetMachineConfig(ctx); err == nil {
+				state.memoryBytes = int64(machineConfig.MemSizeMib) * 1024 * 1024
+				state.vcpuCount = machineConfig.VCPUCount
+			}
+		}
+
+		// Fetch metrics from Firecracker API
 		fcMetrics, err := apiClient.GetMetrics(ctx)
 		if err != nil {
 			continue // Skip this VM if we can't get metrics
 		}
 
+		// Calculate CPU usage from vcpu exit rate
+		currentVCPUExits := fcMetrics.VCPU.ExitIOIn + fcMetrics.VCPU.ExitIOOut
+		var cpuPercent float64
+		if exists && !state.lastTimestamp.IsZero() {
+			elapsedSec := now.Sub(state.lastTimestamp).Seconds()
+			if elapsedSec > 0 {
+				exitDelta := currentVCPUExits - state.lastVCPUExits
+				// Estimate CPU activity: more exits = more activity
+				// This is a rough approximation - a VM doing heavy I/O will have many exits
+				// Scale factor: assume ~10000 exits/sec = 100% for one vcpu
+				exitsPerSec := float64(exitDelta) / elapsedSec
+				if state.vcpuCount > 0 {
+					cpuPercent = (exitsPerSec / 10000.0) * 100.0 / float64(state.vcpuCount)
+				} else {
+					cpuPercent = (exitsPerSec / 10000.0) * 100.0
+				}
+				// Clamp to 0-100
+				if cpuPercent < 0 {
+					cpuPercent = 0
+				}
+				if cpuPercent > 100 {
+					cpuPercent = 100
+				}
+			}
+		}
+
+		// Update state for next calculation
+		state.lastVCPUExits = currentVCPUExits
+		state.lastTimestamp = now
+
 		// Convert to dashboard metrics format
 		metrics := dashboard.VMMetrics{
-			CPUPercent:     0, // CPU % requires calculation from vcpu counters over time
-			MemoryBytes:    0, // Memory requires reading from machine-config
-			MemoryMaxBytes: 0,
+			CPUPercent:     cpuPercent,
+			MemoryBytes:    state.memoryBytes, // Show configured memory as "used" (we can't see inside the VM)
+			MemoryMaxBytes: state.memoryBytes, // Same as above - configured max
 			NetworkRxBytes: fcMetrics.Net.RxBytes,
 			NetworkTxBytes: fcMetrics.Net.TxBytes,
 			DiskUsedBytes:  fcMetrics.Block.ReadBytes + fcMetrics.Block.WriteBytes,
@@ -129,4 +190,11 @@ func (p *MetricsPoller) collectMetrics() {
 
 		p.sink.SendMetrics(task.ID, metrics)
 	}
+}
+
+// CleanupTask removes state for a stopped task.
+func (p *MetricsPoller) CleanupTask(taskID string) {
+	p.vmStateMu.Lock()
+	delete(p.vmState, taskID)
+	p.vmStateMu.Unlock()
 }
