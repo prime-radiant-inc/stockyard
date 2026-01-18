@@ -172,8 +172,10 @@ func (s *grpcServer) RestoreSnapshot(ctx context.Context, req *pb.RestoreSnapsho
 }
 
 func (s *grpcServer) GetLogs(req *pb.GetLogsRequest, stream grpc.ServerStreamingServer[pb.LogEntry]) error {
-	// TODO: Implement log streaming
-	return status.Error(codes.Unimplemented, "not implemented")
+	// Note: Log streaming is handled via SSH through Tailscale in the CLI.
+	// This gRPC endpoint is not used by the stockyard CLI.
+	// It could be implemented for programmatic access if needed.
+	return status.Error(codes.Unimplemented, "use SSH via Tailscale for log access")
 }
 
 func taskToProto(t *Task) *pb.Task {
