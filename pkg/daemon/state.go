@@ -22,6 +22,7 @@ type Task struct {
 	Status            string
 	VMID              string
 	CID               uint32 // Firecracker vsock Context ID
+	VsockPath         string // Path to vsock UDS
 	Owner             string // Username who created the task
 	TailscaleHostname string
 	CreatedAt         time.Time
@@ -140,6 +141,7 @@ func (s *State) migrate() error {
 		`ALTER TABLE tasks ADD COLUMN tailscale_hostname TEXT`,
 		`ALTER TABLE tasks ADD COLUMN cid INTEGER DEFAULT 0`,
 		`ALTER TABLE tasks ADD COLUMN owner TEXT DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN vsock_path TEXT DEFAULT ''`,
 	}
 
 	for _, migration := range migrations {
@@ -165,8 +167,8 @@ func (s *State) SetStatusChangeCallback(cb StatusChangeCallback) {
 // CreateTask creates a new task in the database.
 func (s *State) CreateTask(task *Task) error {
 	query := `
-	INSERT INTO tasks (id, name, repo, ref, command, status, vmid, cid, owner, tailscale_hostname, created_at, stopped_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO tasks (id, name, repo, ref, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := s.db.Exec(query,
 		task.ID,
@@ -177,6 +179,7 @@ func (s *State) CreateTask(task *Task) error {
 		task.Status,
 		task.VMID,
 		task.CID,
+		task.VsockPath,
 		task.Owner,
 		task.TailscaleHostname,
 		task.CreatedAt,
@@ -191,7 +194,7 @@ func (s *State) CreateTask(task *Task) error {
 // GetTask retrieves a task by ID.
 func (s *State) GetTask(id string) (*Task, error) {
 	query := `
-	SELECT id, name, repo, ref, command, status, vmid, cid, owner, tailscale_hostname, created_at, stopped_at
+	SELECT id, name, repo, ref, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at
 	FROM tasks
 	WHERE id = ?
 	`
@@ -202,6 +205,7 @@ func (s *State) GetTask(id string) (*Task, error) {
 	var vmid sql.NullString
 	var name sql.NullString
 	var cid sql.NullInt64
+	var vsockPath sql.NullString
 	var owner sql.NullString
 	var tailscaleHostname sql.NullString
 
@@ -214,6 +218,7 @@ func (s *State) GetTask(id string) (*Task, error) {
 		&task.Status,
 		&vmid,
 		&cid,
+		&vsockPath,
 		&owner,
 		&tailscaleHostname,
 		&task.CreatedAt,
@@ -234,6 +239,9 @@ func (s *State) GetTask(id string) (*Task, error) {
 	}
 	if cid.Valid {
 		task.CID = uint32(cid.Int64)
+	}
+	if vsockPath.Valid {
+		task.VsockPath = vsockPath.String
 	}
 	if owner.Valid {
 		task.Owner = owner.String
@@ -256,13 +264,13 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 
 	if status == "" {
 		query = `
-		SELECT id, name, repo, ref, command, status, vmid, cid, owner, tailscale_hostname, created_at, stopped_at
+		SELECT id, name, repo, ref, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at
 		FROM tasks
 		ORDER BY created_at DESC
 		`
 	} else {
 		query = `
-		SELECT id, name, repo, ref, command, status, vmid, cid, owner, tailscale_hostname, created_at, stopped_at
+		SELECT id, name, repo, ref, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at
 		FROM tasks
 		WHERE status = ?
 		ORDER BY created_at DESC
@@ -283,6 +291,7 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 		var vmid sql.NullString
 		var name sql.NullString
 		var cid sql.NullInt64
+		var vsockPath sql.NullString
 		var owner sql.NullString
 		var tailscaleHostname sql.NullString
 
@@ -295,6 +304,7 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 			&task.Status,
 			&vmid,
 			&cid,
+			&vsockPath,
 			&owner,
 			&tailscaleHostname,
 			&task.CreatedAt,
@@ -312,6 +322,9 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 		}
 		if cid.Valid {
 			task.CID = uint32(cid.Int64)
+		}
+		if vsockPath.Valid {
+			task.VsockPath = vsockPath.String
 		}
 		if owner.Valid {
 			task.Owner = owner.String
@@ -411,7 +424,7 @@ func (s *State) UpdateTaskVMID(id, vmid string) error {
 // GetTaskByCID retrieves a running task by its Firecracker CID.
 func (s *State) GetTaskByCID(cid uint32) (*Task, error) {
 	query := `
-	SELECT id, name, repo, ref, command, status, vmid, cid, owner, tailscale_hostname, created_at, stopped_at
+	SELECT id, name, repo, ref, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at
 	FROM tasks
 	WHERE cid = ? AND status = 'running'
 	`
@@ -422,6 +435,7 @@ func (s *State) GetTaskByCID(cid uint32) (*Task, error) {
 	var vmid sql.NullString
 	var name sql.NullString
 	var cidVal sql.NullInt64
+	var vsockPath sql.NullString
 	var owner sql.NullString
 	var tailscaleHostname sql.NullString
 
@@ -434,6 +448,7 @@ func (s *State) GetTaskByCID(cid uint32) (*Task, error) {
 		&task.Status,
 		&vmid,
 		&cidVal,
+		&vsockPath,
 		&owner,
 		&tailscaleHostname,
 		&task.CreatedAt,
@@ -454,6 +469,9 @@ func (s *State) GetTaskByCID(cid uint32) (*Task, error) {
 	}
 	if cidVal.Valid {
 		task.CID = uint32(cidVal.Int64)
+	}
+	if vsockPath.Valid {
+		task.VsockPath = vsockPath.String
 	}
 	if owner.Valid {
 		task.Owner = owner.String
@@ -477,6 +495,20 @@ func (s *State) UpdateTaskCID(id string, cid uint32) error {
 	}
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected == 0 {
+		return fmt.Errorf("task not found: %s", id)
+	}
+	return nil
+}
+
+// UpdateTaskVsockPath updates the vsock path of a task.
+func (s *State) UpdateTaskVsockPath(id string, vsockPath string) error {
+	query := `UPDATE tasks SET vsock_path = ? WHERE id = ?`
+	result, err := s.db.Exec(query, vsockPath, id)
+	if err != nil {
+		return fmt.Errorf("failed to update task vsock path: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
 		return fmt.Errorf("task not found: %s", id)
 	}
 	return nil
