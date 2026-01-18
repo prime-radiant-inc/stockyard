@@ -8,6 +8,10 @@
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
     <style>
         [x-cloak] { display: none !important; }
     </style>
@@ -434,6 +438,36 @@
                                     <span :class="log.stream === 'stderr' ? 'text-red-400' : 'text-gray-300'" x-text="log.line"></span>
                                 </div>
                             </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Terminal Panel -->
+                <div class="bg-white rounded-lg shadow border border-gray-200"
+                     x-data="{ showTerminal: false, connected: false, connecting: false }">
+                    <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                        <h2 class="text-lg font-medium">Terminal</h2>
+                        <div class="flex items-center gap-2">
+                            <span x-show="connected" class="text-xs text-green-600 flex items-center gap-1">
+                                <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                                Connected
+                            </span>
+                            <span x-show="connecting" class="text-xs text-yellow-600">Connecting...</span>
+                            <button @click="showTerminal = !showTerminal"
+                                    class="text-xs text-blue-600 hover:underline"
+                                    x-text="showTerminal ? 'Hide' : 'Open Terminal'">
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <div x-show="showTerminal" x-transition class="rounded overflow-hidden">
+                            <div id="terminal-container" class="h-80 bg-black"></div>
+                        </div>
+                        <div x-show="!showTerminal" class="text-center py-6">
+                            <svg class="mx-auto h-10 w-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            <p class="mt-2 text-sm text-gray-500">Click "Open Terminal" to connect</p>
                         </div>
                     </div>
                 </div>
