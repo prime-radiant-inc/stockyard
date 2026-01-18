@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -490,11 +491,20 @@ func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get paths from environment or use defaults
-	collector := NewResourceCollector(
-		"/var/lib/stockyard/vms/stockyard",
-		"/var/lib/stockyard/dnsmasq.leases",
-		"tank/stockyard",
-	)
+	vmDir := os.Getenv("STOCKYARD_VM_DIR")
+	if vmDir == "" {
+		vmDir = "/var/lib/stockyard/vms/stockyard"
+	}
+	leaseFile := os.Getenv("STOCKYARD_LEASE_FILE")
+	if leaseFile == "" {
+		leaseFile = "/var/lib/stockyard/dnsmasq.leases"
+	}
+	zfsPool := os.Getenv("STOCKYARD_ZFS_POOL")
+	if zfsPool == "" {
+		zfsPool = "tank/stockyard"
+	}
+
+	collector := NewResourceCollector(vmDir, leaseFile, zfsPool)
 
 	resources, err := collector.Collect(tasks)
 	if err != nil {

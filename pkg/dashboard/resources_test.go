@@ -163,3 +163,153 @@ func filterByType(resources []Resource, resType string) []Resource {
 	}
 	return result
 }
+
+func TestParseTapOutput(t *testing.T) {
+	// Sample output from "ip -o link show"
+	output := `1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP mode DEFAULT
+3: tap-abc12345: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel master flbr0 state UP mode DEFAULT
+4: tap-xyz98765: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel master flbr0 state UP mode DEFAULT
+5: flbr0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT
+`
+
+	tapToTask := map[string]string{
+		"tap-abc12345": "task-1",
+	}
+	taskStatus := map[string]string{
+		"task-1": "running",
+	}
+
+	resources := parseTapOutput(output, tapToTask, taskStatus)
+
+	if len(resources) != 2 {
+		t.Errorf("expected 2 tap interfaces, got %d", len(resources))
+	}
+
+	// Find tap-abc12345 - should be active because task-1 is running
+	var foundKnown, foundOrphan bool
+	for _, r := range resources {
+		if r.ID == "tap-abc12345" {
+			foundKnown = true
+			if r.Status != "active" {
+				t.Errorf("expected tap-abc12345 status 'active', got %s", r.Status)
+			}
+			if r.TaskID != "task-1" {
+				t.Errorf("expected tap-abc12345 TaskID 'task-1', got %s", r.TaskID)
+			}
+		}
+		if r.ID == "tap-xyz98765" {
+			foundOrphan = true
+			if r.Status != "orphan" {
+				t.Errorf("expected tap-xyz98765 status 'orphan', got %s", r.Status)
+			}
+		}
+	}
+
+	if !foundKnown {
+		t.Error("expected to find tap-abc12345")
+	}
+	if !foundOrphan {
+		t.Error("expected to find tap-xyz98765")
+	}
+}
+
+func TestParseTapOutput_EmptyOutput(t *testing.T) {
+	resources := parseTapOutput("", nil, nil)
+	if len(resources) != 0 {
+		t.Errorf("expected 0 resources for empty output, got %d", len(resources))
+	}
+}
+
+func TestParseTapOutput_NoTapInterfaces(t *testing.T) {
+	output := `1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP mode DEFAULT
+`
+	resources := parseTapOutput(output, nil, nil)
+	if len(resources) != 0 {
+		t.Errorf("expected 0 tap interfaces, got %d", len(resources))
+	}
+}
+
+func TestParseZfsOutput(t *testing.T) {
+	// Sample output from "zfs list -H -r -d 1 -o name,used tank/stockyard/vms"
+	output := `tank/stockyard/vms	1.5G
+tank/stockyard/vms/task-1	512M
+tank/stockyard/vms/task-2	1G
+`
+
+	taskStatus := map[string]string{
+		"task-1": "running",
+	}
+
+	resources := parseZfsOutput(output, "tank/stockyard/vms", "zfs_vm", taskStatus)
+
+	if len(resources) != 2 {
+		t.Errorf("expected 2 ZFS datasets, got %d", len(resources))
+	}
+
+	var foundTask1, foundTask2 bool
+	for _, r := range resources {
+		if r.ID == "task-1" {
+			foundTask1 = true
+			if r.Status != "active" {
+				t.Errorf("expected task-1 status 'active', got %s", r.Status)
+			}
+			if r.Size != "512M" {
+				t.Errorf("expected task-1 size '512M', got %s", r.Size)
+			}
+			if r.Type != "zfs_vm" {
+				t.Errorf("expected task-1 type 'zfs_vm', got %s", r.Type)
+			}
+		}
+		if r.ID == "task-2" {
+			foundTask2 = true
+			if r.Status != "orphan" {
+				t.Errorf("expected task-2 status 'orphan', got %s", r.Status)
+			}
+			if r.Size != "1G" {
+				t.Errorf("expected task-2 size '1G', got %s", r.Size)
+			}
+		}
+	}
+
+	if !foundTask1 {
+		t.Error("expected to find task-1")
+	}
+	if !foundTask2 {
+		t.Error("expected to find task-2")
+	}
+}
+
+func TestParseZfsOutput_EmptyOutput(t *testing.T) {
+	resources := parseZfsOutput("", "tank/stockyard/vms", "zfs_vm", nil)
+	if len(resources) != 0 {
+		t.Errorf("expected 0 resources for empty output, got %d", len(resources))
+	}
+}
+
+func TestParseZfsOutput_OnlyBasePath(t *testing.T) {
+	// Output contains only the base path itself
+	output := `tank/stockyard/vms	1.5G
+`
+	resources := parseZfsOutput(output, "tank/stockyard/vms", "zfs_vm", nil)
+	if len(resources) != 0 {
+		t.Errorf("expected 0 resources when only base path is present, got %d", len(resources))
+	}
+}
+
+func TestParseZfsOutput_WorkspaceType(t *testing.T) {
+	output := `tank/stockyard/workspaces	2G
+tank/stockyard/workspaces/ws-1	1G
+`
+
+	resources := parseZfsOutput(output, "tank/stockyard/workspaces", "zfs_workspace", nil)
+
+	if len(resources) != 1 {
+		t.Errorf("expected 1 ZFS workspace, got %d", len(resources))
+	}
+
+	if resources[0].Type != "zfs_workspace" {
+		t.Errorf("expected type 'zfs_workspace', got %s", resources[0].Type)
+	}
+}
