@@ -1,4 +1,4 @@
-.PHONY: all build proto clean test test-unit lint fmt
+.PHONY: all build proto clean test test-unit lint fmt install uninstall
 
 all: proto build
 
@@ -15,6 +15,13 @@ proto:
 
 clean:
 	rm -rf bin/
+
+install: build
+	install -m 755 bin/stockyard /usr/local/bin/stockyard
+	install -m 755 bin/stockyardd /usr/local/bin/stockyardd
+
+uninstall:
+	rm -f /usr/local/bin/stockyard /usr/local/bin/stockyardd
 
 test: test-unit
 
