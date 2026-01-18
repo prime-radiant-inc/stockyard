@@ -165,6 +165,8 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	// Create VM if firecracker client is available
 	var vmID string
 	var vmMetricsPath string
+	var vmCID uint32
+	var vmVsockPath string
 	if tm.fc != nil {
 		vmCfg := &firecracker.VMConfig{
 			ID:                taskID,
@@ -189,6 +191,8 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		}
 		vmID = vm.ID
 		vmMetricsPath = vm.MetricsPath
+		vmCID = vm.CID
+		vmVsockPath = vm.VsockPath
 	}
 
 	// Determine command string for storage
@@ -206,6 +210,8 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		Command:           commandStr,
 		Status:            "running",
 		VMID:              vmID,
+		CID:               vmCID,
+		VsockPath:         vmVsockPath,
 		TailscaleHostname: tailscaleHostname,
 		CreatedAt:         time.Now(),
 	}
@@ -279,6 +285,20 @@ func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
 	// Update status to running
 	if err := tm.daemon.state.UpdateTaskStatus(taskID, "running"); err != nil {
 		return err
+	}
+
+	// Store the VM's CID and vsock path for terminal access
+	if vmInfo != nil {
+		if vmInfo.CID != 0 {
+			if err := tm.daemon.state.UpdateTaskCID(taskID, vmInfo.CID); err != nil {
+				log.Printf("Warning: failed to store CID for task %s: %v", taskID, err)
+			}
+		}
+		if vmInfo.VsockPath != "" {
+			if err := tm.daemon.state.UpdateTaskVsockPath(taskID, vmInfo.VsockPath); err != nil {
+				log.Printf("Warning: failed to store vsock path for task %s: %v", taskID, err)
+			}
+		}
 	}
 
 	// Start log tailing if dashboard is enabled
