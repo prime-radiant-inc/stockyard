@@ -4,9 +4,14 @@ package tailscale
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net"
+	"net/http"
 	"os/exec"
 	"strings"
+
+	"github.com/obra/stockyard/pkg/dashboard"
 )
 
 // BuildHostname generates a Tailscale hostname for a task
@@ -94,4 +99,65 @@ func RemoveNode(ctx context.Context, hostname string) error {
 	// This would use the Tailscale admin API
 	// Placeholder for now
 	return nil
+}
+
+// LocalClient provides access to the Tailscale local API.
+type LocalClient struct {
+	socket string
+}
+
+// Verify LocalClient implements dashboard.TailscaleClient
+var _ dashboard.TailscaleClient = (*LocalClient)(nil)
+
+// NewLocalClient creates a client for the Tailscale local API.
+func NewLocalClient() *LocalClient {
+	return &LocalClient{
+		socket: "/var/run/tailscale/tailscaled.sock",
+	}
+}
+
+// WhoIs identifies who is connecting from the given remote address.
+// Implements dashboard.TailscaleClient.
+func (c *LocalClient) WhoIs(ctx context.Context, remoteAddr string) (*dashboard.User, error) {
+	// Create HTTP client that uses Unix socket
+	client := &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", c.socket)
+			},
+		},
+	}
+
+	// Call the local API whois endpoint
+	url := fmt.Sprintf("http://local-tailscaled.sock/localapi/v0/whois?addr=%s", remoteAddr)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("whois failed: %s", resp.Status)
+	}
+
+	// Parse response - the Tailscale API returns UserProfile info
+	var result struct {
+		UserProfile struct {
+			LoginName   string `json:"LoginName"`
+			DisplayName string `json:"DisplayName"`
+		} `json:"UserProfile"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return &dashboard.User{
+		Login: result.UserProfile.LoginName,
+		Name:  result.UserProfile.DisplayName,
+	}, nil
 }

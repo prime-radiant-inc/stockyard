@@ -3,6 +3,8 @@ package tailscale
 
 import (
 	"testing"
+
+	"github.com/obra/stockyard/pkg/dashboard"
 )
 
 func TestBuildHostname(t *testing.T) {
@@ -38,5 +40,16 @@ func TestValidateAuthKey(t *testing.T) {
 		if (err != nil) != tt.wantErr {
 			t.Errorf("ValidateAuthKey(%q) error = %v, wantErr %v", tt.key, err, tt.wantErr)
 		}
+	}
+}
+
+func TestLocalClient_ImplementsInterface(t *testing.T) {
+	// Compile-time check that LocalClient implements dashboard.TailscaleClient
+	var _ dashboard.TailscaleClient = (*LocalClient)(nil)
+
+	// Also verify NewLocalClient returns a usable client
+	client := NewLocalClient()
+	if client == nil {
+		t.Error("NewLocalClient() returned nil")
 	}
 }

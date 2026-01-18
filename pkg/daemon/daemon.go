@@ -16,6 +16,7 @@ import (
 	"github.com/obra/stockyard/pkg/config"
 	"github.com/obra/stockyard/pkg/dashboard"
 	"github.com/obra/stockyard/pkg/secrets"
+	"github.com/obra/stockyard/pkg/tailscale"
 	"github.com/obra/stockyard/pkg/zfs"
 )
 
@@ -124,7 +125,8 @@ func (d *Daemon) Start(ctx context.Context) error {
 		facade := NewDashboardFacade(d.state, d.tasks)
 		adapter := dashboard.NewDaemonAdapter(facade)
 		dashboardServer := dashboard.NewServer(adapter)
-		handler := dashboard.AuthMiddleware(dashboardServer, nil) // TODO: add Tailscale client
+		tsClient := tailscale.NewLocalClient()
+		handler := dashboard.AuthMiddleware(dashboardServer, tsClient)
 
 		d.httpServer = &http.Server{
 			Addr:    d.cfg.HTTP.Addr,
