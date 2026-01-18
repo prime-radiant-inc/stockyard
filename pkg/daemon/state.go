@@ -38,21 +38,40 @@ type State struct {
 	callbackMu     sync.RWMutex
 }
 
-// DataDir returns the XDG-compliant data directory for stockyard.
+// DataDir returns the data directory for stockyard state.
+// It checks STOCKYARD_DATA_DIR env var, then /var/lib/stockyard if it exists,
+// then falls back to XDG data directories.
 func DataDir() string {
+	// Explicit override
+	if dir := os.Getenv("STOCKYARD_DATA_DIR"); dir != "" {
+		return dir
+	}
+
+	// System-wide location (for daemon)
+	systemDir := "/var/lib/stockyard"
+	if _, err := os.Stat(systemDir); err == nil {
+		return systemDir
+	}
+
+	// XDG data directory
 	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
 		return filepath.Join(xdgData, "stockyard")
 	}
+
+	// User home fallback
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".", ".local", "share", "stockyard")
+		return systemDir
 	}
 	return filepath.Join(home, ".local", "share", "stockyard")
 }
 
 // NewState creates a new State instance with a file-based SQLite database.
-func NewState() (*State, error) {
-	dataDir := DataDir()
+// If dataDir is empty, it uses DataDir() to determine the location.
+func NewState(dataDir string) (*State, error) {
+	if dataDir == "" {
+		dataDir = DataDir()
+	}
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}

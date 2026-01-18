@@ -1,0 +1,31 @@
+[Unit]
+Description=Stockyard VM Daemon
+Documentation=https://github.com/obra/stockyard
+After=network.target zfs.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/stockyardd
+Restart=on-failure
+RestartSec=5
+
+# Runtime directory for socket
+RuntimeDirectory=stockyard
+RuntimeDirectoryMode=0755
+
+# State directory for VMs and data
+StateDirectory=stockyard
+StateDirectoryMode=0755
+
+# Security hardening
+NoNewPrivileges=false
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/stockyard /var/run/stockyard /tmp
+# Needs network and ZFS access
+PrivateNetwork=false
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_MKNOD CAP_KILL
+
+[Install]
+WantedBy=multi-user.target

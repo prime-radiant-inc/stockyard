@@ -146,13 +146,26 @@ func (c *Config) Save() error {
 }
 
 func ConfigDir() (string, error) {
+	// Check for explicit config directory
+	if dir := os.Getenv("STOCKYARD_CONFIG_DIR"); dir != "" {
+		return dir, nil
+	}
+
+	// Check system-wide config first (for daemon/root usage)
+	systemDir := "/etc/stockyard"
+	if _, err := os.Stat(filepath.Join(systemDir, "config.json")); err == nil {
+		return systemDir, nil
+	}
+
+	// Fall back to user config directories
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
 		return filepath.Join(xdg, "stockyard"), nil
 	}
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("failed to get user home directory: %w", err)
+		// If no home dir and no system config, use /etc/stockyard as default
+		return systemDir, nil
 	}
 
 	return filepath.Join(home, ".config", "stockyard"), nil

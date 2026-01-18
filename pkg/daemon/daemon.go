@@ -70,7 +70,7 @@ func (s *dashboardMetricsSink) SendMetrics(taskID string, metrics dashboard.VMMe
 func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) {
 	zfsMgr := zfs.NewManager(cfg.ZFS.Pool, cfg.ZFS.BasePath)
 
-	state, err := NewState()
+	state, err := NewState(cfg.Daemon.DataDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize state: %w", err)
 	}
