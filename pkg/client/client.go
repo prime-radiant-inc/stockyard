@@ -86,6 +86,12 @@ func (c *Client) StopTask(ctx context.Context, taskID string) error {
 	return err
 }
 
+// RestartTask restarts a stopped task.
+func (c *Client) RestartTask(ctx context.Context, taskID string) error {
+	_, err := c.client.RestartTask(ctx, &pb.RestartTaskRequest{TaskId: taskID})
+	return err
+}
+
 // DestroyTask destroys a task and its associated resources.
 func (c *Client) DestroyTask(ctx context.Context, taskID string) error {
 	_, err := c.client.DestroyTask(ctx, &pb.DestroyTaskRequest{TaskId: taskID})

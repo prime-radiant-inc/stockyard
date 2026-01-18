@@ -100,6 +100,23 @@ func (s *grpcServer) StopTask(ctx context.Context, req *pb.StopTaskRequest) (*pb
 	return &pb.StopTaskResponse{}, nil
 }
 
+func (s *grpcServer) RestartTask(ctx context.Context, req *pb.RestartTaskRequest) (*pb.RestartTaskResponse, error) {
+	if s.daemon.tasks == nil {
+		return nil, status.Error(codes.Unavailable, "task manager not initialized")
+	}
+
+	if err := s.daemon.tasks.RestartTask(ctx, req.TaskId); err != nil {
+		if strings.Contains(err.Error(), "task not found") {
+			return nil, status.Error(codes.NotFound, "task not found")
+		}
+		if strings.Contains(err.Error(), "not stopped") {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		return nil, status.Errorf(codes.Internal, "failed to restart task: %v", err)
+	}
+	return &pb.RestartTaskResponse{}, nil
+}
+
 func (s *grpcServer) DestroyTask(ctx context.Context, req *pb.DestroyTaskRequest) (*pb.DestroyTaskResponse, error) {
 	if s.daemon.tasks == nil {
 		return nil, status.Error(codes.Unavailable, "task manager not initialized")

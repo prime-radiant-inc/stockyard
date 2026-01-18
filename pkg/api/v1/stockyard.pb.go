@@ -445,6 +445,86 @@ func (*StopTaskResponse) Descriptor() ([]byte, []int) {
 	return file_api_stockyard_proto_rawDescGZIP(), []int{7}
 }
 
+type RestartTaskRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestartTaskRequest) Reset() {
+	*x = RestartTaskRequest{}
+	mi := &file_api_stockyard_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestartTaskRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestartTaskRequest) ProtoMessage() {}
+
+func (x *RestartTaskRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_stockyard_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestartTaskRequest.ProtoReflect.Descriptor instead.
+func (*RestartTaskRequest) Descriptor() ([]byte, []int) {
+	return file_api_stockyard_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *RestartTaskRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+type RestartTaskResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestartTaskResponse) Reset() {
+	*x = RestartTaskResponse{}
+	mi := &file_api_stockyard_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestartTaskResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestartTaskResponse) ProtoMessage() {}
+
+func (x *RestartTaskResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_stockyard_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestartTaskResponse.ProtoReflect.Descriptor instead.
+func (*RestartTaskResponse) Descriptor() ([]byte, []int) {
+	return file_api_stockyard_proto_rawDescGZIP(), []int{9}
+}
+
 type DestroyTaskRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
@@ -454,7 +534,7 @@ type DestroyTaskRequest struct {
 
 func (x *DestroyTaskRequest) Reset() {
 	*x = DestroyTaskRequest{}
-	mi := &file_api_stockyard_proto_msgTypes[8]
+	mi := &file_api_stockyard_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -466,7 +546,7 @@ func (x *DestroyTaskRequest) String() string {
 func (*DestroyTaskRequest) ProtoMessage() {}
 
 func (x *DestroyTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[8]
+	mi := &file_api_stockyard_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -479,7 +559,7 @@ func (x *DestroyTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyTaskRequest.ProtoReflect.Descriptor instead.
 func (*DestroyTaskRequest) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{8}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DestroyTaskRequest) GetTaskId() string {
@@ -497,7 +577,7 @@ type DestroyTaskResponse struct {
 
 func (x *DestroyTaskResponse) Reset() {
 	*x = DestroyTaskResponse{}
-	mi := &file_api_stockyard_proto_msgTypes[9]
+	mi := &file_api_stockyard_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -509,7 +589,7 @@ func (x *DestroyTaskResponse) String() string {
 func (*DestroyTaskResponse) ProtoMessage() {}
 
 func (x *DestroyTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[9]
+	mi := &file_api_stockyard_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -522,7 +602,7 @@ func (x *DestroyTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyTaskResponse.ProtoReflect.Descriptor instead.
 func (*DestroyTaskResponse) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{9}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{11}
 }
 
 type CreateSnapshotRequest struct {
@@ -535,7 +615,7 @@ type CreateSnapshotRequest struct {
 
 func (x *CreateSnapshotRequest) Reset() {
 	*x = CreateSnapshotRequest{}
-	mi := &file_api_stockyard_proto_msgTypes[10]
+	mi := &file_api_stockyard_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -547,7 +627,7 @@ func (x *CreateSnapshotRequest) String() string {
 func (*CreateSnapshotRequest) ProtoMessage() {}
 
 func (x *CreateSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[10]
+	mi := &file_api_stockyard_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -560,7 +640,7 @@ func (x *CreateSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*CreateSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{10}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CreateSnapshotRequest) GetTaskId() string {
@@ -586,7 +666,7 @@ type CreateSnapshotResponse struct {
 
 func (x *CreateSnapshotResponse) Reset() {
 	*x = CreateSnapshotResponse{}
-	mi := &file_api_stockyard_proto_msgTypes[11]
+	mi := &file_api_stockyard_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -598,7 +678,7 @@ func (x *CreateSnapshotResponse) String() string {
 func (*CreateSnapshotResponse) ProtoMessage() {}
 
 func (x *CreateSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[11]
+	mi := &file_api_stockyard_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -611,7 +691,7 @@ func (x *CreateSnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSnapshotResponse.ProtoReflect.Descriptor instead.
 func (*CreateSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{11}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CreateSnapshotResponse) GetSnapshotName() string {
@@ -630,7 +710,7 @@ type ListSnapshotsRequest struct {
 
 func (x *ListSnapshotsRequest) Reset() {
 	*x = ListSnapshotsRequest{}
-	mi := &file_api_stockyard_proto_msgTypes[12]
+	mi := &file_api_stockyard_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -642,7 +722,7 @@ func (x *ListSnapshotsRequest) String() string {
 func (*ListSnapshotsRequest) ProtoMessage() {}
 
 func (x *ListSnapshotsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[12]
+	mi := &file_api_stockyard_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -655,7 +735,7 @@ func (x *ListSnapshotsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSnapshotsRequest.ProtoReflect.Descriptor instead.
 func (*ListSnapshotsRequest) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{12}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListSnapshotsRequest) GetTaskId() string {
@@ -674,7 +754,7 @@ type ListSnapshotsResponse struct {
 
 func (x *ListSnapshotsResponse) Reset() {
 	*x = ListSnapshotsResponse{}
-	mi := &file_api_stockyard_proto_msgTypes[13]
+	mi := &file_api_stockyard_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -686,7 +766,7 @@ func (x *ListSnapshotsResponse) String() string {
 func (*ListSnapshotsResponse) ProtoMessage() {}
 
 func (x *ListSnapshotsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[13]
+	mi := &file_api_stockyard_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -699,7 +779,7 @@ func (x *ListSnapshotsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSnapshotsResponse.ProtoReflect.Descriptor instead.
 func (*ListSnapshotsResponse) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{13}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ListSnapshotsResponse) GetSnapshots() []*Snapshot {
@@ -719,7 +799,7 @@ type RestoreSnapshotRequest struct {
 
 func (x *RestoreSnapshotRequest) Reset() {
 	*x = RestoreSnapshotRequest{}
-	mi := &file_api_stockyard_proto_msgTypes[14]
+	mi := &file_api_stockyard_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -731,7 +811,7 @@ func (x *RestoreSnapshotRequest) String() string {
 func (*RestoreSnapshotRequest) ProtoMessage() {}
 
 func (x *RestoreSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[14]
+	mi := &file_api_stockyard_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -744,7 +824,7 @@ func (x *RestoreSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*RestoreSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{14}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *RestoreSnapshotRequest) GetTaskId() string {
@@ -769,7 +849,7 @@ type RestoreSnapshotResponse struct {
 
 func (x *RestoreSnapshotResponse) Reset() {
 	*x = RestoreSnapshotResponse{}
-	mi := &file_api_stockyard_proto_msgTypes[15]
+	mi := &file_api_stockyard_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -781,7 +861,7 @@ func (x *RestoreSnapshotResponse) String() string {
 func (*RestoreSnapshotResponse) ProtoMessage() {}
 
 func (x *RestoreSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[15]
+	mi := &file_api_stockyard_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -794,7 +874,7 @@ func (x *RestoreSnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreSnapshotResponse.ProtoReflect.Descriptor instead.
 func (*RestoreSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{15}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{17}
 }
 
 type GetLogsRequest struct {
@@ -808,7 +888,7 @@ type GetLogsRequest struct {
 
 func (x *GetLogsRequest) Reset() {
 	*x = GetLogsRequest{}
-	mi := &file_api_stockyard_proto_msgTypes[16]
+	mi := &file_api_stockyard_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -820,7 +900,7 @@ func (x *GetLogsRequest) String() string {
 func (*GetLogsRequest) ProtoMessage() {}
 
 func (x *GetLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[16]
+	mi := &file_api_stockyard_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -833,7 +913,7 @@ func (x *GetLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLogsRequest.ProtoReflect.Descriptor instead.
 func (*GetLogsRequest) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{16}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetLogsRequest) GetTaskId() string {
@@ -867,7 +947,7 @@ type LogEntry struct {
 
 func (x *LogEntry) Reset() {
 	*x = LogEntry{}
-	mi := &file_api_stockyard_proto_msgTypes[17]
+	mi := &file_api_stockyard_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -879,7 +959,7 @@ func (x *LogEntry) String() string {
 func (*LogEntry) ProtoMessage() {}
 
 func (x *LogEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[17]
+	mi := &file_api_stockyard_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -892,7 +972,7 @@ func (x *LogEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogEntry.ProtoReflect.Descriptor instead.
 func (*LogEntry) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{17}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *LogEntry) GetTimestamp() string {
@@ -925,7 +1005,7 @@ type Task struct {
 
 func (x *Task) Reset() {
 	*x = Task{}
-	mi := &file_api_stockyard_proto_msgTypes[18]
+	mi := &file_api_stockyard_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -937,7 +1017,7 @@ func (x *Task) String() string {
 func (*Task) ProtoMessage() {}
 
 func (x *Task) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[18]
+	mi := &file_api_stockyard_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -950,7 +1030,7 @@ func (x *Task) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Task.ProtoReflect.Descriptor instead.
 func (*Task) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{18}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Task) GetId() string {
@@ -1020,7 +1100,7 @@ type Snapshot struct {
 
 func (x *Snapshot) Reset() {
 	*x = Snapshot{}
-	mi := &file_api_stockyard_proto_msgTypes[19]
+	mi := &file_api_stockyard_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1032,7 +1112,7 @@ func (x *Snapshot) String() string {
 func (*Snapshot) ProtoMessage() {}
 
 func (x *Snapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[19]
+	mi := &file_api_stockyard_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1045,7 +1125,7 @@ func (x *Snapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Snapshot.ProtoReflect.Descriptor instead.
 func (*Snapshot) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{19}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *Snapshot) GetName() string {
@@ -1103,6 +1183,9 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"\x0fStopTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\"\x12\n" +
 	"\x10StopTaskResponse\"-\n" +
+	"\x12RestartTaskRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\"\x15\n" +
+	"\x13RestartTaskResponse\"-\n" +
 	"\x12DestroyTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\"\x15\n" +
 	"\x13DestroyTaskResponse\"F\n" +
@@ -1141,13 +1224,14 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\tR\tcreatedAt2\xeb\x05\n" +
+	"created_at\x18\x03 \x01(\tR\tcreatedAt2\xbf\x06\n" +
 	"\tStockyard\x12O\n" +
 	"\n" +
 	"CreateTask\x12\x1f.stockyard.v1.CreateTaskRequest\x1a .stockyard.v1.CreateTaskResponse\x12F\n" +
 	"\aGetTask\x12\x1c.stockyard.v1.GetTaskRequest\x1a\x1d.stockyard.v1.GetTaskResponse\x12L\n" +
 	"\tListTasks\x12\x1e.stockyard.v1.ListTasksRequest\x1a\x1f.stockyard.v1.ListTasksResponse\x12I\n" +
 	"\bStopTask\x12\x1d.stockyard.v1.StopTaskRequest\x1a\x1e.stockyard.v1.StopTaskResponse\x12R\n" +
+	"\vRestartTask\x12 .stockyard.v1.RestartTaskRequest\x1a!.stockyard.v1.RestartTaskResponse\x12R\n" +
 	"\vDestroyTask\x12 .stockyard.v1.DestroyTaskRequest\x1a!.stockyard.v1.DestroyTaskResponse\x12[\n" +
 	"\x0eCreateSnapshot\x12#.stockyard.v1.CreateSnapshotRequest\x1a$.stockyard.v1.CreateSnapshotResponse\x12X\n" +
 	"\rListSnapshots\x12\".stockyard.v1.ListSnapshotsRequest\x1a#.stockyard.v1.ListSnapshotsResponse\x12^\n" +
@@ -1166,7 +1250,7 @@ func file_api_stockyard_proto_rawDescGZIP() []byte {
 	return file_api_stockyard_proto_rawDescData
 }
 
-var file_api_stockyard_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_api_stockyard_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_api_stockyard_proto_goTypes = []any{
 	(*CreateTaskRequest)(nil),       // 0: stockyard.v1.CreateTaskRequest
 	(*CreateTaskResponse)(nil),      // 1: stockyard.v1.CreateTaskResponse
@@ -1176,45 +1260,49 @@ var file_api_stockyard_proto_goTypes = []any{
 	(*ListTasksResponse)(nil),       // 5: stockyard.v1.ListTasksResponse
 	(*StopTaskRequest)(nil),         // 6: stockyard.v1.StopTaskRequest
 	(*StopTaskResponse)(nil),        // 7: stockyard.v1.StopTaskResponse
-	(*DestroyTaskRequest)(nil),      // 8: stockyard.v1.DestroyTaskRequest
-	(*DestroyTaskResponse)(nil),     // 9: stockyard.v1.DestroyTaskResponse
-	(*CreateSnapshotRequest)(nil),   // 10: stockyard.v1.CreateSnapshotRequest
-	(*CreateSnapshotResponse)(nil),  // 11: stockyard.v1.CreateSnapshotResponse
-	(*ListSnapshotsRequest)(nil),    // 12: stockyard.v1.ListSnapshotsRequest
-	(*ListSnapshotsResponse)(nil),   // 13: stockyard.v1.ListSnapshotsResponse
-	(*RestoreSnapshotRequest)(nil),  // 14: stockyard.v1.RestoreSnapshotRequest
-	(*RestoreSnapshotResponse)(nil), // 15: stockyard.v1.RestoreSnapshotResponse
-	(*GetLogsRequest)(nil),          // 16: stockyard.v1.GetLogsRequest
-	(*LogEntry)(nil),                // 17: stockyard.v1.LogEntry
-	(*Task)(nil),                    // 18: stockyard.v1.Task
-	(*Snapshot)(nil),                // 19: stockyard.v1.Snapshot
-	nil,                             // 20: stockyard.v1.CreateTaskRequest.EnvEntry
+	(*RestartTaskRequest)(nil),      // 8: stockyard.v1.RestartTaskRequest
+	(*RestartTaskResponse)(nil),     // 9: stockyard.v1.RestartTaskResponse
+	(*DestroyTaskRequest)(nil),      // 10: stockyard.v1.DestroyTaskRequest
+	(*DestroyTaskResponse)(nil),     // 11: stockyard.v1.DestroyTaskResponse
+	(*CreateSnapshotRequest)(nil),   // 12: stockyard.v1.CreateSnapshotRequest
+	(*CreateSnapshotResponse)(nil),  // 13: stockyard.v1.CreateSnapshotResponse
+	(*ListSnapshotsRequest)(nil),    // 14: stockyard.v1.ListSnapshotsRequest
+	(*ListSnapshotsResponse)(nil),   // 15: stockyard.v1.ListSnapshotsResponse
+	(*RestoreSnapshotRequest)(nil),  // 16: stockyard.v1.RestoreSnapshotRequest
+	(*RestoreSnapshotResponse)(nil), // 17: stockyard.v1.RestoreSnapshotResponse
+	(*GetLogsRequest)(nil),          // 18: stockyard.v1.GetLogsRequest
+	(*LogEntry)(nil),                // 19: stockyard.v1.LogEntry
+	(*Task)(nil),                    // 20: stockyard.v1.Task
+	(*Snapshot)(nil),                // 21: stockyard.v1.Snapshot
+	nil,                             // 22: stockyard.v1.CreateTaskRequest.EnvEntry
 }
 var file_api_stockyard_proto_depIdxs = []int32{
-	20, // 0: stockyard.v1.CreateTaskRequest.env:type_name -> stockyard.v1.CreateTaskRequest.EnvEntry
-	18, // 1: stockyard.v1.GetTaskResponse.task:type_name -> stockyard.v1.Task
-	18, // 2: stockyard.v1.ListTasksResponse.tasks:type_name -> stockyard.v1.Task
-	19, // 3: stockyard.v1.ListSnapshotsResponse.snapshots:type_name -> stockyard.v1.Snapshot
+	22, // 0: stockyard.v1.CreateTaskRequest.env:type_name -> stockyard.v1.CreateTaskRequest.EnvEntry
+	20, // 1: stockyard.v1.GetTaskResponse.task:type_name -> stockyard.v1.Task
+	20, // 2: stockyard.v1.ListTasksResponse.tasks:type_name -> stockyard.v1.Task
+	21, // 3: stockyard.v1.ListSnapshotsResponse.snapshots:type_name -> stockyard.v1.Snapshot
 	0,  // 4: stockyard.v1.Stockyard.CreateTask:input_type -> stockyard.v1.CreateTaskRequest
 	2,  // 5: stockyard.v1.Stockyard.GetTask:input_type -> stockyard.v1.GetTaskRequest
 	4,  // 6: stockyard.v1.Stockyard.ListTasks:input_type -> stockyard.v1.ListTasksRequest
 	6,  // 7: stockyard.v1.Stockyard.StopTask:input_type -> stockyard.v1.StopTaskRequest
-	8,  // 8: stockyard.v1.Stockyard.DestroyTask:input_type -> stockyard.v1.DestroyTaskRequest
-	10, // 9: stockyard.v1.Stockyard.CreateSnapshot:input_type -> stockyard.v1.CreateSnapshotRequest
-	12, // 10: stockyard.v1.Stockyard.ListSnapshots:input_type -> stockyard.v1.ListSnapshotsRequest
-	14, // 11: stockyard.v1.Stockyard.RestoreSnapshot:input_type -> stockyard.v1.RestoreSnapshotRequest
-	16, // 12: stockyard.v1.Stockyard.GetLogs:input_type -> stockyard.v1.GetLogsRequest
-	1,  // 13: stockyard.v1.Stockyard.CreateTask:output_type -> stockyard.v1.CreateTaskResponse
-	3,  // 14: stockyard.v1.Stockyard.GetTask:output_type -> stockyard.v1.GetTaskResponse
-	5,  // 15: stockyard.v1.Stockyard.ListTasks:output_type -> stockyard.v1.ListTasksResponse
-	7,  // 16: stockyard.v1.Stockyard.StopTask:output_type -> stockyard.v1.StopTaskResponse
-	9,  // 17: stockyard.v1.Stockyard.DestroyTask:output_type -> stockyard.v1.DestroyTaskResponse
-	11, // 18: stockyard.v1.Stockyard.CreateSnapshot:output_type -> stockyard.v1.CreateSnapshotResponse
-	13, // 19: stockyard.v1.Stockyard.ListSnapshots:output_type -> stockyard.v1.ListSnapshotsResponse
-	15, // 20: stockyard.v1.Stockyard.RestoreSnapshot:output_type -> stockyard.v1.RestoreSnapshotResponse
-	17, // 21: stockyard.v1.Stockyard.GetLogs:output_type -> stockyard.v1.LogEntry
-	13, // [13:22] is the sub-list for method output_type
-	4,  // [4:13] is the sub-list for method input_type
+	8,  // 8: stockyard.v1.Stockyard.RestartTask:input_type -> stockyard.v1.RestartTaskRequest
+	10, // 9: stockyard.v1.Stockyard.DestroyTask:input_type -> stockyard.v1.DestroyTaskRequest
+	12, // 10: stockyard.v1.Stockyard.CreateSnapshot:input_type -> stockyard.v1.CreateSnapshotRequest
+	14, // 11: stockyard.v1.Stockyard.ListSnapshots:input_type -> stockyard.v1.ListSnapshotsRequest
+	16, // 12: stockyard.v1.Stockyard.RestoreSnapshot:input_type -> stockyard.v1.RestoreSnapshotRequest
+	18, // 13: stockyard.v1.Stockyard.GetLogs:input_type -> stockyard.v1.GetLogsRequest
+	1,  // 14: stockyard.v1.Stockyard.CreateTask:output_type -> stockyard.v1.CreateTaskResponse
+	3,  // 15: stockyard.v1.Stockyard.GetTask:output_type -> stockyard.v1.GetTaskResponse
+	5,  // 16: stockyard.v1.Stockyard.ListTasks:output_type -> stockyard.v1.ListTasksResponse
+	7,  // 17: stockyard.v1.Stockyard.StopTask:output_type -> stockyard.v1.StopTaskResponse
+	9,  // 18: stockyard.v1.Stockyard.RestartTask:output_type -> stockyard.v1.RestartTaskResponse
+	11, // 19: stockyard.v1.Stockyard.DestroyTask:output_type -> stockyard.v1.DestroyTaskResponse
+	13, // 20: stockyard.v1.Stockyard.CreateSnapshot:output_type -> stockyard.v1.CreateSnapshotResponse
+	15, // 21: stockyard.v1.Stockyard.ListSnapshots:output_type -> stockyard.v1.ListSnapshotsResponse
+	17, // 22: stockyard.v1.Stockyard.RestoreSnapshot:output_type -> stockyard.v1.RestoreSnapshotResponse
+	19, // 23: stockyard.v1.Stockyard.GetLogs:output_type -> stockyard.v1.LogEntry
+	14, // [14:24] is the sub-list for method output_type
+	4,  // [4:14] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
 	4,  // [4:4] is the sub-list for extension extendee
 	0,  // [0:4] is the sub-list for field type_name
@@ -1231,7 +1319,7 @@ func file_api_stockyard_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_stockyard_proto_rawDesc), len(file_api_stockyard_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   21,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

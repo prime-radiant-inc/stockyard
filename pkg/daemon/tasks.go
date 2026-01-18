@@ -232,6 +232,60 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	return task, nil
 }
 
+// RestartTask restarts a stopped task by starting its VM again.
+func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
+	task, err := tm.daemon.state.GetTask(taskID)
+	if err != nil {
+		return err
+	}
+
+	if task.Status != "stopped" && task.Status != "failed" {
+		return fmt.Errorf("task %s is not stopped (status: %s)", taskID, task.Status)
+	}
+
+	// Update status to starting
+	if err := tm.daemon.state.UpdateTaskStatus(taskID, "starting"); err != nil {
+		return err
+	}
+
+	// Start VM using existing workspace and rootfs
+	if tm.fc != nil && task.VMID != "" {
+		// Build minimal config for restarting - use defaults for CPU/memory
+		vmCfg := &firecracker.VMConfig{
+			ID:        task.VMID,
+			Namespace: "stockyard",
+			VCPU:      2,      // Default
+			MemoryMB:  1024,   // Default
+		}
+
+		_, err := tm.fc.StartVM(ctx, vmCfg)
+		if err != nil {
+			// Revert status on failure
+			tm.daemon.state.UpdateTaskStatus(taskID, "failed")
+			return fmt.Errorf("failed to start VM: %w", err)
+		}
+	}
+
+	// Update status to running
+	if err := tm.daemon.state.UpdateTaskStatus(taskID, "running"); err != nil {
+		return err
+	}
+
+	// Start log tailing if dashboard is enabled
+	if tm.daemon.logTailer != nil && task.VMID != "" {
+		vmDir := filepath.Join(tm.daemon.cfg.ZFS.VMsPath, task.VMID)
+		tm.daemon.logTailer.TailFile(taskID, "stdout", filepath.Join(vmDir, "stdout.log"))
+		tm.daemon.logTailer.TailFile(taskID, "stderr", filepath.Join(vmDir, "stderr.log"))
+	}
+
+	// Record activity event for VM started
+	if af := tm.daemon.ActivityFeed(); af != nil {
+		af.VMStarted(taskID, task.Name, task.Repo, "")
+	}
+
+	return nil
+}
+
 // StopTask stops a running task by its ID.
 func (tm *TaskManager) StopTask(ctx context.Context, taskID string) error {
 	task, err := tm.daemon.state.GetTask(taskID)

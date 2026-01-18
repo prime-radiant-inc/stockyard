@@ -393,6 +393,185 @@ func (c *Client) ListVMs(ctx context.Context, namespace string) ([]*VM, error) {
 	return vms, nil
 }
 
+// StartVM starts a stopped VM using its existing rootfs.
+// This is used for restarting VMs that were stopped but not destroyed.
+func (c *Client) StartVM(ctx context.Context, config *VMConfig) (*VMInfo, error) {
+	// Fill in defaults from client config before validation
+	if config.KernelPath == "" {
+		config.KernelPath = c.config.KernelPath
+	}
+
+	namespace := config.Namespace
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	vmDir := filepath.Join(c.config.StateDir, namespace, config.ID)
+
+	// Get existing rootfs path from ZFS dataset
+	var vmRootfs string
+	if c.zfs != nil {
+		vmDatasetPath := fmt.Sprintf("%s/%s/%s", c.zfs.PoolName, c.config.VMsPath, config.ID)
+		cmd := exec.CommandContext(ctx, "zfs", "get", "-H", "-o", "value", "mountpoint", vmDatasetPath)
+		output, err := cmd.Output()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get VM rootfs mountpoint: %w", err)
+		}
+		mountpoint := strings.TrimSpace(string(output))
+		vmRootfs = filepath.Join(mountpoint, "rootfs.ext4")
+	} else {
+		vmRootfs = filepath.Join(vmDir, "rootfs.ext4")
+	}
+
+	// Verify rootfs exists
+	if _, err := os.Stat(vmRootfs); err != nil {
+		return nil, fmt.Errorf("VM rootfs not found at %s: %w", vmRootfs, err)
+	}
+
+	// Set the rootfs path in config for validation
+	config.RootfsPath = vmRootfs
+
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid VM config: %w", err)
+	}
+
+	// Create tap device
+	tapName := TapNameForVM(config.ID)
+	if err := c.network.DeleteTap(tapName); err != nil {
+		// Ignore errors from non-existent tap
+	}
+	if err := c.network.CreateTap(tapName); err != nil {
+		return nil, fmt.Errorf("failed to create tap device: %w", err)
+	}
+
+	// Read existing MAC address or generate new one
+	macAddr := ""
+	if data, err := os.ReadFile(filepath.Join(vmDir, "mac_addr")); err == nil {
+		macAddr = strings.TrimSpace(string(data))
+	}
+	if macAddr == "" {
+		macAddr = GenerateMAC()
+		os.WriteFile(filepath.Join(vmDir, "mac_addr"), []byte(macAddr), 0644)
+	}
+
+	// Save tap name
+	os.WriteFile(filepath.Join(vmDir, "tap_name"), []byte(tapName), 0644)
+
+	// Start Firecracker with API socket
+	apiSocketPath := filepath.Join(vmDir, "api.sock")
+	// Remove old socket if it exists
+	os.Remove(apiSocketPath)
+
+	stdoutLog, _ := os.Create(filepath.Join(vmDir, "stdout.log"))
+	stderrLog, _ := os.Create(filepath.Join(vmDir, "stderr.log"))
+
+	cmd := exec.Command(c.config.FirecrackerBin,
+		"--api-sock", apiSocketPath,
+	)
+	cmd.Stdout = stdoutLog
+	cmd.Stderr = stderrLog
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+
+	if err := cmd.Start(); err != nil {
+		stdoutLog.Close()
+		stderrLog.Close()
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("failed to start firecracker: %w", err)
+	}
+
+	stdoutLog.Close()
+	stderrLog.Close()
+
+	// Save PID
+	pidFile := filepath.Join(vmDir, "firecracker.pid")
+	os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
+	os.WriteFile(filepath.Join(vmDir, "api.sock.path"), []byte(apiSocketPath), 0644)
+
+	// Wait briefly and check if it's still running
+	time.Sleep(time.Second)
+	if !processRunning(cmd.Process.Pid) {
+		stderrContent, _ := os.ReadFile(filepath.Join(vmDir, "stderr.log"))
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("firecracker exited immediately: %s", string(stderrContent))
+	}
+
+	// Wait for API socket to become available
+	apiClient := NewAPIClient(apiSocketPath)
+	waitCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := apiClient.WaitForSocket(waitCtx); err != nil {
+		cmd.Process.Kill()
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("wait for API socket: %w", err)
+	}
+
+	// Configure via API
+	bootArgs := "console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw"
+	if err := apiClient.SetBootSource(ctx, config.KernelPath, bootArgs); err != nil {
+		cmd.Process.Kill()
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("set boot source: %w", err)
+	}
+
+	if err := apiClient.SetDrive(ctx, "rootfs", vmRootfs, true, false); err != nil {
+		cmd.Process.Kill()
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("set drive: %w", err)
+	}
+
+	if err := apiClient.SetNetworkInterface(ctx, "eth0", macAddr, tapName); err != nil {
+		cmd.Process.Kill()
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("set network interface: %w", err)
+	}
+
+	if err := apiClient.SetMachineConfig(ctx, config.VCPU, config.MemoryMB); err != nil {
+		cmd.Process.Kill()
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("set machine config: %w", err)
+	}
+
+	// Configure MMDS for cloud-init
+	if err := apiClient.SetMMDSConfig(ctx, []string{"eth0"}); err != nil {
+		cmd.Process.Kill()
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("set MMDS config: %w", err)
+	}
+
+	hostname := fmt.Sprintf("stockyard-%s", config.ID)
+	mmdsData := BuildMMDSData(MMDSMetadata{
+		InstanceID:        "i-" + config.ID,
+		Hostname:          hostname,
+		TailscaleAuthKey:  config.TailscaleAuthKey,
+		SSHAuthorizedKeys: config.SSHAuthorizedKeys,
+		UserData:          config.CloudInitData,
+	})
+	if err := apiClient.SetMMDSData(ctx, mmdsData); err != nil {
+		cmd.Process.Kill()
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("set MMDS data: %w", err)
+	}
+
+	// Start instance
+	if err := apiClient.StartInstance(ctx); err != nil {
+		cmd.Process.Kill()
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("start instance: %w", err)
+	}
+
+	return &VMInfo{
+		ID:            config.ID,
+		Namespace:     namespace,
+		PID:           cmd.Process.Pid,
+		APISocketPath: apiSocketPath,
+		RootfsPath:    vmRootfs,
+		State:         "running",
+		CreatedAt:     time.Now(),
+	}, nil
+}
+
 // StopVM stops a running VM without deleting it.
 func (c *Client) StopVM(ctx context.Context, namespace, id string) error {
 	vm, err := c.GetVM(ctx, namespace, id)

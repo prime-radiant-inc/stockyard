@@ -23,6 +23,7 @@ const (
 	Stockyard_GetTask_FullMethodName         = "/stockyard.v1.Stockyard/GetTask"
 	Stockyard_ListTasks_FullMethodName       = "/stockyard.v1.Stockyard/ListTasks"
 	Stockyard_StopTask_FullMethodName        = "/stockyard.v1.Stockyard/StopTask"
+	Stockyard_RestartTask_FullMethodName     = "/stockyard.v1.Stockyard/RestartTask"
 	Stockyard_DestroyTask_FullMethodName     = "/stockyard.v1.Stockyard/DestroyTask"
 	Stockyard_CreateSnapshot_FullMethodName  = "/stockyard.v1.Stockyard/CreateSnapshot"
 	Stockyard_ListSnapshots_FullMethodName   = "/stockyard.v1.Stockyard/ListSnapshots"
@@ -38,6 +39,7 @@ type StockyardClient interface {
 	GetTask(ctx context.Context, in *GetTaskRequest, opts ...grpc.CallOption) (*GetTaskResponse, error)
 	ListTasks(ctx context.Context, in *ListTasksRequest, opts ...grpc.CallOption) (*ListTasksResponse, error)
 	StopTask(ctx context.Context, in *StopTaskRequest, opts ...grpc.CallOption) (*StopTaskResponse, error)
+	RestartTask(ctx context.Context, in *RestartTaskRequest, opts ...grpc.CallOption) (*RestartTaskResponse, error)
 	DestroyTask(ctx context.Context, in *DestroyTaskRequest, opts ...grpc.CallOption) (*DestroyTaskResponse, error)
 	CreateSnapshot(ctx context.Context, in *CreateSnapshotRequest, opts ...grpc.CallOption) (*CreateSnapshotResponse, error)
 	ListSnapshots(ctx context.Context, in *ListSnapshotsRequest, opts ...grpc.CallOption) (*ListSnapshotsResponse, error)
@@ -87,6 +89,16 @@ func (c *stockyardClient) StopTask(ctx context.Context, in *StopTaskRequest, opt
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StopTaskResponse)
 	err := c.cc.Invoke(ctx, Stockyard_StopTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *stockyardClient) RestartTask(ctx context.Context, in *RestartTaskRequest, opts ...grpc.CallOption) (*RestartTaskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RestartTaskResponse)
+	err := c.cc.Invoke(ctx, Stockyard_RestartTask_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -160,6 +172,7 @@ type StockyardServer interface {
 	GetTask(context.Context, *GetTaskRequest) (*GetTaskResponse, error)
 	ListTasks(context.Context, *ListTasksRequest) (*ListTasksResponse, error)
 	StopTask(context.Context, *StopTaskRequest) (*StopTaskResponse, error)
+	RestartTask(context.Context, *RestartTaskRequest) (*RestartTaskResponse, error)
 	DestroyTask(context.Context, *DestroyTaskRequest) (*DestroyTaskResponse, error)
 	CreateSnapshot(context.Context, *CreateSnapshotRequest) (*CreateSnapshotResponse, error)
 	ListSnapshots(context.Context, *ListSnapshotsRequest) (*ListSnapshotsResponse, error)
@@ -186,6 +199,9 @@ func (UnimplementedStockyardServer) ListTasks(context.Context, *ListTasksRequest
 }
 func (UnimplementedStockyardServer) StopTask(context.Context, *StopTaskRequest) (*StopTaskResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method StopTask not implemented")
+}
+func (UnimplementedStockyardServer) RestartTask(context.Context, *RestartTaskRequest) (*RestartTaskResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RestartTask not implemented")
 }
 func (UnimplementedStockyardServer) DestroyTask(context.Context, *DestroyTaskRequest) (*DestroyTaskResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DestroyTask not implemented")
@@ -295,6 +311,24 @@ func _Stockyard_StopTask_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Stockyard_RestartTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RestartTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StockyardServer).RestartTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Stockyard_RestartTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StockyardServer).RestartTask(ctx, req.(*RestartTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Stockyard_DestroyTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DestroyTaskRequest)
 	if err := dec(in); err != nil {
@@ -400,6 +434,10 @@ var Stockyard_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "StopTask",
 			Handler:    _Stockyard_StopTask_Handler,
+		},
+		{
+			MethodName: "RestartTask",
+			Handler:    _Stockyard_RestartTask_Handler,
 		},
 		{
 			MethodName: "DestroyTask",

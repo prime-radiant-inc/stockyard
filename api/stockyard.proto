@@ -9,6 +9,7 @@ service Stockyard {
     rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
     rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
     rpc StopTask(StopTaskRequest) returns (StopTaskResponse);
+    rpc RestartTask(RestartTaskRequest) returns (RestartTaskResponse);
     rpc DestroyTask(DestroyTaskRequest) returns (DestroyTaskResponse);
 
     rpc CreateSnapshot(CreateSnapshotRequest) returns (CreateSnapshotResponse);
@@ -57,6 +58,12 @@ message StopTaskRequest {
 }
 
 message StopTaskResponse {}
+
+message RestartTaskRequest {
+    string task_id = 1;
+}
+
+message RestartTaskResponse {}
 
 message DestroyTaskRequest {
     string task_id = 1;
