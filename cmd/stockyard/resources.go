@@ -236,7 +236,7 @@ func (rc *ResourceCollector) collectZFSDatasets() {
 }
 
 func (rc *ResourceCollector) collectZFSDatasetsFromPath(basePath, resourceType string) {
-	cmd := exec.Command("zfs", "list", "-H", "-r", "-o", "name,used", basePath)
+	cmd := exec.Command("zfs", "list", "-H", "-r", "-d", "1", "-o", "name,used", basePath)
 	output, err := cmd.Output()
 	if err != nil {
 		if rc.verbose {

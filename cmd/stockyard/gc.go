@@ -218,7 +218,7 @@ func (gc *GarbageCollector) findOrphanZFSDatasets() {
 }
 
 func (gc *GarbageCollector) findOrphanDatasetsIn(basePath, resourceType string) {
-	cmd := exec.Command("zfs", "list", "-H", "-r", "-o", "name", basePath)
+	cmd := exec.Command("zfs", "list", "-H", "-r", "-d", "1", "-o", "name", basePath)
 	output, err := cmd.Output()
 	if err != nil {
 		if gc.verbose {
