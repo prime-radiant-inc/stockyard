@@ -94,7 +94,8 @@
                 </div>
 
                 <!-- View tabs -->
-                <div class="mb-4 flex gap-4 border-b border-gray-200">
+                <div class="mb-4 flex gap-4 border-b border-gray-200 relative">
+                    <span class="hidden lg:block absolute right-0 top-1 text-xs text-gray-400">Click to preview &bull; Double-click to open</span>
                     <button @click="viewTab = 'all'"
                             :class="viewTab === 'all' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'"
                             class="pb-2 px-1 text-sm font-medium">
@@ -140,7 +141,8 @@
                                 {{range .Tasks}}
                                 <tr class="hover:bg-gray-50 cursor-pointer transition-colors"
                                     :class="selectedVM === '{{.ID}}' ? 'bg-blue-50 hover:bg-blue-100' : ''"
-                                    @click="selectedVM = '{{.ID}}'; htmx.ajax('GET', '/preview/vm/{{.ID}}', '#vm-preview-content')">
+                                    @click="selectedVM = '{{.ID}}'; htmx.ajax('GET', '/preview/vm/{{.ID}}', '#vm-preview-content')"
+                                    @dblclick="window.location.href = '/vm/{{.ID}}'">
                                     <td class="px-4 py-2 whitespace-nowrap">
                                         <a href="/vm/{{.ID}}" class="text-blue-600 hover:text-blue-800 hover:underline" @click.stop>{{.ID}}</a>
                                     </td>
@@ -220,7 +222,8 @@
                                     {{range $tasks}}
                                     <tr class="hover:bg-gray-50 cursor-pointer transition-colors"
                                         :class="selectedVM === '{{.ID}}' ? 'bg-blue-50 hover:bg-blue-100' : ''"
-                                        @click="selectedVM = '{{.ID}}'; htmx.ajax('GET', '/preview/vm/{{.ID}}', '#vm-preview-content')">
+                                        @click="selectedVM = '{{.ID}}'; htmx.ajax('GET', '/preview/vm/{{.ID}}', '#vm-preview-content')"
+                                        @dblclick="window.location.href = '/vm/{{.ID}}'">
                                         <td class="px-4 py-2 whitespace-nowrap">
                                             <a href="/vm/{{.ID}}" class="text-blue-600 hover:text-blue-800 hover:underline" @click.stop>{{.ID}}</a>
                                         </td>
@@ -301,7 +304,8 @@
                                     {{range $tasks}}
                                     <tr class="hover:bg-gray-50 cursor-pointer transition-colors"
                                         :class="selectedVM === '{{.ID}}' ? 'bg-blue-50 hover:bg-blue-100' : ''"
-                                        @click="selectedVM = '{{.ID}}'; htmx.ajax('GET', '/preview/vm/{{.ID}}', '#vm-preview-content')">
+                                        @click="selectedVM = '{{.ID}}'; htmx.ajax('GET', '/preview/vm/{{.ID}}', '#vm-preview-content')"
+                                        @dblclick="window.location.href = '/vm/{{.ID}}'">
                                         <td class="px-4 py-2 whitespace-nowrap">
                                             <a href="/vm/{{.ID}}" class="text-blue-600 hover:text-blue-800 hover:underline" @click.stop>{{.ID}}</a>
                                         </td>
@@ -372,7 +376,8 @@
                                 {{range .Tasks}}{{if eq .Status "running"}}
                                 <tr class="hover:bg-gray-50 cursor-pointer transition-colors"
                                     :class="selectedVM === '{{.ID}}' ? 'bg-blue-50 hover:bg-blue-100' : ''"
-                                    @click="selectedVM = '{{.ID}}'; htmx.ajax('GET', '/preview/vm/{{.ID}}', '#vm-preview-content')">
+                                    @click="selectedVM = '{{.ID}}'; htmx.ajax('GET', '/preview/vm/{{.ID}}', '#vm-preview-content')"
+                                    @dblclick="window.location.href = '/vm/{{.ID}}'">
                                     <td class="px-4 py-2 whitespace-nowrap">
                                         <a href="/vm/{{.ID}}" class="text-blue-600 hover:text-blue-800 hover:underline" @click.stop>{{.ID}}</a>
                                     </td>
