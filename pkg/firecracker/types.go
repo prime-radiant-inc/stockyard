@@ -96,6 +96,8 @@ type VMInfo struct {
 	APISocketPath string // HTTP API socket path
 	RootfsPath    string
 	MetricsPath   string // Path to metrics FIFO
+	CID           uint32 // vsock Context ID
+	VsockPath     string // Path to vsock UDS for host connection
 	State         string
 	CreatedAt     time.Time
 }
