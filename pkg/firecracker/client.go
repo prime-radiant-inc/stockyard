@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -35,9 +36,11 @@ type ClientConfig struct {
 
 // Client manages Firecracker microVMs.
 type Client struct {
-	config  ClientConfig
-	zfs     *zfs.Manager
-	network *NetworkManager
+	config     ClientConfig
+	zfs        *zfs.Manager
+	network    *NetworkManager
+	cidCounter uint32     // Next CID to allocate
+	cidMu      sync.Mutex // Protects cidCounter
 }
 
 // NewClient creates a new Firecracker client.
@@ -59,15 +62,25 @@ func NewClient(cfg ClientConfig, zfsMgr *zfs.Manager) (*Client, error) {
 	}
 
 	return &Client{
-		config:  cfg,
-		zfs:     zfsMgr,
-		network: NewNetworkManager(cfg.BridgeName),
+		config:     cfg,
+		zfs:        zfsMgr,
+		network:    NewNetworkManager(cfg.BridgeName),
+		cidCounter: 100, // Start CIDs at 100 (3-99 reserved)
 	}, nil
 }
 
 // Close cleans up resources. For direct Firecracker, this is a no-op.
 func (c *Client) Close() error {
 	return nil
+}
+
+// allocateCID returns the next available CID for a new VM.
+func (c *Client) allocateCID() uint32 {
+	c.cidMu.Lock()
+	defer c.cidMu.Unlock()
+	cid := c.cidCounter
+	c.cidCounter++
+	return cid
 }
 
 // CreateVM creates and starts a new Firecracker microVM using the API mode.
@@ -190,8 +203,8 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
 	os.WriteFile(filepath.Join(vmDir, "api.sock.path"), []byte(apiSocketPath), 0644)
 
-	// Wait briefly and check if it's still running
-	time.Sleep(time.Second)
+	// Brief check to catch immediate failures (bad binary, permissions, etc.)
+	time.Sleep(50 * time.Millisecond)
 	if !processRunning(cmd.Process.Pid) {
 		stderrContent, _ := os.ReadFile(filepath.Join(vmDir, "stderr.log"))
 		destroyZFSDataset(vmDatasetPath)
@@ -517,8 +530,8 @@ func (c *Client) StartVM(ctx context.Context, config *VMConfig) (*VMInfo, error)
 	os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
 	os.WriteFile(filepath.Join(vmDir, "api.sock.path"), []byte(apiSocketPath), 0644)
 
-	// Wait briefly and check if it's still running
-	time.Sleep(time.Second)
+	// Brief check to catch immediate failures (bad binary, permissions, etc.)
+	time.Sleep(50 * time.Millisecond)
 	if !processRunning(cmd.Process.Pid) {
 		stderrContent, _ := os.ReadFile(filepath.Join(vmDir, "stderr.log"))
 		c.network.DeleteTap(tapName)
