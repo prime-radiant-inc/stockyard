@@ -47,6 +47,8 @@ RUN apt-get update && apt-get install -y \
     iproute2 \
     iptables \
     dnsutils \
+    iputils-ping \
+    curl \
     # System utilities
     sudo \
     vim \
@@ -200,15 +202,10 @@ RUN chmod +x /usr/local/bin/stockyard-init.sh
 COPY init/stockyard-init.service /etc/systemd/system/stockyard-init.service
 RUN systemctl enable stockyard-init.service 2>/dev/null || true
 
-# Configure cloud-init for VM initialization
-# Use IMDS datasource first (for Firecracker MMDS), fall back to NoCloud
-RUN mkdir -p /var/lib/cloud/seed/nocloud /etc/cloud/cloud.cfg.d \
-    && cat > /etc/cloud/cloud.cfg.d/99-datasource.cfg <<'EOF'
-datasource_list: [ IMDS, NoCloud, None ]
-datasource:
-  IMDS:
-    metadata_urls: ["http://169.254.169.254"]
-EOF
+# Disable cloud-init - stockyard-init.sh handles all VM initialization
+# cloud-init can hang waiting for IMDS before MMDS route is set up
+RUN systemctl mask cloud-init.service cloud-init-local.service \
+    cloud-config.service cloud-final.service 2>/dev/null || true
 
 # Configure network for DHCP with MMDS route
 # IP is obtained via DHCP from stockyard daemon's dnsmasq

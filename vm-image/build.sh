@@ -33,7 +33,7 @@ GOARCH="${GOARCH:-$(go env GOARCH)}"
 GOOS="${GOOS:-linux}"
 
 echo "Building for ${GOOS}/${GOARCH}..."
-CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" go build -o stockyard-snapshot .
+CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" go build -buildvcs=false -o stockyard-snapshot .
 
 if [ ! -f stockyard-snapshot ]; then
     echo "ERROR: Failed to build stockyard-snapshot binary"
