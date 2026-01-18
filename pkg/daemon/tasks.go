@@ -217,6 +217,13 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		return nil, fmt.Errorf("failed to record task: %w", err)
 	}
 
+	// Start log tailing if dashboard is enabled
+	if tm.daemon.logTailer != nil && vmID != "" {
+		vmDir := filepath.Join(tm.daemon.cfg.ZFS.VMsPath, vmID)
+		tm.daemon.logTailer.TailFile(taskID, "stdout", filepath.Join(vmDir, "stdout.log"))
+		tm.daemon.logTailer.TailFile(taskID, "stderr", filepath.Join(vmDir, "stderr.log"))
+	}
+
 	return task, nil
 }
 
@@ -225,6 +232,11 @@ func (tm *TaskManager) StopTask(ctx context.Context, taskID string) error {
 	task, err := tm.daemon.state.GetTask(taskID)
 	if err != nil {
 		return err
+	}
+
+	// Stop log tailing
+	if tm.daemon.logTailer != nil {
+		tm.daemon.logTailer.StopTask(taskID)
 	}
 
 	// Stop VM if firecracker client is available and task has a VM
@@ -243,6 +255,11 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 	task, err := tm.daemon.state.GetTask(taskID)
 	if err != nil {
 		return err
+	}
+
+	// Stop log tailing
+	if tm.daemon.logTailer != nil {
+		tm.daemon.logTailer.StopTask(taskID)
 	}
 
 	// Delete VM if firecracker client is available and task has a VM

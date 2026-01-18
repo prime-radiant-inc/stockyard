@@ -36,6 +36,30 @@ type Daemon struct {
 	httpServer *http.Server
 	mu         sync.Mutex
 	running    bool
+
+	// Real-time dashboard components
+	dashboardServer   *dashboard.Server
+	metricsPoller     *MetricsPoller
+	logTailer         *LogTailer
+	statusBroadcaster *dashboard.StatusBroadcaster
+}
+
+// dashboardLogSink adapts LogStreamer to the LogSink interface.
+type dashboardLogSink struct {
+	streamer *dashboard.LogStreamer
+}
+
+func (s *dashboardLogSink) SendLog(taskID, stream, line string) {
+	s.streamer.SendLog(taskID, stream, line)
+}
+
+// dashboardMetricsSink adapts MetricsCollector to the MetricsSink interface.
+type dashboardMetricsSink struct {
+	collector *dashboard.MetricsCollector
+}
+
+func (s *dashboardMetricsSink) SendMetrics(taskID string, metrics dashboard.VMMetrics) {
+	s.collector.SendMetrics(taskID, metrics)
 }
 
 // New creates a new Daemon instance with the given configuration and secrets provider.
@@ -151,9 +175,27 @@ func (d *Daemon) Start(ctx context.Context) error {
 		// Create dashboard facade and adapter
 		facade := NewDashboardFacade(d.state, d.tasks)
 		adapter := dashboard.NewDaemonAdapter(facade)
-		dashboardServer := dashboard.NewServer(adapter)
+		d.dashboardServer = dashboard.NewServer(adapter)
 		tsClient := tailscale.NewLocalClient()
-		handler := dashboard.AuthMiddleware(dashboardServer, tsClient)
+		handler := dashboard.AuthMiddleware(d.dashboardServer, tsClient)
+
+		// Create real-time components
+		hub := d.dashboardServer.Hub()
+
+		// Status broadcaster - wire to state callback
+		d.statusBroadcaster = dashboard.NewStatusBroadcaster(hub)
+		d.state.SetStatusChangeCallback(func(taskID, oldStatus, newStatus string) {
+			d.statusBroadcaster.TaskStatusChanged(taskID, oldStatus, newStatus)
+		})
+
+		// Log streamer and tailer
+		logStreamer := dashboard.NewLogStreamer(hub)
+		d.logTailer = NewLogTailer(&dashboardLogSink{logStreamer})
+
+		// Metrics collector and poller
+		metricsCollector := dashboard.NewMetricsCollector(hub)
+		d.metricsPoller = NewMetricsPoller(d, &dashboardMetricsSink{metricsCollector}, 5*time.Second)
+		d.metricsPoller.Start()
 
 		d.httpServer = &http.Server{
 			Addr:    d.cfg.HTTP.Addr,
@@ -188,6 +230,21 @@ func (d *Daemon) Stop() error {
 	}
 
 	d.running = false
+
+	// Stop log tailer
+	if d.logTailer != nil {
+		d.logTailer.Stop()
+	}
+
+	// Stop metrics polling
+	if d.metricsPoller != nil {
+		d.metricsPoller.Stop()
+	}
+
+	// Close dashboard server
+	if d.dashboardServer != nil {
+		d.dashboardServer.Close()
+	}
 
 	// Shutdown HTTP server if running
 	if d.httpServer != nil {
