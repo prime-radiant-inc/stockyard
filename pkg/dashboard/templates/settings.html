@@ -12,14 +12,12 @@
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 h-screen flex flex-col">
-    <!-- Header -->
-    <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0">
+    <!-- Top bar -->
+    <header class="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
         <div class="flex items-center gap-4">
-            <a href="/" class="font-semibold text-lg hover:text-blue-600">Stockyard</a>
-            <span class="text-gray-400">/</span>
-            <span class="text-gray-600">Settings</span>
+            <span class="font-semibold text-lg">Stockyard</span>
         </div>
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2">
             {{if .UserAvatar}}
             <img src="{{.UserAvatar}}" alt="{{.User}}" class="w-8 h-8 rounded-full">
             {{else}}
@@ -31,66 +29,71 @@
         </div>
     </header>
 
-    <!-- Main content -->
-    <main class="flex-1 overflow-auto p-6">
-        <div class="max-w-2xl mx-auto">
-            <div class="bg-white rounded-lg shadow border border-gray-200">
-                <div class="p-4 border-b border-gray-200">
-                    <h1 class="text-xl font-semibold text-gray-900">Settings</h1>
-                </div>
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar -->
+        {{template "sidebar" .}}
 
-                <div class="p-6 space-y-6">
-                    <!-- Instance Info -->
-                    <div>
-                        <h2 class="text-sm font-medium text-gray-900 mb-3">Instance Information</h2>
-                        <dl class="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <dt class="text-gray-500">Instance ID</dt>
-                                <dd class="font-mono text-gray-900">{{.InstanceID}}</dd>
-                            </div>
-                            <div>
-                                <dt class="text-gray-500">Version</dt>
-                                <dd class="font-mono text-gray-900">{{.Version}}</dd>
-                            </div>
-                        </dl>
+        <!-- Main content -->
+        <main class="flex-1 overflow-auto p-6">
+            <div class="max-w-2xl mx-auto">
+                <div class="bg-white rounded-lg shadow border border-gray-200">
+                    <div class="p-4 border-b border-gray-200">
+                        <h1 class="text-xl font-semibold text-gray-900">Settings</h1>
                     </div>
 
-                    <hr class="border-gray-200">
+                    <div class="p-6 space-y-6">
+                        <!-- Instance Info -->
+                        <div>
+                            <h2 class="text-sm font-medium text-gray-900 mb-3">Instance Information</h2>
+                            <dl class="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                    <dt class="text-gray-500">Instance ID</dt>
+                                    <dd class="font-mono text-gray-900">{{.InstanceID}}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-gray-500">Version</dt>
+                                    <dd class="font-mono text-gray-900">{{.Version}}</dd>
+                                </div>
+                            </dl>
+                        </div>
 
-                    <!-- ZFS Config -->
-                    <div>
-                        <h2 class="text-sm font-medium text-gray-900 mb-3">Storage (ZFS)</h2>
-                        <dl class="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <dt class="text-gray-500">Pool</dt>
-                                <dd class="font-mono text-gray-900">{{.ZFSPool}}</dd>
-                            </div>
-                            <div>
-                                <dt class="text-gray-500">VMs Path</dt>
-                                <dd class="font-mono text-gray-900">{{.ZFSVMsPath}}</dd>
-                            </div>
-                        </dl>
-                    </div>
+                        <hr class="border-gray-200">
 
-                    <hr class="border-gray-200">
+                        <!-- ZFS Config -->
+                        <div>
+                            <h2 class="text-sm font-medium text-gray-900 mb-3">Storage (ZFS)</h2>
+                            <dl class="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                    <dt class="text-gray-500">Pool</dt>
+                                    <dd class="font-mono text-gray-900">{{.ZFSPool}}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-gray-500">VMs Path</dt>
+                                    <dd class="font-mono text-gray-900">{{.ZFSVMsPath}}</dd>
+                                </div>
+                            </dl>
+                        </div>
 
-                    <!-- Network Config -->
-                    <div>
-                        <h2 class="text-sm font-medium text-gray-900 mb-3">Network</h2>
-                        <dl class="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <dt class="text-gray-500">Bridge</dt>
-                                <dd class="font-mono text-gray-900">{{.BridgeName}}</dd>
-                            </div>
-                            <div>
-                                <dt class="text-gray-500">VM Subnet</dt>
-                                <dd class="font-mono text-gray-900">{{.VMSubnet}}</dd>
-                            </div>
-                        </dl>
+                        <hr class="border-gray-200">
+
+                        <!-- Network Config -->
+                        <div>
+                            <h2 class="text-sm font-medium text-gray-900 mb-3">Network</h2>
+                            <dl class="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                    <dt class="text-gray-500">Bridge</dt>
+                                    <dd class="font-mono text-gray-900">{{.BridgeName}}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-gray-500">VM Subnet</dt>
+                                    <dd class="font-mono text-gray-900">{{.VMSubnet}}</dd>
+                                </div>
+                            </dl>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </main>
+        </main>
+    </div>
 </body>
 </html>

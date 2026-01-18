@@ -459,6 +459,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"User":       GetUser(r.Context()),
 		"UserAvatar": GetUserAvatar(r.Context()),
+		"ActiveNav":  "settings",
 		"InstanceID": "stockyard",
 		"Version":    "dev",
 		"ZFSPool":    "tank",
