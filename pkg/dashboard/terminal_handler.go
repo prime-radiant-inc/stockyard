@@ -90,7 +90,7 @@ func extractTaskID(path string) string {
 // createSSHSession creates a new SSH connection to the specified host.
 func (h *TerminalHandler) createSSHSession(hostname, user string) (*TerminalSession, error) {
 	// Get SSH agent auth
-	authMethod, err := sshAgentAuth()
+	authMethod, agentConn, err := sshAgentAuth()
 	if err != nil {
 		return nil, fmt.Errorf("ssh agent auth: %w", err)
 	}
@@ -106,6 +106,7 @@ func (h *TerminalHandler) createSSHSession(hostname, user string) (*TerminalSess
 	// Connect to SSH server
 	client, err := ssh.Dial("tcp", hostname+":22", config)
 	if err != nil {
+		agentConn.Close()
 		return nil, fmt.Errorf("ssh dial: %w", err)
 	}
 
@@ -113,6 +114,7 @@ func (h *TerminalHandler) createSSHSession(hostname, user string) (*TerminalSess
 	sshSession, err := client.NewSession()
 	if err != nil {
 		client.Close()
+		agentConn.Close()
 		return nil, fmt.Errorf("new session: %w", err)
 	}
 
@@ -124,6 +126,7 @@ func (h *TerminalHandler) createSSHSession(hostname, user string) (*TerminalSess
 	}); err != nil {
 		sshSession.Close()
 		client.Close()
+		agentConn.Close()
 		return nil, fmt.Errorf("request pty: %w", err)
 	}
 
@@ -132,6 +135,7 @@ func (h *TerminalHandler) createSSHSession(hostname, user string) (*TerminalSess
 	if err != nil {
 		sshSession.Close()
 		client.Close()
+		agentConn.Close()
 		return nil, fmt.Errorf("stdin pipe: %w", err)
 	}
 
@@ -140,6 +144,7 @@ func (h *TerminalHandler) createSSHSession(hostname, user string) (*TerminalSess
 	if err != nil {
 		sshSession.Close()
 		client.Close()
+		agentConn.Close()
 		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
 
@@ -147,17 +152,19 @@ func (h *TerminalHandler) createSSHSession(hostname, user string) (*TerminalSess
 	if err := sshSession.Shell(); err != nil {
 		sshSession.Close()
 		client.Close()
+		agentConn.Close()
 		return nil, fmt.Errorf("start shell: %w", err)
 	}
 
 	return &TerminalSession{
-		ID:       uuid.New().String(),
-		Hostname: hostname,
-		User:     user,
-		client:   client,
-		session:  sshSession,
-		stdin:    stdin,
-		stdout:   stdout,
+		ID:        uuid.New().String(),
+		Hostname:  hostname,
+		User:      user,
+		agentConn: agentConn,
+		client:    client,
+		session:   sshSession,
+		stdin:     stdin,
+		stdout:    stdout,
 	}, nil
 }
 
@@ -197,7 +204,7 @@ func (h *TerminalHandler) handleSession(conn *websocket.Conn, session *TerminalS
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
 				log.Printf("terminal: websocket read error: %v", err)
 			}
-			return
+			break
 		}
 
 		// Parse message to determine type
@@ -218,7 +225,7 @@ func (h *TerminalHandler) handleSession(conn *websocket.Conn, session *TerminalS
 			}
 			if _, err := session.stdin.Write([]byte(inputMsg.Data)); err != nil {
 				log.Printf("terminal: stdin write error: %v", err)
-				return
+				break
 			}
 
 		case "terminal_resize":
@@ -235,6 +242,9 @@ func (h *TerminalHandler) handleSession(conn *websocket.Conn, session *TerminalS
 			log.Printf("terminal: unknown message type: %s", baseMsg.Type)
 		}
 	}
+
+	// Wait for stdout reader goroutine to complete
+	<-done
 }
 
 // sendError sends an error message to the terminal before closing.
@@ -247,14 +257,15 @@ func (h *TerminalHandler) sendError(conn *websocket.Conn, errMsg string) {
 }
 
 // sshAgentAuth returns an SSH auth method using the SSH agent.
-func sshAgentAuth() (ssh.AuthMethod, error) {
+// The returned connection must be closed when the SSH session ends.
+func sshAgentAuth() (ssh.AuthMethod, net.Conn, error) {
 	socket := os.Getenv("SSH_AUTH_SOCK")
 	if socket == "" {
-		return nil, fmt.Errorf("SSH_AUTH_SOCK not set")
+		return nil, nil, fmt.Errorf("SSH_AUTH_SOCK not set")
 	}
 	conn, err := net.Dial("unix", socket)
 	if err != nil {
-		return nil, fmt.Errorf("dial ssh agent: %w", err)
+		return nil, nil, fmt.Errorf("dial ssh agent: %w", err)
 	}
-	return ssh.PublicKeysCallback(agent.NewClient(conn).Signers), nil
+	return ssh.PublicKeysCallback(agent.NewClient(conn).Signers), conn, nil
 }

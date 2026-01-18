@@ -3,6 +3,7 @@ package dashboard
 import (
 	"fmt"
 	"io"
+	"net"
 	"sync"
 
 	"golang.org/x/crypto/ssh"
@@ -15,11 +16,12 @@ type TerminalSession struct {
 	Hostname string
 	User     string
 
-	client  *ssh.Client
-	session *ssh.Session
-	stdin   io.WriteCloser
-	stdout  io.Reader
-	stderr  io.Reader
+	agentConn net.Conn
+	client    *ssh.Client
+	session   *ssh.Session
+	stdin     io.WriteCloser
+	stdout    io.Reader
+	stderr    io.Reader
 
 	mu     sync.Mutex
 	closed bool
@@ -119,6 +121,9 @@ func (ts *TerminalSession) Close() error {
 	}
 	if ts.client != nil {
 		ts.client.Close()
+	}
+	if ts.agentConn != nil {
+		ts.agentConn.Close()
 	}
 	return nil
 }
