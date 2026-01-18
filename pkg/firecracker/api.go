@@ -142,3 +142,29 @@ func (a *APIClient) WaitForSocket(ctx context.Context) error {
 		}
 	}
 }
+
+// GetMetrics fetches metrics from the Firecracker API.
+func (a *APIClient) GetMetrics(ctx context.Context) (*FirecrackerMetrics, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/metrics", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("get metrics failed: %s - %s", resp.Status, string(body))
+	}
+
+	var metrics FirecrackerMetrics
+	if err := json.NewDecoder(resp.Body).Decode(&metrics); err != nil {
+		return nil, fmt.Errorf("decode metrics: %w", err)
+	}
+
+	return &metrics, nil
+}

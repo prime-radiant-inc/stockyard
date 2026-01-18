@@ -381,3 +381,50 @@ func TestAPIClient_WaitForSocket_Timeout(t *testing.T) {
 		t.Fatal("expected timeout error")
 	}
 }
+
+func TestAPIClient_GetMetrics(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+	defer listener.Close()
+
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/metrics" && r.Method == "GET" {
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"utc_timestamp_ms": 1234567890,
+					"vcpu": map[string]int64{
+						"exit_io_in":  100,
+						"exit_io_out": 50,
+					},
+					"net": map[string]int64{
+						"rx_bytes": 1024,
+						"tx_bytes": 512,
+					},
+				})
+				return
+			}
+			http.NotFound(w, r)
+		}),
+	}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewAPIClient(socketPath)
+	metrics, err := client.GetMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("GetMetrics failed: %v", err)
+	}
+
+	if metrics.UTCTimestampMs != 1234567890 {
+		t.Errorf("expected utc_timestamp_ms 1234567890, got %d", metrics.UTCTimestampMs)
+	}
+	if metrics.Net.RxBytes != 1024 {
+		t.Errorf("expected rx_bytes 1024, got %d", metrics.Net.RxBytes)
+	}
+	if metrics.Net.TxBytes != 512 {
+		t.Errorf("expected tx_bytes 512, got %d", metrics.Net.TxBytes)
+	}
+}
