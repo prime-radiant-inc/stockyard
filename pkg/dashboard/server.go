@@ -71,9 +71,20 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Group tasks by RepoURL
-	grouped := make(map[string][]Task)
+	groupedByRepo := make(map[string][]Task)
 	for _, task := range tasks {
-		grouped[task.RepoURL] = append(grouped[task.RepoURL], task)
+		repo := task.RepoURL
+		if repo == "" {
+			repo = "(none)"
+		}
+		groupedByRepo[repo] = append(groupedByRepo[repo], task)
+	}
+
+	// Group tasks by Owner (placeholder - Owner field not yet in Task struct)
+	groupedByOwner := make(map[string][]Task)
+	for _, task := range tasks {
+		owner := "(unknown)" // TODO: use task.Owner when available
+		groupedByOwner[owner] = append(groupedByOwner[owner], task)
 	}
 
 	// If templates are not available or fleet.html doesn't exist (testing), output plain text
@@ -87,11 +98,13 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 
 	// Render template
 	data := map[string]interface{}{
-		"Title":        "Fleet",
-		"User":         GetUser(r.Context()),
-		"ActiveNav":    "fleet",
-		"Tasks":        tasks,
-		"GroupedTasks": grouped,
+		"Title":          "Fleet",
+		"User":           GetUser(r.Context()),
+		"ActiveNav":      "fleet",
+		"Tasks":          tasks,
+		"GroupedTasks":   groupedByRepo, // Keep for backward compatibility
+		"GroupedByRepo":  groupedByRepo,
+		"GroupedByOwner": groupedByOwner,
 	}
 	var buf bytes.Buffer
 	if err := s.templates.ExecuteTemplate(&buf, "fleet.html", data); err != nil {

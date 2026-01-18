@@ -68,16 +68,25 @@ func TestTemplates_FleetWithTasks(t *testing.T) {
 		t.Fatalf("failed to load templates: %v", err)
 	}
 
+	tasks := []map[string]interface{}{
+		{"ID": "vm-1", "Name": "test", "Status": "running", "RepoURL": "github.com/test/repo"},
+		{"ID": "vm-2", "Name": "test2", "Status": "stopped", "RepoURL": "github.com/test/repo"},
+	}
+
 	var buf bytes.Buffer
 	data := map[string]interface{}{
 		"Title":     "Fleet",
 		"User":      "jesse",
 		"ActiveNav": "fleet",
+		"Tasks":     tasks,
 		"GroupedTasks": map[string][]map[string]interface{}{
-			"github.com/test/repo": {
-				{"ID": "vm-1", "Name": "test", "Status": "running"},
-				{"ID": "vm-2", "Name": "test2", "Status": "stopped"},
-			},
+			"github.com/test/repo": tasks,
+		},
+		"GroupedByRepo": map[string][]map[string]interface{}{
+			"github.com/test/repo": tasks,
+		},
+		"GroupedByOwner": map[string][]map[string]interface{}{
+			"(unknown)": tasks,
 		},
 	}
 
