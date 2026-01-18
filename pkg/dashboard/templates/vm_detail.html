@@ -268,6 +268,9 @@
                                  };
                                  if (paused) {
                                      pendingLines.push(newLine);
+                                     if (pendingLines.length > maxLogs) {
+                                         pendingLines = pendingLines.slice(-maxLogs);
+                                     }
                                  } else {
                                      logs.push(newLine);
                                      if (logs.length > maxLogs) {
@@ -292,7 +295,7 @@
                         <div class="flex items-center gap-2">
                             <input type="text" x-model="filter" placeholder="Filter..."
                                    class="px-2 py-1 text-sm border border-gray-300 rounded">
-                            <button @click="paused = !paused; if (!paused) { logs = logs.concat(pendingLines); pendingLines = []; $nextTick(() => { const el = $refs.logContainer; if (el) el.scrollTop = el.scrollHeight; }); }"
+                            <button @click="paused = !paused; if (!paused) { logs = logs.concat(pendingLines).slice(-maxLogs); pendingLines = []; $nextTick(() => { const el = $refs.logContainer; if (el) el.scrollTop = el.scrollHeight; }); }"
                                     :class="paused ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'"
                                     class="px-2 py-1 text-xs rounded flex items-center gap-1">
                                 <template x-if="paused">
