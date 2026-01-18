@@ -466,3 +466,35 @@ func TestAPIClient_GetMachineConfig(t *testing.T) {
 		t.Errorf("expected mem_size_mib 2048, got %d", config.MemSizeMib)
 	}
 }
+
+func TestAPIClient_SetMetrics(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, _ := net.Listen("unix", socketPath)
+	defer listener.Close()
+
+	var receivedPath string
+	var receivedBody map[string]interface{}
+
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewAPIClient(socketPath)
+	err := client.SetMetrics(context.Background(), "/tmp/metrics.fifo")
+	if err != nil {
+		t.Fatalf("SetMetrics failed: %v", err)
+	}
+
+	if receivedPath != "/metrics" {
+		t.Errorf("expected path /metrics, got %s", receivedPath)
+	}
+	if receivedBody["metrics_path"] != "/tmp/metrics.fifo" {
+		t.Errorf("wrong metrics_path: %v", receivedBody)
+	}
+}

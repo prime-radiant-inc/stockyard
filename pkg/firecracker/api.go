@@ -60,6 +60,14 @@ func (a *APIClient) put(ctx context.Context, path string, body interface{}) erro
 	return nil
 }
 
+// SetMetrics configures where Firecracker writes metrics.
+// The path should be a file or FIFO that will receive NDJSON metrics.
+func (a *APIClient) SetMetrics(ctx context.Context, metricsPath string) error {
+	return a.put(ctx, "/metrics", map[string]string{
+		"metrics_path": metricsPath,
+	})
+}
+
 // SetBootSource configures the kernel and boot arguments.
 func (a *APIClient) SetBootSource(ctx context.Context, kernelPath, bootArgs string) error {
 	return a.put(ctx, "/boot-source", map[string]string{
