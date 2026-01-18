@@ -67,7 +67,7 @@
         <!-- Main content -->
         <main class="flex-1 overflow-auto p-6">
             <!-- Header with VM ID, status, and actions -->
-            <div class="flex items-center justify-between mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                 <div class="flex items-center gap-4">
                     <h1 class="text-2xl font-semibold">{{.Task.ID}}</h1>
                     {{if eq .Task.Status "running"}}
@@ -80,7 +80,7 @@
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">{{.Task.Status}}</span>
                     {{end}}
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <button onclick="copySSH('{{.Task.TailscaleHost}}')" class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
@@ -181,7 +181,7 @@
                     </div>
                     <div class="p-4">
                         <!-- Compact view -->
-                        <div x-show="!expanded" class="grid grid-cols-4 gap-4">
+                        <div x-show="!expanded" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
                             <div class="text-center p-3 bg-gray-50 rounded-lg">
                                 <div class="text-xl font-bold" :class="cpu > 80 ? 'text-red-600' : cpu > 50 ? 'text-yellow-600' : 'text-gray-900'"
                                      x-text="cpu.toFixed(1) + '%'">--</div>
@@ -408,7 +408,7 @@
                     <div class="p-4">
                         <!-- Live logs view -->
                         <div x-show="mode === 'live'" x-ref="logContainer"
-                             class="bg-gray-900 text-gray-300 rounded-lg p-4 font-mono text-sm h-64 overflow-auto">
+                             class="bg-gray-900 text-gray-300 rounded-lg p-4 font-mono text-xs sm:text-sm h-48 lg:h-64 overflow-auto">
                             <template x-if="logs.length === 0">
                                 <p class="text-gray-500">Waiting for logs...</p>
                             </template>
@@ -421,7 +421,7 @@
                         </div>
                         <!-- Search results view -->
                         <div x-show="mode === 'search'"
-                             class="bg-gray-900 text-gray-300 rounded-lg p-4 font-mono text-sm h-64 overflow-auto">
+                             class="bg-gray-900 text-gray-300 rounded-lg p-4 font-mono text-xs sm:text-sm h-48 lg:h-64 overflow-auto">
                             <template x-if="!searchQuery">
                                 <p class="text-gray-500">Enter a search term to search historical logs...</p>
                             </template>
@@ -444,22 +444,22 @@
                         <h2 class="text-lg font-medium">Details</h2>
                     </div>
                     <div class="p-4">
-                        <dl class="space-y-3">
-                            <div class="flex justify-between">
+                        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="flex justify-between sm:flex-col sm:gap-1">
                                 <dt class="text-sm font-medium text-gray-500">ID</dt>
                                 <dd class="text-sm text-gray-900">{{.Task.ID}}</dd>
                             </div>
-                            <div class="flex justify-between">
+                            <div class="flex justify-between sm:flex-col sm:gap-1">
                                 <dt class="text-sm font-medium text-gray-500">Repository</dt>
                                 <dd class="text-sm text-gray-900">{{.Task.RepoURL}}</dd>
                             </div>
                             {{if .Task.GitRef}}
-                            <div class="flex justify-between">
+                            <div class="flex justify-between sm:flex-col sm:gap-1">
                                 <dt class="text-sm font-medium text-gray-500">Git Ref</dt>
                                 <dd class="text-sm text-gray-900">{{.Task.GitRef}}</dd>
                             </div>
                             {{end}}
-                            <div class="flex justify-between">
+                            <div class="flex justify-between sm:flex-col sm:gap-1">
                                 <dt class="text-sm font-medium text-gray-500">Tailscale Host</dt>
                                 <dd class="text-sm text-gray-900">{{.Task.TailscaleHost}}</dd>
                             </div>
