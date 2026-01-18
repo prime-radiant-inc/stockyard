@@ -7,10 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"text/template"
+	"time"
 )
 
 // DHCPConfig holds configuration for the DHCP server.
@@ -22,6 +24,15 @@ type DHCPConfig struct {
 	Netmask    string // Network mask (e.g., "255.255.192.0")
 	LeaseTime  string // DHCP lease duration (e.g., "12h")
 	DNS        string // DNS server (e.g., "8.8.8.8"), optional
+}
+
+// Lease represents a DHCP lease entry from dnsmasq.
+type Lease struct {
+	Expiry   time.Time // When the lease expires
+	MAC      string    // MAC address of the client
+	IP       string    // IP address assigned to the client
+	Hostname string    // Hostname of the client
+	ClientID string    // Client identifier
 }
 
 // DHCPServer manages a dnsmasq instance for DHCP.
@@ -272,4 +283,47 @@ func (s *DHCPServer) GetIPForMAC(mac string) (string, bool) {
 	}
 
 	return "", false
+}
+
+// ListLeases returns all DHCP leases currently in the lease file.
+func (s *DHCPServer) ListLeases() ([]Lease, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	file, err := os.Open(s.leasePath)
+	if err != nil {
+		return nil, fmt.Errorf("dhcp: failed to open lease file: %w", err)
+	}
+	defer file.Close()
+
+	var leases []Lease
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// dnsmasq lease format: <expiry> <MAC> <IP> <hostname> <client-id>
+		fields := strings.Fields(line)
+		if len(fields) < 5 {
+			continue
+		}
+
+		expiry, err := strconv.ParseInt(fields[0], 10, 64)
+		if err != nil {
+			continue
+		}
+
+		lease := Lease{
+			Expiry:   time.Unix(expiry, 0),
+			MAC:      fields[1],
+			IP:       fields[2],
+			Hostname: fields[3],
+			ClientID: fields[4],
+		}
+		leases = append(leases, lease)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("dhcp: failed to read lease file: %w", err)
+	}
+
+	return leases, nil
 }

@@ -223,3 +223,46 @@ func TestDHCPServer_GetIPForMAC_CaseInsensitive(t *testing.T) {
 		t.Errorf("got IP %s, want 192.168.64.2", ip)
 	}
 }
+
+func TestDHCPServer_ListLeases(t *testing.T) {
+	dataDir := t.TempDir()
+
+	srv, err := NewDHCPServer(DHCPConfig{
+		Bridge:     "flbr0",
+		Gateway:    "192.168.64.1",
+		RangeStart: "192.168.64.2",
+		RangeEnd:   "192.168.127.254",
+		Netmask:    "255.255.192.0",
+		LeaseTime:  "12h",
+		DNS:        "8.8.8.8",
+	}, dataDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	leaseContent := `1737200000 02:7a:77:e8:87:9e 192.168.64.2 stockyard-abc123 *
+1737200000 02:8d:3f:70:39:a9 192.168.64.3 stockyard-def456 *
+`
+	if err := os.WriteFile(srv.leasePath, []byte(leaseContent), 0644); err != nil {
+		t.Fatalf("failed to write lease file: %v", err)
+	}
+
+	leases, err := srv.ListLeases()
+	if err != nil {
+		t.Fatalf("ListLeases failed: %v", err)
+	}
+
+	if len(leases) != 2 {
+		t.Fatalf("expected 2 leases, got %d", len(leases))
+	}
+
+	if leases[0].MAC != "02:7a:77:e8:87:9e" {
+		t.Errorf("unexpected MAC: %s", leases[0].MAC)
+	}
+	if leases[0].IP != "192.168.64.2" {
+		t.Errorf("unexpected IP: %s", leases[0].IP)
+	}
+	if leases[0].Hostname != "stockyard-abc123" {
+		t.Errorf("unexpected hostname: %s", leases[0].Hostname)
+	}
+}
