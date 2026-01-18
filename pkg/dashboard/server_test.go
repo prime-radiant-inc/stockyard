@@ -44,6 +44,7 @@ type MockDaemon struct {
 	tasks        []Task
 	snapshots    []Snapshot
 	stoppedIDs   []string
+	restartedIDs []string
 	destroyedIDs []string
 	err          error // For simulating errors
 }
@@ -79,6 +80,11 @@ func (m *MockDaemon) CreateTask(ctx context.Context, req CreateTaskRequest) (*Ta
 
 func (m *MockDaemon) StopTask(ctx context.Context, id string) error {
 	m.stoppedIDs = append(m.stoppedIDs, id)
+	return m.err
+}
+
+func (m *MockDaemon) RestartTask(ctx context.Context, id string) error {
+	m.restartedIDs = append(m.restartedIDs, id)
 	return m.err
 }
 
@@ -282,6 +288,45 @@ func TestServer_DestroyVM_Error(t *testing.T) {
 	srv := NewServer(mock, "")
 
 	req := httptest.NewRequest("DELETE", "/api/vm/task-1", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", w.Code)
+	}
+}
+
+func TestServer_RestartVM(t *testing.T) {
+	mock := &MockDaemon{
+		tasks: []Task{{ID: "task-1", Status: "stopped"}},
+	}
+	srv := NewServer(mock, "")
+
+	req := httptest.NewRequest("POST", "/api/vm/task-1/restart", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+	if len(mock.restartedIDs) != 1 || mock.restartedIDs[0] != "task-1" {
+		t.Errorf("expected RestartTask called with task-1, got %v", mock.restartedIDs)
+	}
+	if w.Header().Get("HX-Refresh") != "true" {
+		t.Error("expected HX-Refresh header to be set")
+	}
+}
+
+func TestServer_RestartVM_Error(t *testing.T) {
+	mock := &MockDaemon{
+		tasks: []Task{{ID: "task-1", Status: "stopped"}},
+		err:   errors.New("restart failed"),
+	}
+	srv := NewServer(mock, "")
+
+	req := httptest.NewRequest("POST", "/api/vm/task-1/restart", nil)
 	w := httptest.NewRecorder()
 
 	srv.ServeHTTP(w, req)

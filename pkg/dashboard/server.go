@@ -340,6 +340,14 @@ func (s *Server) handleAPIVM(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("HX-Redirect", "/")
 		w.WriteHeader(http.StatusOK)
 
+	case r.Method == "POST" && action == "restart":
+		if err := s.daemon.RestartTask(ctx, id); err != nil {
+			http.Error(w, "Failed to restart task", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("HX-Refresh", "true")
+		w.WriteHeader(http.StatusOK)
+
 	case r.Method == "DELETE" && action == "":
 		if err := s.daemon.DestroyTask(ctx, id); err != nil {
 			http.Error(w, "Failed to destroy task", http.StatusInternalServerError)

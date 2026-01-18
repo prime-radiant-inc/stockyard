@@ -9,11 +9,12 @@ import (
 // These types are designed to match what daemon.State and daemon.TaskManager provide.
 // Using separate types avoids import cycles.
 type RealDaemon interface {
-	// Task operations - matches daemon.State.ListTasks/GetTask and daemon.TaskManager.Create/Stop/Destroy
+	// Task operations - matches daemon.State.ListTasks/GetTask and daemon.TaskManager.Create/Stop/Restart/Destroy
 	ListTasks(ctx context.Context, status string) ([]*DaemonTask, error)
 	GetTask(ctx context.Context, id string) (*DaemonTask, error)
 	CreateTask(ctx context.Context, req *DaemonCreateTaskRequest) (*DaemonTask, error)
 	StopTask(ctx context.Context, id string) error
+	RestartTask(ctx context.Context, id string) error
 	DestroyTask(ctx context.Context, id string) error
 
 	// Snapshot operations - matches daemon.State.ListTaskSnapshots and ZFS manager
@@ -110,6 +111,10 @@ func (a *DaemonAdapter) CreateTask(ctx context.Context, req CreateTaskRequest) (
 
 func (a *DaemonAdapter) StopTask(ctx context.Context, id string) error {
 	return a.daemon.StopTask(ctx, id)
+}
+
+func (a *DaemonAdapter) RestartTask(ctx context.Context, id string) error {
+	return a.daemon.RestartTask(ctx, id)
 }
 
 func (a *DaemonAdapter) DestroyTask(ctx context.Context, id string) error {

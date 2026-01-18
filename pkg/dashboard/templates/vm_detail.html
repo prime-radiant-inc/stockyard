@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Title}} - Stockyard</title>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
+    <script src="/static/js/htmx.min.js"></script>
+    <script defer src="/static/js/alpine.min.js"></script>
+    <script src="/static/js/tailwind.min.js"></script>
+    <script src="/static/js/chart.min.js"></script>
+    <link rel="stylesheet" href="/static/css/xterm.css">
+    <script src="/static/js/xterm.min.js"></script>
+    <script src="/static/js/xterm-addon-fit.min.js"></script>
+    <script src="/static/js/xterm-addon-web-links.min.js"></script>
     <style>
         [x-cloak] { display: none !important; }
     </style>
@@ -102,6 +102,9 @@
                             <div class="py-1">
                                 {{if eq .Task.Status "running"}}
                                 <button hx-post="/api/vm/{{.Task.ID}}/stop" hx-swap="none" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Stop</button>
+                                {{end}}
+                                {{if eq .Task.Status "stopped"}}
+                                <button hx-post="/api/vm/{{.Task.ID}}/restart" hx-swap="none" class="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-gray-100">Restart</button>
                                 {{end}}
                                 <button hx-delete="/api/vm/{{.Task.ID}}" hx-swap="none" hx-confirm="Are you sure you want to destroy this VM?" class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Destroy</button>
                             </div>
@@ -444,7 +447,9 @@
 
                 <!-- Terminal Panel -->
                 <div class="bg-white rounded-lg shadow border border-gray-200"
-                     x-data="terminalPanel('{{.Task.ID}}')">
+                     :class="{ 'fixed inset-0 z-50 rounded-none': fullscreen }"
+                     x-data="terminalPanel('{{.Task.ID}}')"
+                     @keydown.escape.window="if (fullscreen) toggleFullscreen()">
                     <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                         <h2 class="text-lg font-medium">Terminal</h2>
                         <div class="flex items-center gap-2">
@@ -454,15 +459,20 @@
                             </span>
                             <span x-show="connecting" class="text-xs text-yellow-600">Connecting...</span>
                             <span x-show="error" class="text-xs text-red-600" x-text="error"></span>
+                            <button x-show="showTerminal && connected"
+                                    @click="toggleFullscreen()"
+                                    class="text-xs text-blue-600 hover:underline"
+                                    x-text="fullscreen ? 'Exit Fullscreen (Esc)' : 'Fullscreen'">
+                            </button>
                             <button @click="toggleTerminal()"
                                     class="text-xs text-blue-600 hover:underline"
                                     x-text="showTerminal ? 'Hide' : 'Open Terminal'">
                             </button>
                         </div>
                     </div>
-                    <div class="p-4">
-                        <div x-show="showTerminal" x-transition class="rounded overflow-hidden">
-                            <div x-ref="terminalContainer" class="h-80 bg-black"></div>
+                    <div class="p-4" :class="{ 'p-0 flex-1 flex flex-col h-[calc(100%-3.5rem)]': fullscreen }">
+                        <div x-show="showTerminal" x-transition class="rounded overflow-hidden" :class="{ 'h-full rounded-none': fullscreen }">
+                            <div x-ref="terminalContainer" class="bg-black" :class="fullscreen ? 'h-full' : 'h-80'"></div>
                         </div>
                         <div x-show="!showTerminal" class="text-center py-6">
                             <svg class="mx-auto h-10 w-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -561,7 +571,7 @@
         }
 
         function copySSH(host) {
-            const sshCommand = 'ssh ' + host;
+            const sshCommand = 'ssh {{.VMUser}}@' + host;
             navigator.clipboard.writeText(sshCommand).then(function() {
                 alert('SSH command copied to clipboard: ' + sshCommand);
             }, function(err) {
@@ -623,6 +633,7 @@ document.addEventListener('alpine:initialized', () => {
             connected: false,
             connecting: false,
             showTerminal: false,
+            fullscreen: false,
             error: null,
             taskID: taskID,
 
@@ -634,6 +645,7 @@ document.addEventListener('alpine:initialized', () => {
                             this.connect();
                         });
                     } else {
+                        this.fullscreen = false;
                         this.disconnect();
                     }
                 });
@@ -641,6 +653,20 @@ document.addEventListener('alpine:initialized', () => {
 
             toggleTerminal() {
                 this.showTerminal = !this.showTerminal;
+            },
+
+            toggleFullscreen() {
+                this.fullscreen = !this.fullscreen;
+                // Refit terminal after layout change
+                this.$nextTick(() => {
+                    if (this.fitAddon) {
+                        this.fitAddon.fit();
+                        this.sendResize();
+                    }
+                    if (this.terminal) {
+                        this.terminal.focus();
+                    }
+                });
             },
 
             initTerminal() {

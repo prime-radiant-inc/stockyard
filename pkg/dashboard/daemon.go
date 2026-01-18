@@ -42,6 +42,7 @@ type DaemonAPI interface {
 	GetTask(ctx context.Context, id string) (*Task, error)
 	CreateTask(ctx context.Context, req CreateTaskRequest) (*Task, error)
 	StopTask(ctx context.Context, id string) error
+	RestartTask(ctx context.Context, id string) error
 	DestroyTask(ctx context.Context, id string) error
 	ListSnapshots(ctx context.Context, taskID string) ([]Snapshot, error)
 	CreateSnapshot(ctx context.Context, taskID, label string) (*Snapshot, error)

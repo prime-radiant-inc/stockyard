@@ -16,6 +16,7 @@ type MockRealDaemon struct {
 	tasks        []*DaemonTask
 	snapshots    map[string][]DaemonSnapshot
 	stopped      []string
+	restarted    []string
 	destroyed    []string
 	created      []string
 	restored     []string
@@ -60,6 +61,11 @@ func (m *MockRealDaemon) CreateTask(ctx context.Context, req *DaemonCreateTaskRe
 
 func (m *MockRealDaemon) StopTask(ctx context.Context, id string) error {
 	m.stopped = append(m.stopped, id)
+	return nil
+}
+
+func (m *MockRealDaemon) RestartTask(ctx context.Context, id string) error {
+	m.restarted = append(m.restarted, id)
 	return nil
 }
 
@@ -248,6 +254,20 @@ func TestDaemonAdapter_StopTask(t *testing.T) {
 
 	if len(mock.stopped) != 1 || mock.stopped[0] != "task-1" {
 		t.Errorf("expected task-1 to be stopped, got %v", mock.stopped)
+	}
+}
+
+func TestDaemonAdapter_RestartTask(t *testing.T) {
+	mock := &MockRealDaemon{}
+	adapter := NewDaemonAdapter(mock)
+
+	err := adapter.RestartTask(context.Background(), "task-1")
+	if err != nil {
+		t.Fatalf("RestartTask failed: %v", err)
+	}
+
+	if len(mock.restarted) != 1 || mock.restarted[0] != "task-1" {
+		t.Errorf("expected task-1 to be restarted, got %v", mock.restarted)
 	}
 }
 
