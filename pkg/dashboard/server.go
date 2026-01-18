@@ -436,6 +436,7 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 		"Events":     events,
 		"User":       GetUser(r.Context()),
 		"UserAvatar": GetUserAvatar(r.Context()),
+		"ActiveNav":  "activity",
 	}
 
 	// Check if template exists, fallback for testing
