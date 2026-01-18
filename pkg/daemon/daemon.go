@@ -15,6 +15,7 @@ import (
 
 	"github.com/obra/stockyard/pkg/config"
 	"github.com/obra/stockyard/pkg/dashboard"
+	"github.com/obra/stockyard/pkg/network"
 	"github.com/obra/stockyard/pkg/secrets"
 	"github.com/obra/stockyard/pkg/tailscale"
 	"github.com/obra/stockyard/pkg/zfs"
@@ -28,6 +29,7 @@ type Daemon struct {
 	state     *State
 	tasks     *TaskManager
 	snapshots *SnapshotService
+	dhcp      *network.DHCPServer
 
 	listener   net.Listener
 	grpcServer *grpc.Server
@@ -65,6 +67,23 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 	}
 	d.tasks = NewTaskManager(d, fcConfig)
 
+	// Initialize DHCP server
+	dhcpConfig := network.DHCPConfig{
+		Bridge:     cfg.Firecracker.BridgeName,
+		Gateway:    cfg.Firecracker.VMGateway,
+		RangeStart: cfg.Firecracker.DHCPRangeStart,
+		RangeEnd:   cfg.Firecracker.DHCPRangeEnd,
+		Netmask:    "255.255.192.0", // /18
+		LeaseTime:  cfg.Firecracker.DHCPLeaseTime,
+		DNS:        "8.8.8.8",
+	}
+	dataDir := "/var/lib/stockyard"
+	dhcpServer, err := network.NewDHCPServer(dhcpConfig, dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create DHCP server: %w", err)
+	}
+	d.dhcp = dhcpServer
+
 	return d, nil
 }
 
@@ -83,6 +102,14 @@ func (d *Daemon) Start(ctx context.Context) error {
 	// Ensure base rootfs image is available for VM creation
 	if err := d.ensureBaseImage(ctx); err != nil {
 		return fmt.Errorf("failed to ensure base image: %w", err)
+	}
+
+	// Start DHCP server
+	fmt.Println("Starting DHCP server...")
+	if err := d.dhcp.Start(); err != nil {
+		// Log warning but don't fail - dnsmasq might not be installed
+		fmt.Printf("Warning: Failed to start DHCP server: %v\n", err)
+		fmt.Println("VMs may not receive dynamic IPs. Ensure dnsmasq is installed.")
 	}
 
 	socketDir := filepath.Dir(d.cfg.Daemon.SocketPath)
@@ -177,6 +204,11 @@ func (d *Daemon) Stop() error {
 		d.listener.Close()
 	}
 
+	// Stop DHCP server
+	if d.dhcp != nil {
+		d.dhcp.Stop()
+	}
+
 	if d.state != nil {
 		d.state.Close()
 	}
@@ -212,6 +244,11 @@ func (d *Daemon) Tasks() *TaskManager {
 // SetTaskManager sets the daemon's task manager.
 func (d *Daemon) SetTaskManager(tm *TaskManager) {
 	d.tasks = tm
+}
+
+// DHCP returns the daemon's DHCP server.
+func (d *Daemon) DHCP() *network.DHCPServer {
+	return d.dhcp
 }
 
 // ensureBaseImage checks if the base rootfs snapshot exists and imports it if not.
