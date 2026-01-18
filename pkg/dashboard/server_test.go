@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -364,6 +365,154 @@ func TestServer_LogSearchAPI_MissingTaskID(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}
+
+func TestServer_CreateVM(t *testing.T) {
+	mock := &MockDaemon{}
+	srv := NewServer(mock, "")
+
+	body := `{"repo": "github.com/test/repo", "ref": "main", "cpus": 2, "memory_mb": 4096}`
+	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	respBody := w.Body.String()
+	if !strings.Contains(respBody, `"id"`) {
+		t.Error("expected id in response")
+	}
+	if !strings.Contains(respBody, `"status"`) {
+		t.Error("expected status in response")
+	}
+}
+
+func TestServer_CreateVM_MissingRepo(t *testing.T) {
+	mock := &MockDaemon{}
+	srv := NewServer(mock, "")
+
+	body := `{"ref": "main"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestServer_CreateVM_InvalidJSON(t *testing.T) {
+	mock := &MockDaemon{}
+	srv := NewServer(mock, "")
+
+	body := `{invalid json}`
+	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestServer_CreateVM_MethodNotAllowed(t *testing.T) {
+	mock := &MockDaemon{}
+	srv := NewServer(mock, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/vm/create", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestServer_CreateVM_DaemonError(t *testing.T) {
+	mock := &MockDaemon{
+		err: errors.New("daemon error"),
+	}
+	srv := NewServer(mock, "")
+
+	body := `{"repo": "github.com/test/repo"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestServer_CreateVM_Defaults(t *testing.T) {
+	mock := &MockDaemon{}
+	srv := NewServer(mock, "")
+
+	// Send minimal request - should use defaults for ref, cpus, memory
+	body := `{"repo": "github.com/test/repo"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify a task was created
+	if len(mock.tasks) != 1 {
+		t.Errorf("expected 1 task created, got %d", len(mock.tasks))
+	}
+}
+
+func TestServer_CreateVM_NoDaemon(t *testing.T) {
+	srv := NewServer(nil, "") // nil daemon
+
+	body := `{"repo": "github.com/test/repo"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestServer_CreateVM_WithEnv(t *testing.T) {
+	mock := &MockDaemon{}
+	srv := NewServer(mock, "")
+
+	body := `{"repo": "github.com/test/repo", "env": {"KEY1": "value1", "KEY2": "value2"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify task was created (response has id)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["id"] == nil {
+		t.Error("expected id in response")
 	}
 }
 

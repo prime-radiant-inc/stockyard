@@ -21,13 +21,19 @@ type Server struct {
 	alertChecker    *AlertChecker
 	terminalManager *TerminalManager
 	terminalHandler *TerminalHandler
+	vmUser          string
 }
 
 // NewServer creates a new dashboard HTTP server.
 // The daemon parameter will be used for API calls (nil allowed for testing).
-func NewServer(daemon DaemonAPI) *Server {
+// vmUser is the SSH username for terminal connections (defaults to "mooby" if empty).
+func NewServer(daemon DaemonAPI, vmUser string) *Server {
 	hub := NewHub()
 	go hub.Run()
+
+	if vmUser == "" {
+		vmUser = "mooby"
+	}
 
 	terminalManager := NewTerminalManager()
 	s := &Server{
@@ -38,7 +44,8 @@ func NewServer(daemon DaemonAPI) *Server {
 		activityFeed:    NewActivityFeedWithHub(100, hub),
 		alertChecker:    NewAlertChecker(),
 		terminalManager: terminalManager,
-		terminalHandler: NewTerminalHandler(terminalManager, "vscode"),
+		terminalHandler: NewTerminalHandler(terminalManager, daemon, vmUser),
+		vmUser:          vmUser,
 	}
 	// Load templates, but don't fail if they're not available (for testing)
 	s.templates, _ = LoadTemplates()
@@ -51,10 +58,13 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/ws", s.handleWebSocket)
 	s.mux.HandleFunc("/ws/terminal/", s.terminalHandler.ServeHTTP)
 	s.mux.HandleFunc("/activity", s.handleActivity)
+	s.mux.HandleFunc("/settings", s.handleSettings)
 	s.mux.HandleFunc("/api/vm-logs/", s.handleLogSearch)
+	s.mux.HandleFunc("/api/vm/create", s.handleAPIVMCreate)
 	s.mux.HandleFunc("/api/vm/", s.handleAPIVM)
 	s.mux.HandleFunc("/preview/vm/", s.handleVMPreview)
 	s.mux.HandleFunc("/vm/", s.handleVMDetail)
+	s.mux.Handle("/static/", StaticFileHandler())
 	s.mux.HandleFunc("/", s.handleFleet)
 }
 
@@ -122,6 +132,7 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		"GroupedByOwner": groupedByOwner,
 		"ActivityCount":  s.activityFeed.Count(),
 		"AlertCount":     s.alertChecker.GetAlertCount(),
+		"VMUser":         s.vmUser,
 	}
 	var buf bytes.Buffer
 	if err := s.templates.ExecuteTemplate(&buf, "fleet.html", data); err != nil {
@@ -165,6 +176,7 @@ func (s *Server) handleVMDetail(w http.ResponseWriter, r *http.Request) {
 		"ActiveNav":  "fleet",
 		"Task":       task,
 		"Snapshots":  snapshots,
+		"VMUser":     s.vmUser,
 	}
 
 	// Check if template exists, fallback for testing
@@ -212,6 +224,7 @@ func (s *Server) handleVMPreview(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Task":      task,
 		"Snapshots": snapshots,
+		"VMUser":    s.vmUser,
 	}
 
 	// Check if template exists, fallback for testing
@@ -233,6 +246,67 @@ func (s *Server) handleVMPreview(w http.ResponseWriter, r *http.Request) {
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
+}
+
+func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.daemon == nil {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	var req struct {
+		Repo     string            `json:"repo"`
+		Ref      string            `json:"ref"`
+		Name     string            `json:"name"`
+		CPUs     int32             `json:"cpus"`
+		MemoryMB int32             `json:"memory_mb"`
+		Env      map[string]string `json:"env"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.Repo == "" {
+		http.Error(w, "repo is required", http.StatusBadRequest)
+		return
+	}
+
+	// Defaults
+	if req.Ref == "" {
+		req.Ref = "main"
+	}
+	if req.CPUs == 0 {
+		req.CPUs = 2
+	}
+	if req.MemoryMB == 0 {
+		req.MemoryMB = 4096
+	}
+
+	task, err := s.daemon.CreateTask(r.Context(), CreateTaskRequest{
+		Repo:     req.Repo,
+		Ref:      req.Ref,
+		Name:     req.Name,
+		CPUs:     req.CPUs,
+		MemoryMB: req.MemoryMB,
+		Env:      req.Env,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":     task.ID,
+		"status": task.Status,
+	})
 }
 
 func (s *Server) handleAPIVM(w http.ResponseWriter, r *http.Request) {
@@ -345,18 +419,48 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 	events := s.activityFeed.GetRecent(50)
 
 	data := map[string]interface{}{
-		"Events": events,
+		"Events":     events,
+		"User":       GetUser(r.Context()),
+		"UserAvatar": GetUserAvatar(r.Context()),
 	}
 
 	// Check if template exists, fallback for testing
-	if s.templates == nil || s.templates.Lookup("activity_panel.html") == nil {
+	if s.templates == nil || s.templates.Lookup("activity.html") == nil {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte("Activity panel"))
+		w.Write([]byte("Activity page"))
 		return
 	}
 
 	var buf bytes.Buffer
-	if err := s.templates.ExecuteTemplate(&buf, "activity_panel.html", data); err != nil {
+	if err := s.templates.ExecuteTemplate(&buf, "activity.html", data); err != nil {
+		http.Error(w, "Failed to render template", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
+	buf.WriteTo(w)
+}
+
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	data := map[string]interface{}{
+		"User":       GetUser(r.Context()),
+		"UserAvatar": GetUserAvatar(r.Context()),
+		"InstanceID": "stockyard",
+		"Version":    "dev",
+		"ZFSPool":    "tank",
+		"ZFSVMsPath": "stockyard/vms",
+		"BridgeName": "flbr0",
+		"VMSubnet":   "192.168.64.0/18",
+	}
+
+	// Check if template exists, fallback for testing
+	if s.templates == nil || s.templates.Lookup("settings.html") == nil {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte("Settings page"))
+		return
+	}
+
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, "settings.html", data); err != nil {
 		http.Error(w, "Failed to render template", http.StatusInternalServerError)
 		return
 	}
