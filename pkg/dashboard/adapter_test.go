@@ -77,6 +77,7 @@ func TestDaemonAdapter_ListTasks(t *testing.T) {
 				Repo:              "github.com/test/repo",
 				Ref:               "main",
 				Status:            "running",
+				Owner:             "jesse@example.com",
 				TailscaleHostname: "stockyard-task-1",
 				CreatedAt:         now,
 			},
@@ -84,6 +85,7 @@ func TestDaemonAdapter_ListTasks(t *testing.T) {
 				ID:     "task-2",
 				Repo:   "github.com/test/other",
 				Status: "stopped",
+				Owner:  "other@example.com",
 			},
 		},
 	}
@@ -107,6 +109,12 @@ func TestDaemonAdapter_ListTasks(t *testing.T) {
 	if tasks[0].TailscaleHost != "stockyard-task-1" {
 		t.Errorf("expected stockyard-task-1, got %s", tasks[0].TailscaleHost)
 	}
+	if tasks[0].Owner != "jesse@example.com" {
+		t.Errorf("expected owner jesse@example.com, got %s", tasks[0].Owner)
+	}
+	if tasks[1].Owner != "other@example.com" {
+		t.Errorf("expected owner other@example.com, got %s", tasks[1].Owner)
+	}
 }
 
 func TestDaemonAdapter_GetTask(t *testing.T) {
@@ -119,6 +127,7 @@ func TestDaemonAdapter_GetTask(t *testing.T) {
 				Repo:      "github.com/test/repo",
 				Ref:       "main",
 				Status:    "running",
+				Owner:     "jesse@example.com",
 				CreatedAt: now,
 			},
 		},
@@ -136,6 +145,9 @@ func TestDaemonAdapter_GetTask(t *testing.T) {
 	}
 	if task.ID != "task-1" {
 		t.Errorf("expected task-1, got %s", task.ID)
+	}
+	if task.Owner != "jesse@example.com" {
+		t.Errorf("expected owner jesse@example.com, got %s", task.Owner)
 	}
 
 	// Test not found case
