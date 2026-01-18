@@ -42,6 +42,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/ws", s.handleWebSocket)
 	s.mux.HandleFunc("/api/vm-logs/", s.handleLogSearch)
 	s.mux.HandleFunc("/api/vm/", s.handleAPIVM)
+	s.mux.HandleFunc("/preview/vm/", s.handleVMPreview)
 	s.mux.HandleFunc("/vm/", s.handleVMDetail)
 	s.mux.HandleFunc("/", s.handleFleet)
 }
@@ -144,6 +145,53 @@ func (s *Server) handleVMDetail(w http.ResponseWriter, r *http.Request) {
 
 	var buf bytes.Buffer
 	if err := s.templates.ExecuteTemplate(&buf, "vm_detail.html", data); err != nil {
+		http.Error(w, "Failed to render template", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
+	buf.WriteTo(w)
+}
+
+func (s *Server) handleVMPreview(w http.ResponseWriter, r *http.Request) {
+	// Extract VM ID from path: /preview/vm/{id}
+	id := strings.TrimPrefix(r.URL.Path, "/preview/vm/")
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	if s.daemon == nil {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	ctx := r.Context()
+	task, err := s.daemon.GetTask(ctx, id)
+	if err != nil {
+		http.Error(w, "Failed to get task", http.StatusInternalServerError)
+		return
+	}
+	if task == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	snapshots, _ := s.daemon.ListSnapshots(ctx, id)
+
+	data := map[string]interface{}{
+		"Task":      task,
+		"Snapshots": snapshots,
+	}
+
+	// Check if template exists, fallback for testing
+	if s.templates == nil || s.templates.Lookup("vm_preview.html") == nil {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(task.ID + " " + task.Status))
+		return
+	}
+
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, "vm_preview.html", data); err != nil {
 		http.Error(w, "Failed to render template", http.StatusInternalServerError)
 		return
 	}

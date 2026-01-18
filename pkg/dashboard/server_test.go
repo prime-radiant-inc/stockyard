@@ -163,6 +163,46 @@ func TestServer_VMDetailPage_NotFound(t *testing.T) {
 	}
 }
 
+func TestServer_VMPreview(t *testing.T) {
+	mock := &MockDaemon{
+		tasks: []Task{
+			{ID: "task-123", Name: "test-vm", Status: "running", RepoURL: "github.com/test/repo", TailscaleHost: "vm-123.tail.net"},
+		},
+	}
+	srv := NewServer(mock)
+
+	req := httptest.NewRequest("GET", "/preview/vm/task-123", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "task-123") {
+		t.Error("expected task ID in output")
+	}
+	if !strings.Contains(body, "running") {
+		t.Error("expected status in output")
+	}
+}
+
+func TestServer_VMPreview_NotFound(t *testing.T) {
+	mock := &MockDaemon{tasks: []Task{}}
+	srv := NewServer(mock)
+
+	req := httptest.NewRequest("GET", "/preview/vm/nonexistent", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", w.Code)
+	}
+}
+
 func TestServer_StopVM(t *testing.T) {
 	mock := &MockDaemon{
 		tasks: []Task{{ID: "task-1", Status: "running"}},

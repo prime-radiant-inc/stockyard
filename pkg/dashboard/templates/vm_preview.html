@@ -1,0 +1,77 @@
+<div class="space-y-4">
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-bold text-gray-900">{{.Task.ID}}</h2>
+            <p class="text-sm text-gray-500">{{.Task.RepoURL}}</p>
+        </div>
+        {{if eq .Task.Status "running"}}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            <span class="w-2 h-2 bg-green-500 rounded-full mr-1.5 animate-pulse"></span>
+            running
+        </span>
+        {{else if eq .Task.Status "stopped"}}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+            <span class="w-2 h-2 bg-gray-400 rounded-full mr-1.5"></span>
+            stopped
+        </span>
+        {{else if eq .Task.Status "failed"}}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            <span class="w-2 h-2 bg-red-500 rounded-full mr-1.5"></span>
+            failed
+        </span>
+        {{else}}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+            {{.Task.Status}}
+        </span>
+        {{end}}
+    </div>
+
+    <!-- Quick metrics grid -->
+    <div class="grid grid-cols-2 gap-2">
+        <div class="p-3 bg-white rounded-lg border border-gray-200 text-center">
+            <div class="text-lg font-bold text-gray-900" id="preview-cpu">--</div>
+            <div class="text-xs text-gray-500">CPU</div>
+        </div>
+        <div class="p-3 bg-white rounded-lg border border-gray-200 text-center">
+            <div class="text-lg font-bold text-gray-900" id="preview-memory">--</div>
+            <div class="text-xs text-gray-500">Memory</div>
+        </div>
+    </div>
+
+    <!-- Details -->
+    <div class="bg-white rounded-lg border border-gray-200 p-3">
+        <dl class="space-y-2 text-sm">
+            {{if .Task.Name}}
+            <div class="flex justify-between">
+                <dt class="text-gray-500">Name</dt>
+                <dd class="text-gray-900 font-medium">{{.Task.Name}}</dd>
+            </div>
+            {{end}}
+            {{if .Task.GitRef}}
+            <div class="flex justify-between">
+                <dt class="text-gray-500">Git Ref</dt>
+                <dd class="text-gray-900 font-mono text-xs">{{.Task.GitRef}}</dd>
+            </div>
+            {{end}}
+            <div class="flex justify-between">
+                <dt class="text-gray-500">Snapshots</dt>
+                <dd class="text-gray-900">{{len .Snapshots}}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <!-- Recent logs placeholder -->
+    <div class="bg-gray-900 text-gray-300 rounded-lg p-3 font-mono text-xs h-32 overflow-auto">
+        <p class="text-gray-500">Connecting...</p>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex gap-2">
+        <button onclick="copySSH('{{.Task.TailscaleHost}}')" class="flex-1 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+            Copy SSH
+        </button>
+        <a href="/vm/{{.Task.ID}}" class="flex-1 px-3 py-2 bg-gray-200 text-gray-800 text-sm font-medium rounded-lg text-center hover:bg-gray-300 transition-colors">
+            Full Details
+        </a>
+    </div>
+</div>
