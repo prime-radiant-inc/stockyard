@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/obra/stockyard/pkg/config"
+	"github.com/obra/stockyard/pkg/dashboard"
 	"github.com/obra/stockyard/pkg/secrets"
 	"github.com/obra/stockyard/pkg/zfs"
 )
@@ -119,11 +120,12 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 	// Start HTTP server if enabled
 	if d.cfg.HTTP.Enabled {
+		dashboardServer := dashboard.NewServer(nil) // TODO: implement DaemonAPI on Daemon
+		handler := dashboard.AuthMiddleware(dashboardServer, nil) // TODO: add Tailscale client
+
 		d.httpServer = &http.Server{
-			Addr: d.cfg.HTTP.Addr,
-			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Write([]byte("dashboard placeholder"))
-			}),
+			Addr:    d.cfg.HTTP.Addr,
+			Handler: handler,
 		}
 		go func() {
 			fmt.Printf("Starting HTTP server on %s\n", d.cfg.HTTP.Addr)

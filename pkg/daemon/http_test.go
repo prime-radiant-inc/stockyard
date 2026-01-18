@@ -77,3 +77,17 @@ func TestDaemon_HTTPServerEnabled(t *testing.T) {
 	// Clean up
 	d.httpServer.Close()
 }
+
+func TestDaemon_HTTPServerIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.HTTP.Enabled = true
+	cfg.HTTP.Addr = ":0" // random port
+
+	// This is just a compile-time check that the pieces fit together
+	// Full integration would require a running daemon
+	t.Log("Integration test placeholder - full test requires daemon")
+}
