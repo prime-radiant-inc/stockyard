@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/creack/pty"
@@ -39,8 +40,7 @@ func NewTerminalHandler(manager *TerminalManager, daemon DaemonAPI, defaultUser 
 }
 
 // ServeHTTP handles WebSocket upgrade requests for terminal sessions.
-// URL format: /ws/terminal/{taskID}?user=<username>
-// The optional "user" query parameter overrides the default user (use "root" for root access).
+// URL format: /ws/terminal/{taskID}?user=<username>&cols=<cols>&rows=<rows>
 func (h *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Extract task ID from URL path
 	taskID := extractTaskID(r.URL.Path)
@@ -49,13 +49,27 @@ func (h *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the SSH user (from query param or default)
-	sshUser := r.URL.Query().Get("user")
-	if sshUser == "" {
-		sshUser = h.defaultUser
+	// Get the user (from query param or default)
+	user := r.URL.Query().Get("user")
+	if user == "" {
+		user = h.defaultUser
 	}
 
-	// Look up the task and its IP address
+	// Get initial terminal size from query params (with defaults)
+	cols := 80
+	rows := 24
+	if c := r.URL.Query().Get("cols"); c != "" {
+		if n, err := strconv.Atoi(c); err == nil && n > 0 {
+			cols = n
+		}
+	}
+	if ro := r.URL.Query().Get("rows"); ro != "" {
+		if n, err := strconv.Atoi(ro); err == nil && n > 0 {
+			rows = n
+		}
+	}
+
+	// Look up the task
 	if h.daemon == nil {
 		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
 		return
@@ -71,10 +85,10 @@ func (h *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the VM's local IP address from DHCP
-	vmIP, err := h.daemon.GetVMIP(r.Context(), taskID)
-	if err != nil || vmIP == "" {
-		http.Error(w, "VM IP not available (VM may still be starting)", http.StatusServiceUnavailable)
+	// Get the VM's CID for vsock connection
+	cid, err := h.daemon.GetVMCID(r.Context(), taskID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("VM not available: %v", err), http.StatusServiceUnavailable)
 		return
 	}
 
@@ -86,8 +100,8 @@ func (h *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	// Create SSH session using the VM's local IP
-	session, err := h.createSSHSession(vmIP, sshUser)
+	// Create vsock session
+	session, err := h.createVsockSession(cid, user, cols, rows)
 	if err != nil {
 		h.sendError(conn, fmt.Sprintf("Failed to connect: %v", err))
 		return
@@ -95,12 +109,13 @@ func (h *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	session.TaskID = taskID
 	defer session.Close()
 
-	// Register session with manager
-	h.manager.AddSession(session)
-	defer h.manager.RemoveSession(session.ID)
+	log.Printf("terminal: vsock session started for task %s (CID %d, user %s, %dx%d)",
+		taskID, cid, user, cols, rows)
 
 	// Handle bidirectional I/O
-	h.handleSession(conn, session)
+	h.handleVsockSession(conn, session)
+
+	log.Printf("terminal: vsock session ended for task %s", taskID)
 }
 
 // extractTaskID extracts the task ID from a URL path like /ws/terminal/{taskID}
