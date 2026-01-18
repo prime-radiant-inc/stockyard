@@ -9,9 +9,10 @@ import (
 // These types are designed to match what daemon.State and daemon.TaskManager provide.
 // Using separate types avoids import cycles.
 type RealDaemon interface {
-	// Task operations - matches daemon.State.ListTasks/GetTask and daemon.TaskManager.Stop/Destroy
+	// Task operations - matches daemon.State.ListTasks/GetTask and daemon.TaskManager.Create/Stop/Destroy
 	ListTasks(ctx context.Context, status string) ([]*DaemonTask, error)
 	GetTask(ctx context.Context, id string) (*DaemonTask, error)
+	CreateTask(ctx context.Context, req *DaemonCreateTaskRequest) (*DaemonTask, error)
 	StopTask(ctx context.Context, id string) error
 	DestroyTask(ctx context.Context, id string) error
 
@@ -42,6 +43,16 @@ type DaemonSnapshot struct {
 	CreatedAt time.Time
 }
 
+// DaemonCreateTaskRequest mirrors daemon.CreateTaskRequest to avoid import cycles.
+type DaemonCreateTaskRequest struct {
+	Repo     string
+	Ref      string
+	Name     string
+	CPUs     int32
+	MemoryMB int32
+	Env      map[string]string
+}
+
 // DaemonAdapter adapts the real daemon to the DaemonAPI interface.
 type DaemonAdapter struct {
 	daemon RealDaemon
@@ -67,6 +78,26 @@ func (a *DaemonAdapter) ListTasks(ctx context.Context) ([]Task, error) {
 
 func (a *DaemonAdapter) GetTask(ctx context.Context, id string) (*Task, error) {
 	dt, err := a.daemon.GetTask(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if dt == nil {
+		return nil, nil
+	}
+	task := convertTask(dt)
+	return &task, nil
+}
+
+func (a *DaemonAdapter) CreateTask(ctx context.Context, req CreateTaskRequest) (*Task, error) {
+	daemonReq := &DaemonCreateTaskRequest{
+		Repo:     req.Repo,
+		Ref:      req.Ref,
+		Name:     req.Name,
+		CPUs:     req.CPUs,
+		MemoryMB: req.MemoryMB,
+		Env:      req.Env,
+	}
+	dt, err := a.daemon.CreateTask(ctx, daemonReq)
 	if err != nil {
 		return nil, err
 	}

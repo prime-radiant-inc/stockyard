@@ -13,12 +13,13 @@ func TestDaemonAdapter_ImplementsInterface(t *testing.T) {
 
 // MockRealDaemon implements the interface we need from the actual daemon
 type MockRealDaemon struct {
-	tasks     []*DaemonTask
-	snapshots map[string][]DaemonSnapshot
-	stopped   []string
-	destroyed []string
-	created   []string
-	restored  []string
+	tasks        []*DaemonTask
+	snapshots    map[string][]DaemonSnapshot
+	stopped      []string
+	destroyed    []string
+	created      []string
+	restored     []string
+	createdTasks []*DaemonCreateTaskRequest
 }
 
 func (m *MockRealDaemon) ListTasks(ctx context.Context, status string) ([]*DaemonTask, error) {
@@ -41,6 +42,20 @@ func (m *MockRealDaemon) GetTask(ctx context.Context, id string) (*DaemonTask, e
 		}
 	}
 	return nil, nil
+}
+
+func (m *MockRealDaemon) CreateTask(ctx context.Context, req *DaemonCreateTaskRequest) (*DaemonTask, error) {
+	m.createdTasks = append(m.createdTasks, req)
+	task := &DaemonTask{
+		ID:        "new-task-id",
+		Name:      req.Name,
+		Repo:      req.Repo,
+		Ref:       req.Ref,
+		Status:    "running",
+		CreatedAt: time.Now(),
+	}
+	m.tasks = append(m.tasks, task)
+	return task, nil
 }
 
 func (m *MockRealDaemon) StopTask(ctx context.Context, id string) error {
@@ -157,6 +172,68 @@ func TestDaemonAdapter_GetTask(t *testing.T) {
 	}
 	if task != nil {
 		t.Error("expected nil for nonexistent task")
+	}
+}
+
+func TestDaemonAdapter_CreateTask(t *testing.T) {
+	mock := &MockRealDaemon{}
+	adapter := NewDaemonAdapter(mock)
+
+	req := CreateTaskRequest{
+		Repo:     "github.com/test/repo",
+		Ref:      "develop",
+		Name:     "my-new-task",
+		CPUs:     4,
+		MemoryMB: 2048,
+		Env:      map[string]string{"FOO": "bar"},
+	}
+
+	task, err := adapter.CreateTask(context.Background(), req)
+	if err != nil {
+		t.Fatalf("CreateTask failed: %v", err)
+	}
+
+	if task == nil {
+		t.Fatal("expected task, got nil")
+	}
+	if task.ID != "new-task-id" {
+		t.Errorf("expected new-task-id, got %s", task.ID)
+	}
+	if task.Name != "my-new-task" {
+		t.Errorf("expected my-new-task, got %s", task.Name)
+	}
+	if task.RepoURL != "github.com/test/repo" {
+		t.Errorf("expected github.com/test/repo, got %s", task.RepoURL)
+	}
+	if task.GitRef != "develop" {
+		t.Errorf("expected develop, got %s", task.GitRef)
+	}
+	if task.Status != "running" {
+		t.Errorf("expected running, got %s", task.Status)
+	}
+
+	// Verify the request was passed correctly to the daemon
+	if len(mock.createdTasks) != 1 {
+		t.Fatalf("expected 1 created task, got %d", len(mock.createdTasks))
+	}
+	createdReq := mock.createdTasks[0]
+	if createdReq.Repo != "github.com/test/repo" {
+		t.Errorf("expected repo github.com/test/repo, got %s", createdReq.Repo)
+	}
+	if createdReq.Ref != "develop" {
+		t.Errorf("expected ref develop, got %s", createdReq.Ref)
+	}
+	if createdReq.Name != "my-new-task" {
+		t.Errorf("expected name my-new-task, got %s", createdReq.Name)
+	}
+	if createdReq.CPUs != 4 {
+		t.Errorf("expected CPUs 4, got %d", createdReq.CPUs)
+	}
+	if createdReq.MemoryMB != 2048 {
+		t.Errorf("expected MemoryMB 2048, got %d", createdReq.MemoryMB)
+	}
+	if createdReq.Env["FOO"] != "bar" {
+		t.Errorf("expected Env[FOO]=bar, got %s", createdReq.Env["FOO"])
 	}
 }
 

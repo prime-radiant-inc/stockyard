@@ -26,10 +26,21 @@ type Snapshot struct {
 	CreatedAt time.Time
 }
 
+// CreateTaskRequest contains the parameters for creating a new task.
+type CreateTaskRequest struct {
+	Repo     string
+	Ref      string
+	Name     string
+	CPUs     int32
+	MemoryMB int32
+	Env      map[string]string
+}
+
 // DaemonAPI defines the interface the dashboard needs from the daemon.
 type DaemonAPI interface {
 	ListTasks(ctx context.Context) ([]Task, error)
 	GetTask(ctx context.Context, id string) (*Task, error)
+	CreateTask(ctx context.Context, req CreateTaskRequest) (*Task, error)
 	StopTask(ctx context.Context, id string) error
 	DestroyTask(ctx context.Context, id string) error
 	ListSnapshots(ctx context.Context, taskID string) ([]Snapshot, error)
