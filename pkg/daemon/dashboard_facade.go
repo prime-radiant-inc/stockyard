@@ -196,6 +196,14 @@ func (f *DashboardFacade) RestoreSnapshot(ctx context.Context, taskID, snapshotN
 	return nil
 }
 
+// GetVMIP looks up a VM's IP address from DHCP leases.
+func (f *DashboardFacade) GetVMIP(ctx context.Context, taskID string) (string, error) {
+	if f.tasks == nil {
+		return "", fmt.Errorf("TaskManager not available")
+	}
+	return f.tasks.GetVMIP("stockyard", taskID)
+}
+
 // convertToDashboardTask converts a daemon Task to a dashboard DaemonTask.
 func convertToDashboardTask(t *Task) *dashboard.DaemonTask {
 	return &dashboard.DaemonTask{

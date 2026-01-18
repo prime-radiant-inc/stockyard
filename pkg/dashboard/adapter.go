@@ -21,6 +21,9 @@ type RealDaemon interface {
 	ListTaskSnapshots(ctx context.Context, taskID string) ([]DaemonSnapshot, error)
 	CreateSnapshot(ctx context.Context, taskID, label string) (string, error)
 	RestoreSnapshot(ctx context.Context, taskID, snapshotName string) error
+
+	// Network operations
+	GetVMIP(ctx context.Context, taskID string) (string, error)
 }
 
 // DaemonTask mirrors daemon.Task to avoid import cycles.
@@ -177,4 +180,8 @@ func convertSnapshot(taskID string, ds DaemonSnapshot) Snapshot {
 		TaskID:    taskID,
 		CreatedAt: ds.CreatedAt,
 	}
+}
+
+func (a *DaemonAdapter) GetVMIP(ctx context.Context, taskID string) (string, error) {
+	return a.daemon.GetVMIP(ctx, taskID)
 }

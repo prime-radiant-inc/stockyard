@@ -49,4 +49,5 @@ type DaemonAPI interface {
 	ListSnapshots(ctx context.Context, taskID string) ([]Snapshot, error)
 	CreateSnapshot(ctx context.Context, taskID, label string) (*Snapshot, error)
 	RestoreSnapshot(ctx context.Context, taskID, snapshotName string) error
+	GetVMIP(ctx context.Context, taskID string) (string, error)
 }

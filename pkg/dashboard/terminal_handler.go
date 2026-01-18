@@ -5,28 +5,28 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
-	"os"
+	"os/exec"
 	"strings"
 
+	"github.com/creack/pty"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
 )
 
 // TerminalHandler handles WebSocket connections for terminal sessions.
 type TerminalHandler struct {
 	manager     *TerminalManager
+	daemon      DaemonAPI
 	defaultUser string
 	upgrader    websocket.Upgrader
 }
 
 // NewTerminalHandler creates a new terminal WebSocket handler.
-func NewTerminalHandler(manager *TerminalManager, defaultUser string) *TerminalHandler {
+func NewTerminalHandler(manager *TerminalManager, daemon DaemonAPI, defaultUser string) *TerminalHandler {
 	return &TerminalHandler{
 		manager:     manager,
+		daemon:      daemon,
 		defaultUser: defaultUser,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
@@ -37,12 +37,42 @@ func NewTerminalHandler(manager *TerminalManager, defaultUser string) *TerminalH
 }
 
 // ServeHTTP handles WebSocket upgrade requests for terminal sessions.
-// URL format: /ws/terminal/{taskID}
+// URL format: /ws/terminal/{taskID}?user=<username>
+// The optional "user" query parameter overrides the default user (use "root" for root access).
 func (h *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Extract task ID from URL path
 	taskID := extractTaskID(r.URL.Path)
 	if taskID == "" {
 		http.Error(w, "missing task ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get the SSH user (from query param or default)
+	sshUser := r.URL.Query().Get("user")
+	if sshUser == "" {
+		sshUser = h.defaultUser
+	}
+
+	// Look up the task and its IP address
+	if h.daemon == nil {
+		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	task, err := h.daemon.GetTask(r.Context(), taskID)
+	if err != nil {
+		http.Error(w, "failed to get task", http.StatusInternalServerError)
+		return
+	}
+	if task == nil {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+
+	// Get the VM's local IP address from DHCP
+	vmIP, err := h.daemon.GetVMIP(r.Context(), taskID)
+	if err != nil || vmIP == "" {
+		http.Error(w, "VM IP not available (VM may still be starting)", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -54,11 +84,8 @@ func (h *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	// Build hostname from task ID
-	hostname := fmt.Sprintf("stockyard-%s", taskID)
-
-	// Create SSH session
-	session, err := h.createSSHSession(hostname, h.defaultUser)
+	// Create SSH session using the VM's local IP
+	session, err := h.createSSHSession(vmIP, sshUser)
 	if err != nil {
 		h.sendError(conn, fmt.Sprintf("Failed to connect: %v", err))
 		return
@@ -87,100 +114,54 @@ func extractTaskID(path string) string {
 	return ""
 }
 
-// createSSHSession creates a new SSH connection to the specified host.
+// createSSHSession creates a new SSH connection to the specified host via local IP.
 func (h *TerminalHandler) createSSHSession(hostname, user string) (*TerminalSession, error) {
-	// Get SSH agent auth
-	authMethod, agentConn, err := sshAgentAuth()
+	// Build SSH command with options for ephemeral VMs:
+	// - StrictHostKeyChecking=no: Don't reject unknown hosts
+	// - UserKnownHostsFile=/dev/null: Don't save host keys (ephemeral VMs)
+	target := hostname
+	if user != "" {
+		target = user + "@" + hostname
+	}
+
+	cmd := exec.Command("ssh",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		target,
+	)
+
+	// Start command with PTY
+	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("ssh agent auth: %w", err)
+		return nil, fmt.Errorf("start pty: %w", err)
 	}
 
-	// Configure SSH client
-	config := &ssh.ClientConfig{
-		User: user,
-		Auth: []ssh.AuthMethod{authMethod},
-		// Accept any host key (VMs are ephemeral)
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-	}
-
-	// Connect to SSH server
-	client, err := ssh.Dial("tcp", hostname+":22", config)
-	if err != nil {
-		agentConn.Close()
-		return nil, fmt.Errorf("ssh dial: %w", err)
-	}
-
-	// Create SSH session
-	sshSession, err := client.NewSession()
-	if err != nil {
-		client.Close()
-		agentConn.Close()
-		return nil, fmt.Errorf("new session: %w", err)
-	}
-
-	// Request PTY with default size
-	if err := sshSession.RequestPty("xterm-256color", 24, 80, ssh.TerminalModes{
-		ssh.ECHO:          1,
-		ssh.TTY_OP_ISPEED: 14400,
-		ssh.TTY_OP_OSPEED: 14400,
-	}); err != nil {
-		sshSession.Close()
-		client.Close()
-		agentConn.Close()
-		return nil, fmt.Errorf("request pty: %w", err)
-	}
-
-	// Get stdin pipe
-	stdin, err := sshSession.StdinPipe()
-	if err != nil {
-		sshSession.Close()
-		client.Close()
-		agentConn.Close()
-		return nil, fmt.Errorf("stdin pipe: %w", err)
-	}
-
-	// Get stdout pipe
-	stdout, err := sshSession.StdoutPipe()
-	if err != nil {
-		sshSession.Close()
-		client.Close()
-		agentConn.Close()
-		return nil, fmt.Errorf("stdout pipe: %w", err)
-	}
-
-	// Start shell
-	if err := sshSession.Shell(); err != nil {
-		sshSession.Close()
-		client.Close()
-		agentConn.Close()
-		return nil, fmt.Errorf("start shell: %w", err)
-	}
+	// Set initial size
+	pty.Setsize(ptmx, &pty.Winsize{Rows: 24, Cols: 80})
 
 	return &TerminalSession{
-		ID:        uuid.New().String(),
-		Hostname:  hostname,
-		User:      user,
-		agentConn: agentConn,
-		client:    client,
-		session:   sshSession,
-		stdin:     stdin,
-		stdout:    stdout,
+		ID:       uuid.New().String(),
+		Hostname: hostname,
+		User:     user,
+		cmd:      cmd,
+		pty:      ptmx,
 	}, nil
 }
 
-// handleSession manages bidirectional I/O between WebSocket and SSH.
+// handleSession manages bidirectional I/O between WebSocket and PTY.
 func (h *TerminalHandler) handleSession(conn *websocket.Conn, session *TerminalSession) {
 	done := make(chan struct{})
 
-	// Read from SSH stdout and send to WebSocket
+	// Read from PTY and send to WebSocket
 	go func() {
 		defer close(done)
 		buf := make([]byte, 4096)
 		for {
-			n, err := session.stdout.Read(buf)
+			n, err := session.pty.Read(buf)
 			if err != nil {
 				if err != io.EOF {
-					log.Printf("terminal: stdout read error: %v", err)
+					log.Printf("terminal: pty read error: %v", err)
 				}
 				return
 			}
@@ -197,7 +178,7 @@ func (h *TerminalHandler) handleSession(conn *websocket.Conn, session *TerminalS
 		}
 	}()
 
-	// Read from WebSocket and send to SSH stdin
+	// Read from WebSocket and send to PTY
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
@@ -223,8 +204,8 @@ func (h *TerminalHandler) handleSession(conn *websocket.Conn, session *TerminalS
 				log.Printf("terminal: invalid input message: %v", err)
 				continue
 			}
-			if _, err := session.stdin.Write([]byte(inputMsg.Data)); err != nil {
-				log.Printf("terminal: stdin write error: %v", err)
+			if _, err := session.pty.Write([]byte(inputMsg.Data)); err != nil {
+				log.Printf("terminal: pty write error: %v", err)
 				break
 			}
 
@@ -243,7 +224,7 @@ func (h *TerminalHandler) handleSession(conn *websocket.Conn, session *TerminalS
 		}
 	}
 
-	// Wait for stdout reader goroutine to complete
+	// Wait for PTY reader goroutine to complete
 	<-done
 }
 
@@ -254,18 +235,4 @@ func (h *TerminalHandler) sendError(conn *websocket.Conn, errMsg string) {
 		Data: fmt.Sprintf("\r\n\033[31mError: %s\033[0m\r\n", errMsg),
 	}
 	conn.WriteJSON(msg)
-}
-
-// sshAgentAuth returns an SSH auth method using the SSH agent.
-// The returned connection must be closed when the SSH session ends.
-func sshAgentAuth() (ssh.AuthMethod, net.Conn, error) {
-	socket := os.Getenv("SSH_AUTH_SOCK")
-	if socket == "" {
-		return nil, nil, fmt.Errorf("SSH_AUTH_SOCK not set")
-	}
-	conn, err := net.Dial("unix", socket)
-	if err != nil {
-		return nil, nil, fmt.Errorf("dial ssh agent: %w", err)
-	}
-	return ssh.PublicKeysCallback(agent.NewClient(conn).Signers), conn, nil
 }

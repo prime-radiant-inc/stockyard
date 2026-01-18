@@ -105,6 +105,10 @@ func (m *MockDaemon) RestoreSnapshot(ctx context.Context, taskID, snapshotName s
 	return m.err
 }
 
+func (m *MockDaemon) GetVMIP(ctx context.Context, taskID string) (string, error) {
+	return "10.0.100.1", nil
+}
+
 func TestServer_FleetPage(t *testing.T) {
 	mock := &MockDaemon{
 		tasks: []Task{

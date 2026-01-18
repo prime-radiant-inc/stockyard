@@ -479,6 +479,13 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                             </svg>
                             <p class="mt-2 text-sm text-gray-500">Click "Open Terminal" to connect</p>
+                            <div class="mt-4 flex items-center justify-center gap-2">
+                                <label class="text-sm text-gray-600">Connect as:</label>
+                                <select x-model="sshUser" class="px-2 py-1 text-sm border border-gray-300 rounded">
+                                    <option value="{{.VMUser}}">{{.VMUser}}</option>
+                                    <option value="root">root</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -636,6 +643,7 @@ document.addEventListener('alpine:initialized', () => {
             fullscreen: false,
             error: null,
             taskID: taskID,
+            sshUser: '{{.VMUser}}',
 
             init() {
                 this.$watch('showTerminal', (value) => {
@@ -734,7 +742,7 @@ document.addEventListener('alpine:initialized', () => {
                 this.error = null;
 
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = protocol + '//' + window.location.host + '/ws/terminal/' + this.taskID;
+                const wsUrl = protocol + '//' + window.location.host + '/ws/terminal/' + this.taskID + '?user=' + encodeURIComponent(this.sshUser);
 
                 this.ws = new WebSocket(wsUrl);
 

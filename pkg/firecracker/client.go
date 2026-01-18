@@ -272,6 +272,18 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 		return nil, fmt.Errorf("create metrics fifo: %w", err)
 	}
 
+	// Open FIFO for reading first (in background) - Firecracker needs a reader
+	// before it can open the FIFO for writing. We use O_RDWR to avoid blocking.
+	fifoFile, err := os.OpenFile(metricsPath, os.O_RDWR, 0)
+	if err != nil {
+		cmd.Process.Kill()
+		destroyZFSDataset(vmDatasetPath)
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("open metrics fifo: %w", err)
+	}
+	// Close after SetMetrics succeeds - the actual reader will re-open it
+	defer fifoFile.Close()
+
 	// Configure metrics before starting instance
 	if err := apiClient.SetMetrics(ctx, metricsPath); err != nil {
 		// Log warning but don't fail - metrics are optional
@@ -577,6 +589,17 @@ func (c *Client) StartVM(ctx context.Context, config *VMConfig) (*VMInfo, error)
 		c.network.DeleteTap(tapName)
 		return nil, fmt.Errorf("create metrics fifo: %w", err)
 	}
+
+	// Open FIFO for reading first (in background) - Firecracker needs a reader
+	// before it can open the FIFO for writing. We use O_RDWR to avoid blocking.
+	fifoFile, err := os.OpenFile(metricsPath, os.O_RDWR, 0)
+	if err != nil {
+		cmd.Process.Kill()
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("open metrics fifo: %w", err)
+	}
+	// Close after SetMetrics succeeds - the actual reader will re-open it
+	defer fifoFile.Close()
 
 	// Configure metrics before starting instance
 	if err := apiClient.SetMetrics(ctx, metricsPath); err != nil {

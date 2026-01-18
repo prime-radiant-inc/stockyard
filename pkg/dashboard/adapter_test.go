@@ -88,6 +88,10 @@ func (m *MockRealDaemon) RestoreSnapshot(ctx context.Context, taskID, snapshotNa
 	return nil
 }
 
+func (m *MockRealDaemon) GetVMIP(ctx context.Context, taskID string) (string, error) {
+	return "10.0.100.1", nil
+}
+
 func TestDaemonAdapter_ListTasks(t *testing.T) {
 	now := time.Now()
 	mock := &MockRealDaemon{
