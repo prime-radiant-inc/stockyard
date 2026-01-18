@@ -7,8 +7,6 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/obra/stockyard/pkg/client"
-	"github.com/obra/stockyard/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -19,14 +17,9 @@ var listCmd = &cobra.Command{
 	Short:   "List tasks",
 	Aliases: []string{"ls"},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
+		c, err := getClient()
 		if err != nil {
 			return err
-		}
-
-		c, err := client.New(cfg.Daemon.SocketPath)
-		if err != nil {
-			return fmt.Errorf("failed to connect to daemon: %w\nIs stockyardd running?", err)
 		}
 		defer c.Close()
 
