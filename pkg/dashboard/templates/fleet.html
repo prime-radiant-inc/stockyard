@@ -11,7 +11,26 @@
         [x-cloak] { display: none !important; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900 h-screen flex flex-col">
+<body class="bg-gray-50 text-gray-900 h-screen flex flex-col"
+      x-data="{
+          statusUpdates: {},
+          connected: false
+      }"
+      x-init="
+          const ws = new WebSocket('ws://' + window.location.host + '/ws');
+          ws.onopen = () => { connected = true; };
+          ws.onclose = () => { connected = false; };
+          ws.onmessage = (e) => {
+              const data = JSON.parse(e.data);
+              if (data.type === 'status') {
+                  statusUpdates[data.task_id] = data.new_status;
+                  // Refresh page on status changes (simple approach for now)
+                  if (data.new_status === 'destroyed' || data.old_status === '') {
+                      setTimeout(() => location.reload(), 500);
+                  }
+              }
+          };
+      ">
     <!-- Top bar -->
     <header class="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
         <div class="flex items-center gap-4">
@@ -61,7 +80,13 @@
 
         <!-- Main content -->
         <main class="flex-1 overflow-auto p-6">
-            <h1 class="text-2xl font-semibold mb-6">Fleet Overview</h1>
+            <div class="mb-6 flex items-center justify-between">
+                <h1 class="text-2xl font-semibold">Fleet Overview</h1>
+                <span x-show="connected" class="text-xs text-green-600 flex items-center gap-1">
+                    <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    Live
+                </span>
+            </div>
 
             {{if .GroupedTasks}}
             <div class="space-y-4">
@@ -95,13 +120,24 @@
                                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{{.Name}}</td>
                                     <td class="px-4 py-2 whitespace-nowrap">
                                         {{if eq .Status "running"}}
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">running</span>
+                                        <span class="inline-flex items-center gap-1 text-green-700"
+                                              :class="statusUpdates['{{.ID}}'] === 'stopped' ? 'text-gray-500' : 'text-green-700'">
+                                            <span class="w-2 h-2 rounded-full"
+                                                  :class="statusUpdates['{{.ID}}'] === 'stopped' ? 'bg-gray-400' : 'bg-green-500'"></span>
+                                            <span x-text="statusUpdates['{{.ID}}'] || 'running'">running</span>
+                                        </span>
                                         {{else if eq .Status "stopped"}}
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">stopped</span>
+                                        <span class="inline-flex items-center gap-1 text-gray-500">
+                                            <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
+                                            stopped
+                                        </span>
                                         {{else if eq .Status "failed"}}
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">error</span>
+                                        <span class="inline-flex items-center gap-1 text-red-700">
+                                            <span class="w-2 h-2 bg-red-500 rounded-full"></span>
+                                            failed
+                                        </span>
                                         {{else}}
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">{{.Status}}</span>
+                                        <span class="text-gray-500">{{.Status}}</span>
                                         {{end}}
                                     </td>
                                     <td class="px-4 py-2 whitespace-nowrap text-sm" x-data="{ actionsOpen: false }">
