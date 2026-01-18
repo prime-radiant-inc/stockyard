@@ -3,11 +3,14 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
+	"strings"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/obra/stockyard/pkg/api/v1"
@@ -17,6 +20,45 @@ import (
 type Client struct {
 	conn   *grpc.ClientConn
 	client pb.StockyardClient
+}
+
+// NewFromURL creates a new client connected to the daemon at the given URL.
+// Supported URL formats:
+//   - unix:///path/to/socket - Unix socket (local)
+//   - grpc://host:port - TCP without TLS (remote)
+//   - grpcs://host:port - TCP with TLS (remote)
+//   - host:port - defaults to grpc://
+func NewFromURL(url string) (*Client, error) {
+	addr, useTLS, err := ParseURL(url)
+	if err != nil {
+		return nil, err
+	}
+
+	var opts []grpc.DialOption
+
+	if useTLS {
+		// TLS connection
+		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
+	} else {
+		// No TLS
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
+	// For unix sockets, use the full URL; for TCP, just the host:port
+	target := addr
+	if strings.HasPrefix(addr, "unix://") {
+		target = addr
+	}
+
+	conn, err := grpc.NewClient(target, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to daemon: %w", err)
+	}
+
+	return &Client{
+		conn:   conn,
+		client: pb.NewStockyardClient(conn),
+	}, nil
 }
 
 // New creates a new client connected to the daemon at the given Unix socket path.
