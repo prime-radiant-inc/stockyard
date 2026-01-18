@@ -105,6 +105,8 @@ func (h *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	session.TaskID = taskID
+	h.manager.AddSession(session)
+	defer h.manager.RemoveSession(session.ID)
 	defer session.Close()
 
 	log.Printf("terminal: vsock session started for task %s (path %s, user %s, %dx%d)",
@@ -169,7 +171,7 @@ func (h *TerminalHandler) createVsockSession(vsockPath string, user string, cols
 
 	// Send Open message with terminal info
 	if err := session.SendOpen("xterm-256color", cols, rows); err != nil {
-		conn.Close()
+		session.Close()
 		return nil, fmt.Errorf("send open: %w", err)
 	}
 

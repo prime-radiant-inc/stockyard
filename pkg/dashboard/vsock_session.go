@@ -79,7 +79,16 @@ func (s *VsockSession) SendResize(cols, rows int) error {
 // ReadMessage reads the next message from the VM.
 // Returns message type and payload.
 func (s *VsockSession) ReadMessage() (uint8, []byte, error) {
-	return shell.ReadMessage(s.conn)
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return 0, nil, fmt.Errorf("session closed")
+	}
+	// Get conn reference while holding lock, then release before blocking read
+	conn := s.conn
+	s.mu.Unlock()
+
+	return shell.ReadMessage(conn)
 }
 
 // Close closes the vsock connection.
