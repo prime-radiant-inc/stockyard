@@ -742,7 +742,10 @@ document.addEventListener('alpine:initialized', () => {
                 this.error = null;
 
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = protocol + '//' + window.location.host + '/ws/terminal/' + this.taskID + '?user=' + encodeURIComponent(this.sshUser);
+                const wsUrl = protocol + '//' + window.location.host + '/ws/terminal/' + this.taskID +
+                    '?user=' + encodeURIComponent(this.sshUser) +
+                    '&cols=' + this.terminal.cols +
+                    '&rows=' + this.terminal.rows;
 
                 this.ws = new WebSocket(wsUrl);
 
