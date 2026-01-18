@@ -59,7 +59,9 @@ func NewSession(username, term string, cols, rows int) (*Session, error) {
 	}, nil
 }
 
-// PTY returns the PTY file for I/O
+// PTY returns the PTY file for I/O.
+// The returned file becomes invalid after Close() is called.
+// Callers doing I/O will receive EOF or errors after Close().
 func (s *Session) PTY() *os.File {
 	return s.ptyFile
 }
