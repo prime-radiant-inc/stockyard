@@ -60,12 +60,14 @@ func (f *DashboardFacade) CreateTask(ctx context.Context, req *dashboard.DaemonC
 	}
 
 	daemonReq := &CreateTaskRequest{
-		Repo:     req.Repo,
-		Ref:      req.Ref,
-		Name:     req.Name,
-		CPUs:     req.CPUs,
-		MemoryMB: req.MemoryMB,
-		Env:      req.Env,
+		Repo:        req.Repo,
+		Ref:         req.Ref,
+		Name:        req.Name,
+		Command:     req.Command,
+		CPUs:        req.CPUs,
+		MemoryMB:    req.MemoryMB,
+		Env:         req.Env,
+		NoTailscale: req.NoTailscale,
 	}
 
 	task, err := f.tasks.CreateTask(ctx, daemonReq)

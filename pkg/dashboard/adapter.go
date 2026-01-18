@@ -46,12 +46,14 @@ type DaemonSnapshot struct {
 
 // DaemonCreateTaskRequest mirrors daemon.CreateTaskRequest to avoid import cycles.
 type DaemonCreateTaskRequest struct {
-	Repo     string
-	Ref      string
-	Name     string
-	CPUs     int32
-	MemoryMB int32
-	Env      map[string]string
+	Repo        string
+	Ref         string
+	Name        string
+	Command     []string
+	CPUs        int32
+	MemoryMB    int32
+	Env         map[string]string
+	NoTailscale bool
 }
 
 // DaemonAdapter adapts the real daemon to the DaemonAPI interface.
@@ -91,12 +93,14 @@ func (a *DaemonAdapter) GetTask(ctx context.Context, id string) (*Task, error) {
 
 func (a *DaemonAdapter) CreateTask(ctx context.Context, req CreateTaskRequest) (*Task, error) {
 	daemonReq := &DaemonCreateTaskRequest{
-		Repo:     req.Repo,
-		Ref:      req.Ref,
-		Name:     req.Name,
-		CPUs:     req.CPUs,
-		MemoryMB: req.MemoryMB,
-		Env:      req.Env,
+		Repo:        req.Repo,
+		Ref:         req.Ref,
+		Name:        req.Name,
+		Command:     req.Command,
+		CPUs:        req.CPUs,
+		MemoryMB:    req.MemoryMB,
+		Env:         req.Env,
+		NoTailscale: req.NoTailscale,
 	}
 	dt, err := a.daemon.CreateTask(ctx, daemonReq)
 	if err != nil {

@@ -262,12 +262,14 @@ func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Repo     string            `json:"repo"`
-		Ref      string            `json:"ref"`
-		Name     string            `json:"name"`
-		CPUs     int32             `json:"cpus"`
-		MemoryMB int32             `json:"memory_mb"`
-		Env      map[string]string `json:"env"`
+		Repo        string            `json:"repo"`
+		Ref         string            `json:"ref"`
+		Name        string            `json:"name"`
+		Command     []string          `json:"command"`
+		CPUs        int32             `json:"cpus"`
+		MemoryMB    int32             `json:"memory_mb"`
+		Env         map[string]string `json:"env"`
+		NoTailscale bool              `json:"no_tailscale"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -292,12 +294,14 @@ func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	task, err := s.daemon.CreateTask(r.Context(), CreateTaskRequest{
-		Repo:     req.Repo,
-		Ref:      req.Ref,
-		Name:     req.Name,
-		CPUs:     req.CPUs,
-		MemoryMB: req.MemoryMB,
-		Env:      req.Env,
+		Repo:        req.Repo,
+		Ref:         req.Ref,
+		Name:        req.Name,
+		Command:     req.Command,
+		CPUs:        req.CPUs,
+		MemoryMB:    req.MemoryMB,
+		Env:         req.Env,
+		NoTailscale: req.NoTailscale,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -459,7 +463,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"ZFSPool":    "tank",
 		"ZFSVMsPath": "stockyard/vms",
 		"BridgeName": "flbr0",
-		"VMSubnet":   "192.168.64.0/18",
+		"VMSubnet":   "10.0.100.0/24",
 	}
 
 	// Check if template exists, fallback for testing

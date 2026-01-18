@@ -28,12 +28,14 @@ type Snapshot struct {
 
 // CreateTaskRequest contains the parameters for creating a new task.
 type CreateTaskRequest struct {
-	Repo     string
-	Ref      string
-	Name     string
-	CPUs     int32
-	MemoryMB int32
-	Env      map[string]string
+	Repo        string
+	Ref         string
+	Name        string
+	Command     []string
+	CPUs        int32
+	MemoryMB    int32
+	Env         map[string]string
+	NoTailscale bool
 }
 
 // DaemonAPI defines the interface the dashboard needs from the daemon.
