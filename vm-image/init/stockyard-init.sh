@@ -14,11 +14,27 @@ mkdir -p /var/log/stockyard
 exec > >(tee -a "$LOG_FILE") 2>&1
 echo "=== Stockyard Init $(date) ==="
 
-# Wait for network interface
-echo "Waiting for network..."
+# Wait for DHCP to configure network
+echo "Waiting for network (DHCP)..."
 for i in {1..30}; do
-    if ip route | grep -q "169.254.169.254"; then
-        echo "MMDS route available"
+    if ip addr show eth0 2>/dev/null | grep -q "inet "; then
+        echo "Network configured via DHCP"
+        ip addr show eth0 | grep "inet "
+        break
+    fi
+    sleep 1
+done
+
+# Ensure MMDS route exists (systemd-networkd should add it, but verify)
+if ! ip route | grep -q "169.254.169.254"; then
+    echo "Adding MMDS route..."
+    ip route add 169.254.169.254/32 dev eth0 scope link 2>/dev/null || true
+fi
+
+# Verify MMDS is reachable
+for i in {1..10}; do
+    if curl -sf "http://169.254.169.254/" &>/dev/null; then
+        echo "MMDS is reachable"
         break
     fi
     sleep 1
