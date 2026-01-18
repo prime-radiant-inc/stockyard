@@ -2,6 +2,7 @@ package shell
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 )
@@ -73,4 +74,61 @@ func ReadMessage(r io.Reader) (uint8, []byte, error) {
 	}
 
 	return msgType, payload, nil
+}
+
+// OpenMessage requests a shell session for a user.
+// Includes terminal type and initial window size.
+type OpenMessage struct {
+	User string `json:"user"`
+	Term string `json:"term"` // e.g., "xterm-256color"
+	Cols int    `json:"cols"`
+	Rows int    `json:"rows"`
+}
+
+func (m *OpenMessage) Marshal() ([]byte, error) {
+	return json.Marshal(m)
+}
+
+func (m *OpenMessage) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, m)
+}
+
+// ResizeMessage requests terminal resize
+type ResizeMessage struct {
+	Cols int `json:"cols"`
+	Rows int `json:"rows"`
+}
+
+func (m *ResizeMessage) Marshal() ([]byte, error) {
+	return json.Marshal(m)
+}
+
+func (m *ResizeMessage) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, m)
+}
+
+// ExitMessage indicates shell has exited
+type ExitMessage struct {
+	Code int `json:"code"`
+}
+
+func (m *ExitMessage) Marshal() ([]byte, error) {
+	return json.Marshal(m)
+}
+
+func (m *ExitMessage) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, m)
+}
+
+// ErrorMessage indicates an error
+type ErrorMessage struct {
+	Error string `json:"error"`
+}
+
+func (m *ErrorMessage) Marshal() ([]byte, error) {
+	return json.Marshal(m)
+}
+
+func (m *ErrorMessage) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, m)
 }
