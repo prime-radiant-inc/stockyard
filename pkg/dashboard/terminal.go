@@ -103,3 +103,35 @@ func (ts *TerminalSession) Resize(cols, rows int) error {
 
 	return ts.session.WindowChange(rows, cols)
 }
+
+// Close closes the terminal session.
+func (ts *TerminalSession) Close() error {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+
+	if ts.closed {
+		return nil
+	}
+	ts.closed = true
+
+	if ts.session != nil {
+		ts.session.Close()
+	}
+	if ts.client != nil {
+		ts.client.Close()
+	}
+	return nil
+}
+
+// CloseAllForTask closes all terminal sessions for a task.
+func (tm *TerminalManager) CloseAllForTask(taskID string) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	for id, s := range tm.sessions {
+		if s.TaskID == taskID {
+			s.Close()
+			delete(tm.sessions, id)
+		}
+	}
+}

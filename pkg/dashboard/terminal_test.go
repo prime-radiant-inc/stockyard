@@ -118,3 +118,39 @@ func TestTerminalSession_Resize(t *testing.T) {
 		t.Error("expected error when session not connected")
 	}
 }
+
+func TestTerminalSession_Close(t *testing.T) {
+	session := &TerminalSession{
+		ID:     "test",
+		TaskID: "task-1",
+	}
+
+	// Should not panic on double close
+	session.Close()
+	session.Close()
+
+	if !session.closed {
+		t.Error("expected session to be marked closed")
+	}
+}
+
+func TestTerminalManager_CloseAllForTask(t *testing.T) {
+	tm := NewTerminalManager()
+
+	s1 := &TerminalSession{ID: "s1", TaskID: "task-1"}
+	s2 := &TerminalSession{ID: "s2", TaskID: "task-1"}
+	s3 := &TerminalSession{ID: "s3", TaskID: "task-2"}
+
+	tm.AddSession(s1)
+	tm.AddSession(s2)
+	tm.AddSession(s3)
+
+	tm.CloseAllForTask("task-1")
+
+	if len(tm.GetSessionsByTask("task-1")) != 0 {
+		t.Error("expected all task-1 sessions to be removed")
+	}
+	if len(tm.GetSessionsByTask("task-2")) != 1 {
+		t.Error("expected task-2 session to remain")
+	}
+}
