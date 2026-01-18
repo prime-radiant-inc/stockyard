@@ -246,6 +246,7 @@
                 <div class="bg-white rounded-lg shadow border border-gray-200"
                      x-data="{
                          logs: [],
+                         pendingLines: [],
                          mode: 'live',
                          filter: '',
                          paused: false,
@@ -257,21 +258,26 @@
                          ws.onopen = () => { connected = true; };
                          ws.onclose = () => { connected = false; };
                          ws.onmessage = (e) => {
-                             if (paused) return;
                              const data = JSON.parse(e.data);
                              if (data.type === 'log') {
-                                 logs.push({
+                                 const newLine = {
+                                     id: Date.now() + Math.random(),
                                      time: new Date(data.timestamp).toLocaleTimeString(),
                                      stream: data.stream,
                                      line: data.line
-                                 });
-                                 if (logs.length > maxLogs) {
-                                     logs = logs.slice(-maxLogs);
+                                 };
+                                 if (paused) {
+                                     pendingLines.push(newLine);
+                                 } else {
+                                     logs.push(newLine);
+                                     if (logs.length > maxLogs) {
+                                         logs = logs.slice(-maxLogs);
+                                     }
+                                     $nextTick(() => {
+                                         const el = $refs.logContainer;
+                                         if (el) el.scrollTop = el.scrollHeight;
+                                     });
                                  }
-                                 $nextTick(() => {
-                                     const el = $refs.logContainer;
-                                     if (el) el.scrollTop = el.scrollHeight;
-                                 });
                              }
                          };
                      ">
@@ -286,12 +292,22 @@
                         <div class="flex items-center gap-2">
                             <input type="text" x-model="filter" placeholder="Filter..."
                                    class="px-2 py-1 text-sm border border-gray-300 rounded">
-                            <button @click="paused = !paused"
-                                    :class="paused ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100'"
-                                    class="px-2 py-1 text-xs rounded">
-                                <span x-text="paused ? 'Resume' : 'Pause'"></span>
+                            <button @click="paused = !paused; if (!paused) { logs = logs.concat(pendingLines); pendingLines = []; $nextTick(() => { const el = $refs.logContainer; if (el) el.scrollTop = el.scrollHeight; }); }"
+                                    :class="paused ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'"
+                                    class="px-2 py-1 text-xs rounded flex items-center gap-1">
+                                <template x-if="paused">
+                                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                                    </svg>
+                                </template>
+                                <template x-if="!paused">
+                                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M5.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75A.75.75 0 007.25 3h-1.5zM12.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75a.75.75 0 00-.75-.75h-1.5z"/>
+                                    </svg>
+                                </template>
+                                <span x-text="paused ? 'Resume' + (pendingLines.length > 0 ? ' (' + pendingLines.length + ')' : '') : 'Pause'"></span>
                             </button>
-                            <button @click="logs = []" class="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200">
+                            <button @click="logs = []; pendingLines = [];" class="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200">
                                 Clear
                             </button>
                         </div>
@@ -302,7 +318,7 @@
                             <template x-if="logs.length === 0">
                                 <p class="text-gray-500">Waiting for logs...</p>
                             </template>
-                            <template x-for="(log, i) in logs.filter(l => !filter || l.line.includes(filter))" :key="i">
+                            <template x-for="log in logs.filter(l => !filter || l.line.includes(filter))" :key="log.id">
                                 <div class="flex gap-2 hover:bg-gray-800">
                                     <span class="text-gray-500 shrink-0" x-text="log.time"></span>
                                     <span :class="log.stream === 'stderr' ? 'text-red-400' : 'text-gray-300'" x-text="log.line"></span>
