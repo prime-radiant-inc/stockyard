@@ -30,6 +30,14 @@ Quick Start:
   stockyard attach <task-id>
 
   # List running tasks
+  stockyard list
+
+Remote Access:
+  # Connect to a remote daemon
+  stockyard --url grpc://stockyard-server:65433 list
+
+  # Or via environment variable
+  export STOCKYARD_URL=grpc://stockyard-server:65433
   stockyard list`,
 }
 
