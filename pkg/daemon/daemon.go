@@ -39,10 +39,13 @@ type Daemon struct {
 	running    bool
 
 	// Real-time dashboard components
-	dashboardServer   *dashboard.Server
-	metricsPoller     *MetricsPoller
-	logTailer         *LogTailer
-	statusBroadcaster *dashboard.StatusBroadcaster
+	dashboardServer      *dashboard.Server
+	metricsPoller        *MetricsPoller
+	logTailer            *LogTailer
+	statusBroadcaster    *dashboard.StatusBroadcaster
+	metricsCollector     *dashboard.MetricsCollector
+	hostMetricsCollector *HostMetricsCollector
+	ctx                  context.Context
 }
 
 // dashboardLogSink adapts LogStreamer and LogHistory to the LogSink interface.
@@ -179,6 +182,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 		return fmt.Errorf("daemon already running")
 	}
 	d.running = true
+	d.ctx = ctx
 	d.snapshots = NewSnapshotService(d)
 	d.mu.Unlock()
 
@@ -260,9 +264,13 @@ func (d *Daemon) Start(ctx context.Context) error {
 		})
 
 		// Metrics collector and poller (with alert checking)
-		metricsCollector := dashboard.NewMetricsCollector(hub, d.dashboardServer.AlertChecker())
-		d.metricsPoller = NewMetricsPoller(d, &dashboardMetricsSink{metricsCollector}, 5*time.Second)
+		d.metricsCollector = dashboard.NewMetricsCollector(hub, d.dashboardServer.AlertChecker())
+		d.metricsPoller = NewMetricsPoller(d, &dashboardMetricsSink{d.metricsCollector}, 5*time.Second)
 		d.metricsPoller.Start()
+
+		// Host metrics collector and polling
+		d.hostMetricsCollector = NewHostMetricsCollector()
+		go d.pollHostMetrics()
 
 		d.httpServer = &http.Server{
 			Addr:    d.cfg.HTTP.Addr,
@@ -382,6 +390,36 @@ func (d *Daemon) ActivityFeed() *dashboard.ActivityFeed {
 		return nil
 	}
 	return d.dashboardServer.ActivityFeed()
+}
+
+// pollHostMetrics collects and broadcasts host metrics every 5 seconds.
+func (d *Daemon) pollHostMetrics() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if d.hostMetricsCollector == nil || d.metricsCollector == nil {
+				continue
+			}
+			metrics, err := d.hostMetricsCollector.Collect()
+			if err != nil {
+				continue
+			}
+			d.metricsCollector.SendHostMetrics(dashboard.HostMetrics{
+				CPUPercent:       metrics.CPUPercent,
+				MemoryUsedBytes:  metrics.MemoryUsedBytes,
+				MemoryTotalBytes: metrics.MemoryTotalBytes,
+				NetworkRxBytes:   metrics.NetworkRxBytes,
+				NetworkTxBytes:   metrics.NetworkTxBytes,
+				DiskReadBytes:    metrics.DiskReadBytes,
+				DiskWriteBytes:   metrics.DiskWriteBytes,
+			})
+		case <-d.ctx.Done():
+			return
+		}
+	}
 }
 
 // ensureBaseImage checks if the base rootfs snapshot exists and imports it if not.

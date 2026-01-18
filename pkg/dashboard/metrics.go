@@ -82,6 +82,40 @@ func (m *MetricsCollector) sendAlerts(taskID string, alerts []Alert) {
 	m.hub.Broadcast(taskID, data)
 }
 
+// HostMetrics represents host system metrics.
+type HostMetrics struct {
+	CPUPercent       float64 `json:"cpu_percent"`
+	MemoryUsedBytes  int64   `json:"memory_used_bytes"`
+	MemoryTotalBytes int64   `json:"memory_total_bytes"`
+	NetworkRxBytes   int64   `json:"network_rx_bytes"`
+	NetworkTxBytes   int64   `json:"network_tx_bytes"`
+	DiskReadBytes    int64   `json:"disk_read_bytes"`
+	DiskWriteBytes   int64   `json:"disk_write_bytes"`
+}
+
+// HostMetricsMessage is the WebSocket message for host metrics.
+type HostMetricsMessage struct {
+	Type      string      `json:"type"` // "host_metrics"
+	Metrics   HostMetrics `json:"metrics"`
+	Timestamp time.Time   `json:"timestamp"`
+}
+
+// SendHostMetrics broadcasts host metrics to all clients.
+func (m *MetricsCollector) SendHostMetrics(metrics HostMetrics) {
+	msg := HostMetricsMessage{
+		Type:      "host_metrics",
+		Metrics:   metrics,
+		Timestamp: time.Now(),
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+
+	m.hub.BroadcastAll(data)
+}
+
 // FormatBytes formats bytes as human-readable string.
 func FormatBytes(bytes int64) string {
 	const (

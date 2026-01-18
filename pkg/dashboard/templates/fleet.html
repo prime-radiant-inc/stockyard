@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Title}} - Stockyard</title>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="/static/js/htmx.min.js"></script>
+    <script defer src="/static/js/alpine.min.js"></script>
+    <script src="/static/js/tailwind.min.js"></script>
+    <script src="/static/js/chart.min.js"></script>
     <style>
         [x-cloak] { display: none !important; }
     </style>
@@ -43,9 +43,51 @@
               } else if (data.type === 'alerts') {
                   // Update alerts for a specific VM
                   alerts[data.task_id] = data.alerts || [];
+              } else if (data.type === 'host_metrics') {
+                  // Dispatch host metrics to the metrics bar
+                  window.dispatchEvent(new CustomEvent('host-metrics', {
+                      detail: data.metrics
+                  }));
               }
           };
       ">
+    <!-- Host Metrics Bar -->
+    <div class="bg-gray-800 text-white px-4 py-2 flex items-center justify-between text-sm"
+         x-data="{
+             cpu: '--',
+             memory: '--',
+             memoryTotal: '--',
+             network: '--',
+             disk: '--'
+         }"
+         @host-metrics.window="
+             cpu = $event.detail.cpu_percent.toFixed(1) + '%';
+             memory = formatBytes($event.detail.memory_used_bytes);
+             memoryTotal = formatBytes($event.detail.memory_total_bytes);
+             network = formatBytes($event.detail.network_rx_bytes + $event.detail.network_tx_bytes);
+             disk = formatBytes($event.detail.disk_read_bytes + $event.detail.disk_write_bytes);
+         ">
+        <div class="flex items-center gap-6">
+            <span class="font-semibold">Host</span>
+            <div class="flex items-center gap-1">
+                <span class="text-gray-400">CPU</span>
+                <span x-text="cpu">--</span>
+            </div>
+            <div class="flex items-center gap-1">
+                <span class="text-gray-400">Memory</span>
+                <span><span x-text="memory">--</span> / <span x-text="memoryTotal">--</span></span>
+            </div>
+            <div class="flex items-center gap-1">
+                <span class="text-gray-400">Network</span>
+                <span x-text="network">--</span>
+            </div>
+            <div class="flex items-center gap-1">
+                <span class="text-gray-400">Disk I/O</span>
+                <span x-text="disk">--</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Top bar -->
     <header class="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
         <div class="flex items-center gap-4">
@@ -600,13 +642,21 @@
     </div>
 
     <script>
-        function copySSH(vmId) {
-            const sshCommand = 'ssh ' + vmId;
+        function copySSH(host) {
+            const sshCommand = 'ssh {{.VMUser}}@' + host;
             navigator.clipboard.writeText(sshCommand).then(function() {
                 alert('SSH command copied to clipboard: ' + sshCommand);
             }, function(err) {
                 console.error('Could not copy text: ', err);
             });
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0 || bytes === undefined || bytes === null) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         }
     </script>
 </body>
