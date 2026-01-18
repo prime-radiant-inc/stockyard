@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"text/template"
 )
 
@@ -233,6 +234,6 @@ func (s *DHCPServer) IsRunning() bool {
 	}
 
 	// Check if process is still running by sending signal 0
-	err := s.cmd.Process.Signal(os.Signal(nil))
+	err := s.cmd.Process.Signal(syscall.Signal(0))
 	return err == nil
 }
