@@ -84,3 +84,41 @@ func TestConfig_DHCPDefaults(t *testing.T) {
 		t.Errorf("expected DHCPLeaseTime '12h', got %q", cfg.Firecracker.DHCPLeaseTime)
 	}
 }
+
+func TestConfig_DataDirDefaults(t *testing.T) {
+	cfg := DefaultConfig()
+
+	if cfg.Daemon.DataDir != "/var/lib/stockyard" {
+		t.Errorf("expected DataDir '/var/lib/stockyard', got %q", cfg.Daemon.DataDir)
+	}
+}
+
+func TestConfig_VMDir(t *testing.T) {
+	cfg := DefaultConfig()
+	expected := "/var/lib/stockyard/vms/stockyard"
+	if got := cfg.VMDir(); got != expected {
+		t.Errorf("VMDir() = %q, want %q", got, expected)
+	}
+
+	// Test with custom DataDir
+	cfg.Daemon.DataDir = "/custom/path"
+	expected = "/custom/path/vms/stockyard"
+	if got := cfg.VMDir(); got != expected {
+		t.Errorf("VMDir() with custom DataDir = %q, want %q", got, expected)
+	}
+}
+
+func TestConfig_DHCPLeaseFile(t *testing.T) {
+	cfg := DefaultConfig()
+	expected := "/var/lib/stockyard/dnsmasq.leases"
+	if got := cfg.DHCPLeaseFile(); got != expected {
+		t.Errorf("DHCPLeaseFile() = %q, want %q", got, expected)
+	}
+
+	// Test with custom DataDir
+	cfg.Daemon.DataDir = "/custom/path"
+	expected = "/custom/path/dnsmasq.leases"
+	if got := cfg.DHCPLeaseFile(); got != expected {
+		t.Errorf("DHCPLeaseFile() with custom DataDir = %q, want %q", got, expected)
+	}
+}

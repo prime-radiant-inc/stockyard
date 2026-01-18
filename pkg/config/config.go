@@ -30,6 +30,7 @@ type SecretsConfig struct {
 
 type DaemonConfig struct {
 	SocketPath string `json:"socket_path"`
+	DataDir    string `json:"data_dir"`
 }
 
 type ZFSConfig struct {
@@ -64,6 +65,7 @@ func DefaultConfig() *Config {
 		},
 		Daemon: DaemonConfig{
 			SocketPath: "/var/run/stockyard/stockyard.sock",
+			DataDir:    "/var/lib/stockyard",
 		},
 		ZFS: ZFSConfig{
 			Pool:       "tank",
@@ -154,4 +156,14 @@ func ConfigDir() (string, error) {
 	}
 
 	return filepath.Join(home, ".config", "stockyard"), nil
+}
+
+// VMDir returns the path to VM state directories.
+func (c *Config) VMDir() string {
+	return filepath.Join(c.Daemon.DataDir, "vms", "stockyard")
+}
+
+// DHCPLeaseFile returns the path to the DHCP lease file.
+func (c *Config) DHCPLeaseFile() string {
+	return filepath.Join(c.Daemon.DataDir, "dnsmasq.leases")
 }

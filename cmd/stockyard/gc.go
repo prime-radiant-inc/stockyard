@@ -57,7 +57,7 @@ Note: This command will NOT clean up running VMs - they must be stopped first.`,
 
 		gc := &GarbageCollector{
 			cfg:          cfg,
-			vmDir:        "/var/lib/stockyard/vms/stockyard",
+			vmDir:        cfg.VMDir(),
 			taskIDs:      make(map[string]string),
 			dryRun:       gcDryRun || (!gcAll && !gcOrphans),
 			cleanAll:     gcAll,

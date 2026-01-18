@@ -60,8 +60,8 @@ DHCP leases, and identify orphaned resources that are not tracked by the daemon.
 		// Collect resources from various sources
 		rc := &ResourceCollector{
 			cfg:       cfg,
-			vmDir:     "/var/lib/stockyard/vms/stockyard",
-			leaseFile: "/var/lib/stockyard/dnsmasq.leases",
+			vmDir:     cfg.VMDir(),
+			leaseFile: cfg.DHCPLeaseFile(),
 			taskIDs:   make(map[string]string),
 			taskInfo:  make(map[string]*TaskInfo),
 			macToIP:   make(map[string]string),

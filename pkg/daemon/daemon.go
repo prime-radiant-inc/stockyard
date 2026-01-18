@@ -101,8 +101,7 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 		LeaseTime:  cfg.Firecracker.DHCPLeaseTime,
 		DNS:        "8.8.8.8",
 	}
-	dataDir := "/var/lib/stockyard"
-	dhcpServer, err := network.NewDHCPServer(dhcpConfig, dataDir)
+	dhcpServer, err := network.NewDHCPServer(dhcpConfig, cfg.Daemon.DataDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DHCP server: %w", err)
 	}
