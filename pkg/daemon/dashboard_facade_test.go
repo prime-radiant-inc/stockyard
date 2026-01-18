@@ -114,3 +114,73 @@ func TestDashboardFacade_GetTask(t *testing.T) {
 		t.Error("expected nil result for nonexistent task")
 	}
 }
+
+func TestDashboardFacade_ListTaskSnapshots(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("failed to create state: %v", err)
+	}
+	defer state.Close()
+
+	// Create task and snapshots
+	task := &Task{
+		ID:        "task-1",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "claude",
+		Status:    "running",
+		CreatedAt: time.Now(),
+	}
+	if err := state.CreateTask(task); err != nil {
+		t.Fatalf("failed to create task: %v", err)
+	}
+
+	state.RecordSnapshot("task-1", "task-1@snap1")
+	state.RecordSnapshot("task-1", "task-1@snap2")
+
+	facade := NewDashboardFacade(state, nil)
+
+	snaps, err := facade.ListTaskSnapshots(context.Background(), "task-1")
+	if err != nil {
+		t.Fatalf("ListTaskSnapshots failed: %v", err)
+	}
+	if len(snaps) != 2 {
+		t.Errorf("expected 2 snapshots, got %d", len(snaps))
+	}
+}
+
+func TestDashboardFacade_CreateSnapshot(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("failed to create state: %v", err)
+	}
+	defer state.Close()
+
+	task := &Task{
+		ID:        "task-1",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "claude",
+		Status:    "running",
+		CreatedAt: time.Now(),
+	}
+	if err := state.CreateTask(task); err != nil {
+		t.Fatalf("failed to create task: %v", err)
+	}
+
+	facade := NewDashboardFacade(state, nil)
+
+	snapName, err := facade.CreateSnapshot(context.Background(), "task-1", "my-label")
+	if err != nil {
+		t.Fatalf("CreateSnapshot failed: %v", err)
+	}
+	if snapName != "task-1@my-label" {
+		t.Errorf("expected task-1@my-label, got %s", snapName)
+	}
+
+	// Verify it was recorded
+	snaps, _ := state.ListTaskSnapshots("task-1")
+	if len(snaps) != 1 {
+		t.Errorf("expected 1 snapshot recorded, got %d", len(snaps))
+	}
+}
