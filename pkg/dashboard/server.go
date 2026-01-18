@@ -18,6 +18,7 @@ type Server struct {
 	hub          *Hub
 	logHistory   *LogHistory
 	activityFeed *ActivityFeed
+	alertChecker *AlertChecker
 }
 
 // NewServer creates a new dashboard HTTP server.
@@ -32,6 +33,7 @@ func NewServer(daemon DaemonAPI) *Server {
 		hub:          hub,
 		logHistory:   NewLogHistory(10000),
 		activityFeed: NewActivityFeedWithHub(100, hub),
+		alertChecker: NewAlertChecker(),
 	}
 	// Load templates, but don't fail if they're not available (for testing)
 	s.templates, _ = LoadTemplates()
@@ -110,6 +112,7 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		"GroupedByRepo":  groupedByRepo,
 		"GroupedByOwner": groupedByOwner,
 		"ActivityCount":  s.activityFeed.Count(),
+		"AlertCount":     s.alertChecker.GetAlertCount(),
 	}
 	var buf bytes.Buffer
 	if err := s.templates.ExecuteTemplate(&buf, "fleet.html", data); err != nil {
@@ -355,4 +358,9 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 // ActivityFeed returns the activity feed for recording events.
 func (s *Server) ActivityFeed() *ActivityFeed {
 	return s.activityFeed
+}
+
+// AlertChecker returns the alert checker for evaluating VM metrics.
+func (s *Server) AlertChecker() *AlertChecker {
+	return s.alertChecker
 }
