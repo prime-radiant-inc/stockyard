@@ -40,7 +40,7 @@
         <div class="p-3 bg-white rounded-lg border border-gray-200">
             <div class="flex items-center justify-between mb-1">
                 <span class="text-xs text-gray-500">Memory</span>
-                <span class="text-sm font-bold text-gray-900" id="preview-mem">--</span>
+                <span class="text-sm font-bold text-gray-900" id="preview-memory">--</span>
             </div>
             <div class="h-8">
                 <canvas id="preview-mem-sparkline"></canvas>
@@ -94,6 +94,7 @@
             });
         };
 
+        const cpuCanvas = document.getElementById('preview-cpu-sparkline');
         const cpuChart = createMiniSparkline('preview-cpu-sparkline', '#10b981');
         const memChart = createMiniSparkline('preview-mem-sparkline', '#3b82f6');
 
@@ -112,7 +113,7 @@
                 }
 
                 // Update memory display and sparkline
-                document.getElementById('preview-mem').textContent = formatBytes(m.memory_bytes);
+                document.getElementById('preview-memory').textContent = formatBytes(m.memory_bytes);
                 const memPct = m.memory_max_bytes > 0 ? (m.memory_bytes / m.memory_max_bytes) * 100 : 0;
                 memData.push(memPct);
                 if (memData.length > 20) memData.shift();
@@ -128,16 +129,13 @@
 
         // Cleanup when this partial is replaced
         const observer = new MutationObserver((mutations) => {
-            for (const mutation of mutations) {
-                for (const node of mutation.removedNodes) {
-                    if (node.contains && node.contains(document.getElementById('preview-cpu-sparkline'))) {
-                        window.removeEventListener('preview-metrics', handler);
-                        if (cpuChart) cpuChart.destroy();
-                        if (memChart) memChart.destroy();
-                        observer.disconnect();
-                        return;
-                    }
-                }
+            // Check if our canvas element was removed from the document
+            if (cpuCanvas && !document.body.contains(cpuCanvas)) {
+                window.removeEventListener('preview-metrics', handler);
+                if (cpuChart) cpuChart.destroy();
+                if (memChart) memChart.destroy();
+                observer.disconnect();
+                return;
             }
         });
         observer.observe(document.getElementById('vm-preview-content'), { childList: true });
