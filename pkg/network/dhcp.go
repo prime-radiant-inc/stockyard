@@ -176,7 +176,8 @@ func (s *DHCPServer) Start() error {
 	}
 
 	// Start dnsmasq with -k (keep in foreground)
-	s.cmd = exec.Command(binaryPath, "-k", "-C", s.configPath, "--dhcp-leasefile", s.leasePath)
+	// Lease file path is in the config file, no need to pass separately
+	s.cmd = exec.Command(binaryPath, "-k", "-C", s.configPath)
 	if err := s.cmd.Start(); err != nil {
 		s.cmd = nil
 		return fmt.Errorf("dhcp: failed to start dnsmasq: %w", err)
