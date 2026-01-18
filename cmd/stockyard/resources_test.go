@@ -11,63 +11,6 @@ import (
 	"github.com/obra/stockyard/pkg/config"
 )
 
-func TestResourceCollector_IsVMRunning_NoFile(t *testing.T) {
-	rc := &ResourceCollector{}
-	tmpDir := t.TempDir()
-
-	// No pid file - should return false
-	if rc.isVMRunning(tmpDir) {
-		t.Error("expected false for missing pid file")
-	}
-}
-
-func TestResourceCollector_IsVMRunning_InvalidPid(t *testing.T) {
-	rc := &ResourceCollector{}
-	tmpDir := t.TempDir()
-
-	// Write invalid pid
-	pidPath := filepath.Join(tmpDir, "firecracker.pid")
-	if err := os.WriteFile(pidPath, []byte("notanumber"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	if rc.isVMRunning(tmpDir) {
-		t.Error("expected false for invalid pid")
-	}
-}
-
-func TestResourceCollector_IsVMRunning_NonexistentPid(t *testing.T) {
-	rc := &ResourceCollector{}
-	tmpDir := t.TempDir()
-
-	// Write a pid that doesn't exist (high number unlikely to be in use)
-	pidPath := filepath.Join(tmpDir, "firecracker.pid")
-	if err := os.WriteFile(pidPath, []byte("999999999"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	if rc.isVMRunning(tmpDir) {
-		t.Error("expected false for nonexistent pid")
-	}
-}
-
-func TestResourceCollector_IsVMRunning_CurrentProcess(t *testing.T) {
-	rc := &ResourceCollector{}
-	tmpDir := t.TempDir()
-
-	// Write our own pid - should be running
-	pid := os.Getpid()
-	pidPath := filepath.Join(tmpDir, "firecracker.pid")
-	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d", pid)), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Our own process should be running
-	if !rc.isVMRunning(tmpDir) {
-		t.Error("expected true for our own pid")
-	}
-}
-
 func TestResourceCollector_CollectVMDirs_EmptyDir(t *testing.T) {
 	tmpDir := t.TempDir()
 

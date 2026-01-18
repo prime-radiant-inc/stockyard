@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/obra/stockyard/pkg/client"
 	"github.com/obra/stockyard/pkg/config"
+	"github.com/obra/stockyard/pkg/vmutil"
 	"github.com/spf13/cobra"
 )
 
@@ -187,7 +187,7 @@ func (gc *GarbageCollector) findOrphanVMDirs() {
 
 		// Check if VM is running - skip if so
 		vmDir := filepath.Join(gc.vmDir, id)
-		if gc.isVMRunning(vmDir) {
+		if vmutil.IsVMRunning(vmDir) {
 			fmt.Fprintf(os.Stderr, "Warning: orphan VM %s is running, skipping\n", id)
 			continue
 		}
@@ -286,24 +286,6 @@ func (gc *GarbageCollector) findOrphanTaps() {
 			})
 		}
 	}
-}
-
-func (gc *GarbageCollector) isVMRunning(vmDir string) bool {
-	pidFile := filepath.Join(vmDir, "firecracker.pid")
-	data, err := os.ReadFile(pidFile)
-	if err != nil {
-		return false
-	}
-
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return false
-	}
-
-	// Check if process exists by sending signal 0
-	// On Unix, this returns nil if process exists and we have permission to signal it
-	err = syscall.Kill(pid, 0)
-	return err == nil
 }
 
 func (gc *GarbageCollector) printPlan() {

@@ -10,58 +10,6 @@ import (
 	"github.com/obra/stockyard/pkg/config"
 )
 
-func TestGarbageCollector_IsVMRunning_NoFile(t *testing.T) {
-	gc := &GarbageCollector{}
-	tmpDir := t.TempDir()
-
-	if gc.isVMRunning(tmpDir) {
-		t.Error("expected false for missing pid file")
-	}
-}
-
-func TestGarbageCollector_IsVMRunning_InvalidPid(t *testing.T) {
-	gc := &GarbageCollector{}
-	tmpDir := t.TempDir()
-
-	pidPath := filepath.Join(tmpDir, "firecracker.pid")
-	if err := os.WriteFile(pidPath, []byte("notanumber"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	if gc.isVMRunning(tmpDir) {
-		t.Error("expected false for invalid pid")
-	}
-}
-
-func TestGarbageCollector_IsVMRunning_NonexistentPid(t *testing.T) {
-	gc := &GarbageCollector{}
-	tmpDir := t.TempDir()
-
-	pidPath := filepath.Join(tmpDir, "firecracker.pid")
-	if err := os.WriteFile(pidPath, []byte("999999999"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	if gc.isVMRunning(tmpDir) {
-		t.Error("expected false for nonexistent pid")
-	}
-}
-
-func TestGarbageCollector_IsVMRunning_RunningProcess(t *testing.T) {
-	gc := &GarbageCollector{}
-	tmpDir := t.TempDir()
-
-	// Our own PID should be running
-	pidPath := filepath.Join(tmpDir, "firecracker.pid")
-	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	if !gc.isVMRunning(tmpDir) {
-		t.Error("expected true for running process")
-	}
-}
-
 func TestGarbageCollector_FindOrphanVMDirs_Empty(t *testing.T) {
 	tmpDir := t.TempDir()
 

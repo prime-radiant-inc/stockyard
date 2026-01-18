@@ -10,12 +10,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"text/tabwriter"
 	"time"
 
 	"github.com/obra/stockyard/pkg/client"
 	"github.com/obra/stockyard/pkg/config"
+	"github.com/obra/stockyard/pkg/vmutil"
 	"github.com/spf13/cobra"
 )
 
@@ -185,7 +185,7 @@ func (rc *ResourceCollector) collectVMDirs() {
 		vmDir := filepath.Join(rc.vmDir, id)
 
 		status := "stopped"
-		if rc.isVMRunning(vmDir) {
+		if vmutil.IsVMRunning(vmDir) {
 			status = "running"
 		}
 
@@ -211,23 +211,6 @@ func (rc *ResourceCollector) collectVMDirs() {
 			Detail: detail,
 		})
 	}
-}
-
-func (rc *ResourceCollector) isVMRunning(vmDir string) bool {
-	pidFile := filepath.Join(vmDir, "firecracker.pid")
-	data, err := os.ReadFile(pidFile)
-	if err != nil {
-		return false
-	}
-
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return false
-	}
-
-	// Check if process exists by sending signal 0
-	err = syscall.Kill(pid, 0)
-	return err == nil
 }
 
 func (rc *ResourceCollector) collectZFSDatasets() {
