@@ -25,6 +25,11 @@ for i in {1..30}; do
     sleep 1
 done
 
+# Set up DNS (systemd-resolved is disabled)
+echo "Configuring DNS..."
+rm -f /etc/resolv.conf 2>/dev/null || true
+printf 'nameserver 8.8.8.8\nnameserver 8.8.4.4\n' > /etc/resolv.conf
+
 # Ensure MMDS route exists (systemd-networkd should add it, but verify)
 if ! ip route | grep -q "169.254.169.254"; then
     echo "Adding MMDS route..."

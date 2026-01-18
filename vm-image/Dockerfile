@@ -230,6 +230,10 @@ EOF
 # Enable systemd-networkd
 RUN systemctl enable systemd-networkd 2>/dev/null || true
 
+# Disable systemd-resolved (causes boot delays and DNS issues in Firecracker)
+# resolv.conf is set up by stockyard-init.sh at boot time
+RUN systemctl disable systemd-resolved 2>/dev/null || true
+
 # ============================================================================
 # Section 8: MicroVM Kernel
 # ============================================================================

@@ -44,6 +44,13 @@ func (lh *LogHistory) AddLine(taskID, stream, text string) {
 	if len(lh.lines) > lh.maxLines {
 		lh.lines = lh.lines[1:]
 	}
+
+	// Compact slice when backing array grows too large to prevent memory leak
+	if cap(lh.lines) > lh.maxLines*2 {
+		newSlice := make([]LogLine, len(lh.lines), lh.maxLines)
+		copy(newSlice, lh.lines)
+		lh.lines = newSlice
+	}
 }
 
 // Search finds lines matching a query string for a specific task.
