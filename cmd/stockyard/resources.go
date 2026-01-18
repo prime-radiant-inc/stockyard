@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 	"text/tabwriter"
+	"time"
 
 	"github.com/obra/stockyard/pkg/client"
 	"github.com/obra/stockyard/pkg/config"
@@ -21,17 +22,35 @@ import (
 // Resource represents a stockyard resource (VM, dataset, etc.)
 type Resource struct {
 	ID       string
-	Type     string // "vm", "zfs-vm", "zfs-workspace", "tap", "task"
-	Status   string // "running", "stopped", "orphan"
+	Type     string // "vm", "zfs-vm", "zfs-workspace", "tap", "task", "dhcp-lease"
+	Status   string // "running", "stopped", "orphan", "active"
 	Size     string // For ZFS datasets
 	Detail   string // Additional info
+}
+
+// TaskInfo holds extended task information
+type TaskInfo struct {
+	ID        string
+	Status    string
+	Repo      string
+	CreatedAt time.Time
+	IP        string
+	MAC       string
+}
+
+// DHCPLease represents a DHCP lease entry
+type DHCPLease struct {
+	Expiry   time.Time
+	MAC      string
+	IP       string
+	Hostname string
 }
 
 var resourcesCmd = &cobra.Command{
 	Use:   "resources",
 	Short: "Show all stockyard resources",
 	Long: `Show all stockyard resources including VMs, ZFS datasets, tap interfaces,
-and identify orphaned resources that are not tracked by the daemon.`,
+DHCP leases, and identify orphaned resources that are not tracked by the daemon.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
@@ -39,24 +58,30 @@ and identify orphaned resources that are not tracked by the daemon.`,
 		}
 
 		// Collect resources from various sources
-		resources := &ResourceCollector{
-			cfg:      cfg,
-			vmDir:    "/var/lib/stockyard/vms/stockyard",
-			taskIDs:  make(map[string]string), // id -> status
+		rc := &ResourceCollector{
+			cfg:       cfg,
+			vmDir:     "/var/lib/stockyard/vms/stockyard",
+			leaseFile: "/var/lib/stockyard/dnsmasq.leases",
+			taskIDs:   make(map[string]string),
+			taskInfo:  make(map[string]*TaskInfo),
+			macToIP:   make(map[string]string),
 		}
 
+		// Load DHCP leases first (for IP lookup)
+		rc.loadDHCPLeases()
+
 		// Try to get tasks from daemon (optional - might not be running)
-		if err := resources.collectFromDaemon(); err != nil {
+		if err := rc.collectFromDaemon(); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not connect to daemon: %v\n", err)
 		}
 
 		// Collect from filesystem and ZFS
-		resources.collectVMDirs()
-		resources.collectZFSDatasets()
-		resources.collectTapInterfaces()
+		rc.collectVMDirs()
+		rc.collectZFSDatasets()
+		rc.collectTapInterfaces()
 
 		// Print results
-		resources.print()
+		rc.print()
 
 		return nil
 	},
@@ -65,8 +90,44 @@ and identify orphaned resources that are not tracked by the daemon.`,
 type ResourceCollector struct {
 	cfg       *config.Config
 	vmDir     string
-	taskIDs   map[string]string // Known task IDs from daemon -> status
+	leaseFile string
+	taskIDs   map[string]string    // Known task IDs from daemon -> status
+	taskInfo  map[string]*TaskInfo // Extended task info
 	resources []Resource
+	leases    []DHCPLease
+	macToIP   map[string]string // MAC -> IP mapping from DHCP leases
+}
+
+func (rc *ResourceCollector) loadDHCPLeases() {
+	file, err := os.Open(rc.leaseFile)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// dnsmasq lease format: <expiry> <MAC> <IP> <hostname> <client-id>
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+
+		expiry, err := strconv.ParseInt(fields[0], 10, 64)
+		if err != nil {
+			continue
+		}
+
+		lease := DHCPLease{
+			Expiry:   time.Unix(expiry, 0),
+			MAC:      strings.ToLower(fields[1]),
+			IP:       fields[2],
+			Hostname: fields[3],
+		}
+		rc.leases = append(rc.leases, lease)
+		rc.macToIP[lease.MAC] = lease.IP
+	}
 }
 
 func (rc *ResourceCollector) collectFromDaemon() error {
@@ -83,12 +144,28 @@ func (rc *ResourceCollector) collectFromDaemon() error {
 
 	for _, t := range tasks {
 		rc.taskIDs[t.Id] = t.Status
-		rc.resources = append(rc.resources, Resource{
-			ID:     t.Id,
-			Type:   "task",
-			Status: t.Status,
-			Detail: t.Repo,
-		})
+
+		// Parse created time
+		createdAt, _ := time.Parse(time.RFC3339, t.CreatedAt)
+
+		info := &TaskInfo{
+			ID:        t.Id,
+			Status:    t.Status,
+			Repo:      t.Repo,
+			CreatedAt: createdAt,
+		}
+
+		// Try to get MAC and IP for this task
+		macFile := filepath.Join(rc.vmDir, t.Id, "mac_addr")
+		if data, err := os.ReadFile(macFile); err == nil {
+			mac := strings.ToLower(strings.TrimSpace(string(data)))
+			info.MAC = mac
+			if ip, ok := rc.macToIP[mac]; ok {
+				info.IP = ip
+			}
+		}
+
+		rc.taskInfo[t.Id] = info
 	}
 
 	return nil
@@ -117,11 +194,21 @@ func (rc *ResourceCollector) collectVMDirs() {
 			status = "orphan"
 		}
 
+		// Get additional VM info
+		detail := vmDir
+		macFile := filepath.Join(vmDir, "mac_addr")
+		if data, err := os.ReadFile(macFile); err == nil {
+			mac := strings.ToLower(strings.TrimSpace(string(data)))
+			if ip, ok := rc.macToIP[mac]; ok {
+				detail = fmt.Sprintf("%s (IP: %s)", vmDir, ip)
+			}
+		}
+
 		rc.resources = append(rc.resources, Resource{
 			ID:     id,
 			Type:   "vm-dir",
 			Status: status,
-			Detail: vmDir,
+			Detail: detail,
 		})
 	}
 }
@@ -139,7 +226,6 @@ func (rc *ResourceCollector) isVMRunning(vmDir string) bool {
 	}
 
 	// Check if process exists by sending signal 0
-	// On Unix, this returns nil if process exists and we have permission to signal it
 	err = syscall.Kill(pid, 0)
 	return err == nil
 }
@@ -251,24 +337,64 @@ func (rc *ResourceCollector) collectTapInterfaces() {
 }
 
 func (rc *ResourceCollector) print() {
-	// Group by type
+	orphanCount := 0
+	stoppedCount := 0
+	runningCount := 0
+
+	// Print tasks with enhanced info
+	if len(rc.taskInfo) > 0 {
+		fmt.Printf("\nTasks (from daemon):\n")
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "  ID\tSTATUS\tIP\tUPTIME\tREPO")
+		for _, info := range rc.taskInfo {
+			uptime := "-"
+			if !info.CreatedAt.IsZero() {
+				uptime = formatDuration(time.Since(info.CreatedAt))
+			}
+			ip := info.IP
+			if ip == "" {
+				ip = "-"
+			}
+			fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n", info.ID, info.Status, ip, uptime, info.Repo)
+
+			switch info.Status {
+			case "running":
+				runningCount++
+			case "stopped":
+				stoppedCount++
+			}
+		}
+		w.Flush()
+	}
+
+	// Print DHCP leases
+	if len(rc.leases) > 0 {
+		fmt.Printf("\nDHCP Leases:\n")
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "  IP\tMAC\tHOSTNAME\tEXPIRES")
+		for _, lease := range rc.leases {
+			expires := formatDuration(time.Until(lease.Expiry))
+			if time.Until(lease.Expiry) < 0 {
+				expires = "expired"
+			}
+			fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n", lease.IP, lease.MAC, lease.Hostname, expires)
+		}
+		w.Flush()
+	}
+
+	// Group remaining resources by type
 	byType := make(map[string][]Resource)
 	for _, r := range rc.resources {
 		byType[r.Type] = append(byType[r.Type], r)
 	}
 
-	typeOrder := []string{"task", "vm-dir", "zfs-vm", "zfs-workspace", "tap"}
+	typeOrder := []string{"vm-dir", "zfs-vm", "zfs-workspace", "tap"}
 	typeNames := map[string]string{
-		"task":          "Tasks (from daemon)",
 		"vm-dir":        "VM Directories",
 		"zfs-vm":        "ZFS VM Datasets",
 		"zfs-workspace": "ZFS Workspace Datasets",
 		"tap":           "TAP Interfaces",
 	}
-
-	orphanCount := 0
-	stoppedCount := 0
-	runningCount := 0
 
 	for _, typ := range typeOrder {
 		resources := byType[typ]
@@ -280,13 +406,8 @@ func (rc *ResourceCollector) print() {
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
 		switch typ {
-		case "task":
-			fmt.Fprintln(w, "  ID\tSTATUS\tREPO")
-			for _, r := range resources {
-				fmt.Fprintf(w, "  %s\t%s\t%s\n", r.ID, r.Status, r.Detail)
-			}
 		case "vm-dir":
-			fmt.Fprintln(w, "  ID\tSTATUS\tPATH")
+			fmt.Fprintln(w, "  ID\tSTATUS\tDETAIL")
 			for _, r := range resources {
 				fmt.Fprintf(w, "  %s\t%s\t%s\n", r.ID, r.Status, r.Detail)
 			}
@@ -317,9 +438,30 @@ func (rc *ResourceCollector) print() {
 
 	fmt.Printf("\nSummary: %d running, %d stopped, %d orphan resources\n", runningCount, stoppedCount, orphanCount)
 	if orphanCount > 0 || stoppedCount > 0 {
-		fmt.Println("Run 'stockyard gc' to clean up stopped resources")
-		fmt.Println("Run 'stockyard gc --orphans' to clean up orphan resources")
+		fmt.Println("Run 'stockyard gc --everything' to clean up all stopped and orphan resources")
 	}
+}
+
+// formatDuration formats a duration in a human-readable way
+func formatDuration(d time.Duration) string {
+	if d < 0 {
+		d = -d
+	}
+
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		hours := int(d.Hours())
+		mins := int(d.Minutes()) % 60
+		return fmt.Sprintf("%dh%dm", hours, mins)
+	}
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	return fmt.Sprintf("%dd%dh", days, hours)
 }
 
 func init() {

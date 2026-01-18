@@ -18,10 +18,11 @@ import (
 )
 
 var (
-	gcAll     bool
-	gcOrphans bool
-	gcForce   bool
-	gcDryRun  bool
+	gcAll        bool
+	gcOrphans    bool
+	gcEverything bool
+	gcForce      bool
+	gcDryRun     bool
 )
 
 var gcCmd = &cobra.Command{
@@ -33,21 +34,33 @@ By default, shows what would be cleaned up without making changes.
 
 Use --all to clean up all stopped tasks (VMs, ZFS datasets, tap interfaces).
 Use --orphans to clean up orphaned resources not tracked by the daemon.
+Use --everything to clean up both stopped tasks and orphans.
 Use --force to skip confirmation prompts.
 
 Note: This command will NOT clean up running VMs - they must be stopped first.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Check for root privileges
+		if os.Geteuid() != 0 {
+			fmt.Fprintln(os.Stderr, "Warning: gc requires root privileges for most operations (ZFS, network, process management)")
+		}
+
 		cfg, err := config.Load()
 		if err != nil {
 			return err
 		}
 
+		// --everything implies both --all and --orphans
+		if gcEverything {
+			gcAll = true
+			gcOrphans = true
+		}
+
 		gc := &GarbageCollector{
-			cfg:        cfg,
-			vmDir:      "/var/lib/stockyard/vms/stockyard",
-			taskIDs:    make(map[string]string),
-			dryRun:     gcDryRun || (!gcAll && !gcOrphans),
-			cleanAll:   gcAll,
+			cfg:          cfg,
+			vmDir:        "/var/lib/stockyard/vms/stockyard",
+			taskIDs:      make(map[string]string),
+			dryRun:       gcDryRun || (!gcAll && !gcOrphans),
+			cleanAll:     gcAll,
 			cleanOrphans: gcOrphans,
 		}
 
@@ -454,6 +467,7 @@ func (gc *GarbageCollector) cleanTap(item CleanupItem) error {
 func init() {
 	gcCmd.Flags().BoolVar(&gcAll, "all", false, "Clean up all stopped tasks")
 	gcCmd.Flags().BoolVar(&gcOrphans, "orphans", false, "Clean up orphaned resources")
+	gcCmd.Flags().BoolVar(&gcEverything, "everything", false, "Clean up both stopped tasks and orphans")
 	gcCmd.Flags().BoolVarP(&gcForce, "force", "f", false, "Skip confirmation prompts")
 	gcCmd.Flags().BoolVar(&gcDryRun, "dry-run", false, "Show what would be cleaned without making changes")
 	rootCmd.AddCommand(gcCmd)

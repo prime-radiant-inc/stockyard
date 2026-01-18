@@ -261,6 +261,9 @@ func TestGCCommand_Flags(t *testing.T) {
 	if flags.Lookup("orphans") == nil {
 		t.Error("expected --orphans flag to be registered")
 	}
+	if flags.Lookup("everything") == nil {
+		t.Error("expected --everything flag to be registered")
+	}
 	if flags.Lookup("force") == nil {
 		t.Error("expected --force flag to be registered")
 	}

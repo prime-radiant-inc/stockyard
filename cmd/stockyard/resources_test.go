@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/obra/stockyard/pkg/config"
 )
@@ -194,5 +195,110 @@ func TestResourcesCommand_Help(t *testing.T) {
 	}
 	if resourcesCmd.Short == "" {
 		t.Error("expected non-empty Short description")
+	}
+}
+
+func TestResourceCollector_LoadDHCPLeases(t *testing.T) {
+	tmpDir := t.TempDir()
+	leaseFile := filepath.Join(tmpDir, "dnsmasq.leases")
+
+	// Write a valid lease file
+	// Format: <expiry> <MAC> <IP> <hostname> <client-id>
+	expiry := fmt.Sprintf("%d", 9999999999) // Far future
+	leaseContent := fmt.Sprintf("%s aa:bb:cc:dd:ee:ff 192.168.1.100 test-host *\n", expiry)
+	if err := os.WriteFile(leaseFile, []byte(leaseContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	rc := &ResourceCollector{
+		cfg:       config.DefaultConfig(),
+		leaseFile: leaseFile,
+		macToIP:   make(map[string]string),
+	}
+
+	rc.loadDHCPLeases()
+
+	if len(rc.leases) != 1 {
+		t.Fatalf("expected 1 lease, got %d", len(rc.leases))
+	}
+
+	lease := rc.leases[0]
+	if lease.MAC != "aa:bb:cc:dd:ee:ff" {
+		t.Errorf("expected MAC 'aa:bb:cc:dd:ee:ff', got %q", lease.MAC)
+	}
+	if lease.IP != "192.168.1.100" {
+		t.Errorf("expected IP '192.168.1.100', got %q", lease.IP)
+	}
+	if lease.Hostname != "test-host" {
+		t.Errorf("expected hostname 'test-host', got %q", lease.Hostname)
+	}
+
+	// Check MAC to IP mapping
+	if ip, ok := rc.macToIP["aa:bb:cc:dd:ee:ff"]; !ok || ip != "192.168.1.100" {
+		t.Errorf("expected macToIP mapping, got %v", rc.macToIP)
+	}
+}
+
+func TestResourceCollector_LoadDHCPLeases_MissingFile(t *testing.T) {
+	rc := &ResourceCollector{
+		cfg:       config.DefaultConfig(),
+		leaseFile: "/nonexistent/file",
+		macToIP:   make(map[string]string),
+	}
+
+	// Should not panic, just return empty
+	rc.loadDHCPLeases()
+
+	if len(rc.leases) != 0 {
+		t.Errorf("expected 0 leases, got %d", len(rc.leases))
+	}
+}
+
+func TestResourceCollector_LoadDHCPLeases_InvalidLines(t *testing.T) {
+	tmpDir := t.TempDir()
+	leaseFile := filepath.Join(tmpDir, "dnsmasq.leases")
+
+	// Write lease file with some invalid lines
+	content := "invalid line\n"
+	content += "not-a-number aa:bb:cc:dd:ee:ff 192.168.1.100 test\n"
+	content += fmt.Sprintf("%d aa:bb:cc:dd:ee:ff 192.168.1.100 valid *\n", 9999999999)
+	if err := os.WriteFile(leaseFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	rc := &ResourceCollector{
+		cfg:       config.DefaultConfig(),
+		leaseFile: leaseFile,
+		macToIP:   make(map[string]string),
+	}
+
+	rc.loadDHCPLeases()
+
+	// Should only get the valid line
+	if len(rc.leases) != 1 {
+		t.Fatalf("expected 1 lease, got %d", len(rc.leases))
+	}
+}
+
+func TestFormatDuration(t *testing.T) {
+	tests := []struct {
+		name     string
+		duration time.Duration
+		want     string
+	}{
+		{"seconds", 45 * time.Second, "45s"},
+		{"minutes", 5 * time.Minute, "5m"},
+		{"hours_and_minutes", 2*time.Hour + 30*time.Minute, "2h30m"},
+		{"days_and_hours", 3*24*time.Hour + 5*time.Hour, "3d5h"},
+		{"negative_seconds", -30 * time.Second, "30s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatDuration(tt.duration)
+			if got != tt.want {
+				t.Errorf("formatDuration(%v) = %q, want %q", tt.duration, got, tt.want)
+			}
+		})
 	}
 }
