@@ -251,6 +251,67 @@ func TestServer_HasWebSocketEndpoint(t *testing.T) {
 	}
 }
 
+func TestServer_LogSearchAPI(t *testing.T) {
+	srv := NewServer(nil)
+
+	// Add some log lines
+	srv.LogHistory().AddLine("task-1", "stdout", "starting server")
+	srv.LogHistory().AddLine("task-1", "stderr", "error: connection failed")
+	srv.LogHistory().AddLine("task-1", "stdout", "retrying connection")
+
+	// Test search with query
+	req := httptest.NewRequest("GET", "/api/vm-logs/task-1?q=connection", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "connection failed") {
+		t.Error("expected 'connection failed' in results")
+	}
+	if !strings.Contains(body, "retrying connection") {
+		t.Error("expected 'retrying connection' in results")
+	}
+}
+
+func TestServer_LogSearchAPI_FilterByStream(t *testing.T) {
+	srv := NewServer(nil)
+
+	srv.LogHistory().AddLine("task-1", "stdout", "normal output")
+	srv.LogHistory().AddLine("task-1", "stderr", "error output")
+
+	req := httptest.NewRequest("GET", "/api/vm-logs/task-1?stream=stderr", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "error output") {
+		t.Error("expected 'error output' in results")
+	}
+	if strings.Contains(body, "normal output") {
+		t.Error("should not contain 'normal output' when filtering by stderr")
+	}
+}
+
+func TestServer_LogSearchAPI_MissingTaskID(t *testing.T) {
+	srv := NewServer(nil)
+
+	req := httptest.NewRequest("GET", "/api/vm-logs/", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}
+
 func TestServer_FleetPage_WithAdapter(t *testing.T) {
 	// Use MockRealDaemon from adapter_test.go to test full integration flow:
 	// MockRealDaemon -> DaemonAdapter -> Server -> HTML output

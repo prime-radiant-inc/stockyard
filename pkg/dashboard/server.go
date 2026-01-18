@@ -3,6 +3,7 @@ package dashboard
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -11,10 +12,11 @@ import (
 
 // Server is the HTTP server for the web dashboard.
 type Server struct {
-	mux       *http.ServeMux
-	daemon    DaemonAPI
-	templates *template.Template
-	hub       *Hub
+	mux        *http.ServeMux
+	daemon     DaemonAPI
+	templates  *template.Template
+	hub        *Hub
+	logHistory *LogHistory
 }
 
 // NewServer creates a new dashboard HTTP server.
@@ -24,9 +26,10 @@ func NewServer(daemon DaemonAPI) *Server {
 	go hub.Run()
 
 	s := &Server{
-		mux:    http.NewServeMux(),
-		daemon: daemon,
-		hub:    hub,
+		mux:        http.NewServeMux(),
+		daemon:     daemon,
+		hub:        hub,
+		logHistory: NewLogHistory(10000),
 	}
 	// Load templates, but don't fail if they're not available (for testing)
 	s.templates, _ = LoadTemplates()
@@ -37,6 +40,7 @@ func NewServer(daemon DaemonAPI) *Server {
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/health", s.handleHealth)
 	s.mux.HandleFunc("/ws", s.handleWebSocket)
+	s.mux.HandleFunc("/api/vm-logs/", s.handleLogSearch)
 	s.mux.HandleFunc("/api/vm/", s.handleAPIVM)
 	s.mux.HandleFunc("/vm/", s.handleVMDetail)
 	s.mux.HandleFunc("/", s.handleFleet)
@@ -230,4 +234,30 @@ func (s *Server) Close() {
 	if s.hub != nil {
 		s.hub.Stop()
 	}
+}
+
+// LogHistory returns the log history store for adding/searching logs.
+func (s *Server) LogHistory() *LogHistory {
+	return s.logHistory
+}
+
+func (s *Server) handleLogSearch(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/api/vm-logs/")
+	if id == "" {
+		http.Error(w, "missing task ID", http.StatusBadRequest)
+		return
+	}
+
+	query := r.URL.Query().Get("q")
+	stream := r.URL.Query().Get("stream")
+
+	var lines []LogLine
+	if stream != "" && stream != "all" {
+		lines = s.logHistory.SearchStream(id, stream, query)
+	} else {
+		lines = s.logHistory.Search(id, query)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(lines)
 }
