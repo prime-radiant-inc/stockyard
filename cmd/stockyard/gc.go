@@ -247,6 +247,9 @@ func (gc *GarbageCollector) findOrphanDatasetsIn(basePath, resourceType string) 
 }
 
 func (gc *GarbageCollector) findOrphanTaps() {
+	// Build map of tap name -> task ID from VM directories
+	tapToTask := gc.buildTapToTaskMap()
+
 	cmd := exec.Command("ip", "-o", "link", "show")
 	output, err := cmd.Output()
 	if err != nil {
@@ -266,26 +269,43 @@ func (gc *GarbageCollector) findOrphanTaps() {
 			continue
 		}
 
-		// Extract VM ID prefix from tap name
-		id := strings.TrimPrefix(name, "tap-")
-
-		// Check if any known task matches this tap
-		found := false
-		for taskID := range gc.taskIDs {
-			if strings.HasPrefix(taskID, id) {
-				found = true
-				break
+		// Look up tap name in our map - if not found or task unknown, it's orphan
+		if taskID, known := tapToTask[name]; known {
+			if _, taskExists := gc.taskIDs[taskID]; taskExists {
+				continue // tap belongs to a known task
 			}
 		}
 
-		if !found {
-			gc.toClean = append(gc.toClean, CleanupItem{
-				ID:       name,
-				Type:     "tap",
-				IsOrphan: true,
-			})
+		gc.toClean = append(gc.toClean, CleanupItem{
+			ID:       name,
+			Type:     "tap",
+			IsOrphan: true,
+		})
+	}
+}
+
+// buildTapToTaskMap reads tap_name files from VM directories to build
+// an exact mapping of tap interface names to task IDs.
+func (gc *GarbageCollector) buildTapToTaskMap() map[string]string {
+	tapToTask := make(map[string]string)
+	entries, err := os.ReadDir(gc.vmDir)
+	if err != nil {
+		return tapToTask
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		taskID := entry.Name()
+		tapFile := filepath.Join(gc.vmDir, taskID, "tap_name")
+		if data, err := os.ReadFile(tapFile); err == nil {
+			tapName := strings.TrimSpace(string(data))
+			tapToTask[tapName] = taskID
 		}
 	}
+
+	return tapToTask
 }
 
 func (gc *GarbageCollector) printPlan() {

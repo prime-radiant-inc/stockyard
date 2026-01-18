@@ -272,6 +272,9 @@ func (rc *ResourceCollector) collectZFSDatasetsFromPath(basePath, resourceType s
 }
 
 func (rc *ResourceCollector) collectTapInterfaces() {
+	// Build map of tap name -> task ID from VM directories
+	tapToTask := rc.buildTapToTaskMap()
+
 	cmd := exec.Command("ip", "-o", "link", "show")
 	output, err := cmd.Output()
 	if err != nil {
@@ -292,23 +295,15 @@ func (rc *ResourceCollector) collectTapInterfaces() {
 			continue
 		}
 
-		// Extract VM ID from tap name (tap-xxxxxxxx -> xxxxxxxx)
-		id := strings.TrimPrefix(name, "tap-")
-
-		// Check if orphan
-		status := "active"
-		found := false
-		for taskID := range rc.taskIDs {
-			if strings.HasPrefix(taskID, id) {
-				found = true
-				if rc.taskIDs[taskID] == "stopped" {
-					status = "stopped"
+		// Look up tap name in our map
+		status := "orphan"
+		if taskID, known := tapToTask[name]; known {
+			if taskStatus, ok := rc.taskIDs[taskID]; ok {
+				status = taskStatus
+				if status == "running" {
+					status = "active"
 				}
-				break
 			}
-		}
-		if !found {
-			status = "orphan"
 		}
 
 		rc.resources = append(rc.resources, Resource{
@@ -317,6 +312,30 @@ func (rc *ResourceCollector) collectTapInterfaces() {
 			Status: status,
 		})
 	}
+}
+
+// buildTapToTaskMap reads tap_name files from VM directories to build
+// an exact mapping of tap interface names to task IDs.
+func (rc *ResourceCollector) buildTapToTaskMap() map[string]string {
+	tapToTask := make(map[string]string)
+	entries, err := os.ReadDir(rc.vmDir)
+	if err != nil {
+		return tapToTask
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		taskID := entry.Name()
+		tapFile := filepath.Join(rc.vmDir, taskID, "tap_name")
+		if data, err := os.ReadFile(tapFile); err == nil {
+			tapName := strings.TrimSpace(string(data))
+			tapToTask[tapName] = taskID
+		}
+	}
+
+	return tapToTask
 }
 
 func (rc *ResourceCollector) print() {

@@ -223,6 +223,79 @@ func TestResourceCollector_LoadDHCPLeases_InvalidLines(t *testing.T) {
 	}
 }
 
+func TestResourceCollector_BuildTapToTaskMap(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create VM directories with tap_name files
+	vm1Dir := filepath.Join(tmpDir, "12345678-abcd-1234-5678-abcdef123456")
+	os.Mkdir(vm1Dir, 0755)
+	os.WriteFile(filepath.Join(vm1Dir, "tap_name"), []byte("tap-12345678\n"), 0644)
+
+	vm2Dir := filepath.Join(tmpDir, "12345678-different-uuid-here")
+	os.Mkdir(vm2Dir, 0755)
+	os.WriteFile(filepath.Join(vm2Dir, "tap_name"), []byte("tap-87654321"), 0644)
+
+	// VM without tap_name file
+	vm3Dir := filepath.Join(tmpDir, "no-tap-file")
+	os.Mkdir(vm3Dir, 0755)
+
+	rc := &ResourceCollector{
+		cfg:   config.DefaultConfig(),
+		vmDir: tmpDir,
+	}
+
+	tapToTask := rc.buildTapToTaskMap()
+
+	if len(tapToTask) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(tapToTask))
+	}
+
+	if taskID := tapToTask["tap-12345678"]; taskID != "12345678-abcd-1234-5678-abcdef123456" {
+		t.Errorf("tap-12345678 should map to first UUID, got %q", taskID)
+	}
+
+	if taskID := tapToTask["tap-87654321"]; taskID != "12345678-different-uuid-here" {
+		t.Errorf("tap-87654321 should map to second UUID, got %q", taskID)
+	}
+}
+
+func TestResourceCollector_BuildTapToTaskMap_DistinguishesSimilarPrefixes(t *testing.T) {
+	// This test verifies that two task IDs with the same 8-char prefix
+	// are correctly distinguished by their tap_name files
+	tmpDir := t.TempDir()
+
+	// Two UUIDs that share the same 8-character prefix
+	vm1Dir := filepath.Join(tmpDir, "12345678-aaaa-1111-1111-111111111111")
+	os.Mkdir(vm1Dir, 0755)
+	os.WriteFile(filepath.Join(vm1Dir, "tap_name"), []byte("tap-12345678"), 0644)
+
+	vm2Dir := filepath.Join(tmpDir, "12345678-bbbb-2222-2222-222222222222")
+	os.Mkdir(vm2Dir, 0755)
+	os.WriteFile(filepath.Join(vm2Dir, "tap_name"), []byte("tap-abcdef12"), 0644)
+
+	rc := &ResourceCollector{
+		cfg:   config.DefaultConfig(),
+		vmDir: tmpDir,
+	}
+
+	tapToTask := rc.buildTapToTaskMap()
+
+	// Each tap should map to exactly one task
+	if len(tapToTask) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(tapToTask))
+	}
+
+	// tap-12345678 belongs to the first VM
+	if taskID := tapToTask["tap-12345678"]; taskID != "12345678-aaaa-1111-1111-111111111111" {
+		t.Errorf("tap-12345678 should map to first UUID, got %q", taskID)
+	}
+
+	// tap-abcdef12 belongs to the second VM
+	if taskID := tapToTask["tap-abcdef12"]; taskID != "12345678-bbbb-2222-2222-222222222222" {
+		t.Errorf("tap-abcdef12 should map to second UUID, got %q", taskID)
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		name     string
