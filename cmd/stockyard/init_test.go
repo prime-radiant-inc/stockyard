@@ -23,7 +23,8 @@ func TestInitCommand_RequiresInstance(t *testing.T) {
 
 func TestInitCommand_CreatesConfig(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	configDir := filepath.Join(tmpDir, "stockyard")
+	t.Setenv("STOCKYARD_CONFIG_DIR", configDir)
 
 	// Reset flag for this test
 	initInstanceName = ""
@@ -36,13 +37,13 @@ func TestInitCommand_CreatesConfig(t *testing.T) {
 	}
 
 	// Verify config was created
-	configPath := filepath.Join(tmpDir, "stockyard", "config.json")
+	configPath := filepath.Join(configDir, "config.json")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Fatal("config file not created")
 	}
 
 	// Load and verify config contents
-	cfg, err := config.LoadFromDir(filepath.Join(tmpDir, "stockyard"))
+	cfg, err := config.LoadFromDir(configDir)
 	if err != nil {
 		t.Fatalf("failed to load config: %v", err)
 	}
@@ -58,13 +59,14 @@ func TestInitCommand_CreatesConfig(t *testing.T) {
 
 func TestInitCommand_OverwritesExisting(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	configDir := filepath.Join(tmpDir, "stockyard")
+	t.Setenv("STOCKYARD_CONFIG_DIR", configDir)
 
 	// Create initial config
 	initialCfg := config.DefaultConfig()
 	initialCfg.InstanceID = "old-instance"
 	initialCfg.Secrets.Prefix = "old-instance"
-	err := initialCfg.SaveToDir(filepath.Join(tmpDir, "stockyard"))
+	err := initialCfg.SaveToDir(configDir)
 	if err != nil {
 		t.Fatalf("failed to create initial config: %v", err)
 	}
@@ -80,7 +82,7 @@ func TestInitCommand_OverwritesExisting(t *testing.T) {
 	}
 
 	// Verify config was overwritten
-	cfg, err := config.LoadFromDir(filepath.Join(tmpDir, "stockyard"))
+	cfg, err := config.LoadFromDir(configDir)
 	if err != nil {
 		t.Fatalf("failed to load config: %v", err)
 	}
