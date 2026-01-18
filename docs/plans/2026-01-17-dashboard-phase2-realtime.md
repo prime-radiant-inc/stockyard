@@ -663,6 +663,196 @@ git commit -m "feat(dashboard): add log streaming infrastructure"
 
 ---
 
+## Task 5A: Add Log Tailer for VM Logs
+
+**Files:**
+- Create: `/home/jesse/git/stockyard/pkg/daemon/logtailer.go`
+- Create: `/home/jesse/git/stockyard/pkg/daemon/logtailer_test.go`
+
+**Context:** Firecracker writes stdout/stderr to `{vmDir}/stdout.log` and `{vmDir}/stderr.log`. We need to tail these files and broadcast logs via LogStreamer.
+
+**Step 1: Write the failing test**
+
+Create `pkg/daemon/logtailer_test.go`:
+
+```go
+package daemon
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+type mockLogSink struct {
+	received []struct {
+		taskID, stream, line string
+	}
+}
+
+func (m *mockLogSink) SendLog(taskID, stream, line string) {
+	m.received = append(m.received, struct {
+		taskID, stream, line string
+	}{taskID, stream, line})
+}
+
+func TestLogTailer_TailsLogFile(t *testing.T) {
+	// Create temp directory and log file
+	tmpDir := t.TempDir()
+	logFile := filepath.Join(tmpDir, "stdout.log")
+	os.WriteFile(logFile, []byte("line 1\nline 2\n"), 0644)
+
+	sink := &mockLogSink{}
+	tailer := NewLogTailer(sink)
+
+	// Start tailing
+	err := tailer.TailFile("task-1", "stdout", logFile)
+	if err != nil {
+		t.Fatalf("TailFile failed: %v", err)
+	}
+	defer tailer.Stop()
+
+	// Wait for initial lines
+	time.Sleep(100 * time.Millisecond)
+
+	if len(sink.received) < 2 {
+		t.Errorf("expected at least 2 lines, got %d", len(sink.received))
+	}
+}
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `go test ./pkg/daemon/... -run TestLogTailer -v`
+Expected: FAIL - LogTailer undefined
+
+**Step 3: Write minimal implementation**
+
+Create `pkg/daemon/logtailer.go`:
+
+```go
+package daemon
+
+import (
+	"bufio"
+	"os"
+	"sync"
+)
+
+// LogSink receives log lines from the tailer.
+type LogSink interface {
+	SendLog(taskID, stream, line string)
+}
+
+// LogTailer tails VM log files and sends lines to a sink.
+type LogTailer struct {
+	sink    LogSink
+	tailers map[string]chan struct{}
+	mu      sync.Mutex
+}
+
+// NewLogTailer creates a new log tailer.
+func NewLogTailer(sink LogSink) *LogTailer {
+	return &LogTailer{
+		sink:    sink,
+		tailers: make(map[string]chan struct{}),
+	}
+}
+
+// TailFile starts tailing a log file for a task.
+func (t *LogTailer) TailFile(taskID, stream, path string) error {
+	key := taskID + ":" + stream
+
+	t.mu.Lock()
+	if _, exists := t.tailers[key]; exists {
+		t.mu.Unlock()
+		return nil // Already tailing
+	}
+	stop := make(chan struct{})
+	t.tailers[key] = stop
+	t.mu.Unlock()
+
+	go t.tailLoop(taskID, stream, path, stop)
+	return nil
+}
+
+// StopTask stops tailing all files for a task.
+func (t *LogTailer) StopTask(taskID string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	for key, stop := range t.tailers {
+		if len(key) > len(taskID) && key[:len(taskID)+1] == taskID+":" {
+			close(stop)
+			delete(t.tailers, key)
+		}
+	}
+}
+
+// Stop stops all tailers.
+func (t *LogTailer) Stop() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	for _, stop := range t.tailers {
+		close(stop)
+	}
+	t.tailers = make(map[string]chan struct{})
+}
+
+func (t *LogTailer) tailLoop(taskID, stream, path string, stop chan struct{}) {
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	// Read existing content first
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		select {
+		case <-stop:
+			return
+		default:
+			t.sink.SendLog(taskID, stream, scanner.Text())
+		}
+	}
+
+	// Then tail for new content
+	for {
+		select {
+		case <-stop:
+			return
+		default:
+			if scanner.Scan() {
+				t.sink.SendLog(taskID, stream, scanner.Text())
+			} else {
+				// Wait for more content
+				time.Sleep(100 * time.Millisecond)
+				// Re-check file (scanner resets on next Scan if EOF was temporary)
+			}
+		}
+	}
+}
+```
+
+Note: Add `"time"` to imports.
+
+**Step 4: Run test to verify it passes**
+
+Run: `go test ./pkg/daemon/... -run TestLogTailer -v`
+Expected: PASS
+
+**Step 5: Commit**
+
+```bash
+git add pkg/daemon/logtailer.go pkg/daemon/logtailer_test.go
+git commit -m "feat(daemon): add log tailer for VM log files"
+```
+
+---
+
 ## Task 6: Create Metrics Streaming Infrastructure
 
 **Files:**
@@ -925,6 +1115,108 @@ git commit -m "feat(firecracker): add metrics parsing"
 
 ---
 
+## Task 7A: Add GetMetrics to Firecracker APIClient
+
+**Files:**
+- Modify: `/home/jesse/git/stockyard/pkg/firecracker/api.go`
+- Modify: `/home/jesse/git/stockyard/pkg/firecracker/api_test.go`
+
+**Context:** The Firecracker API exposes metrics at GET /metrics. We need to call this to get real metrics instead of placeholders.
+
+**Step 1: Write the failing test**
+
+Add to `pkg/firecracker/api_test.go`:
+
+```go
+func TestAPIClient_GetMetrics(t *testing.T) {
+	// Create mock server
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/metrics" && r.Method == "GET" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"utc_timestamp_ms": 1234567890,
+				"vcpu": map[string]int64{
+					"exit_io_in":  100,
+					"exit_io_out": 50,
+				},
+				"net": map[string]int64{
+					"rx_bytes": 1024,
+					"tx_bytes": 512,
+				},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+
+	// Use Unix socket
+	tmpDir := t.TempDir()
+	socketPath := filepath.Join(tmpDir, "api.sock")
+	l, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	server.Listener = l
+	server.Start()
+	defer server.Close()
+
+	client := NewAPIClient(socketPath)
+	metrics, err := client.GetMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("GetMetrics failed: %v", err)
+	}
+
+	if metrics.Net.RxBytes != 1024 {
+		t.Errorf("expected rx_bytes 1024, got %d", metrics.Net.RxBytes)
+	}
+}
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `go test ./pkg/firecracker/... -run TestAPIClient_GetMetrics -v`
+Expected: FAIL - GetMetrics undefined
+
+**Step 3: Write minimal implementation**
+
+Add to `pkg/firecracker/api.go`:
+
+```go
+// GetMetrics fetches metrics from the Firecracker API.
+func (c *APIClient) GetMetrics(ctx context.Context) (*FirecrackerMetrics, error) {
+	resp, err := c.doRequest(ctx, "GET", "/metrics", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("get metrics failed: %s - %s", resp.Status, string(body))
+	}
+
+	var metrics FirecrackerMetrics
+	if err := json.NewDecoder(resp.Body).Decode(&metrics); err != nil {
+		return nil, fmt.Errorf("decode metrics: %w", err)
+	}
+
+	return &metrics, nil
+}
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `go test ./pkg/firecracker/... -run TestAPIClient_GetMetrics -v`
+Expected: PASS
+
+**Step 5: Commit**
+
+```bash
+git add pkg/firecracker/api.go pkg/firecracker/api_test.go
+git commit -m "feat(firecracker): add GetMetrics to APIClient"
+```
+
+---
+
 ## Task 8: Add Metrics Polling to Daemon
 
 **Files:**
@@ -1059,23 +1351,41 @@ func (p *MetricsPoller) collectMetrics() {
 	}
 
 	ctx := context.Background()
-	tasks, err := p.daemon.state.ListTasks(ctx)
+	tasks, err := p.daemon.state.ListTasks("")
 	if err != nil {
 		return
 	}
 
 	for _, task := range tasks {
-		if task.Status != "running" {
+		if task.Status != "running" || task.VMID == "" {
 			continue
 		}
 
-		// TODO: Collect actual metrics from Firecracker
-		// For now, send placeholder metrics
-		metrics := map[string]interface{}{
-			"cpu_percent":    0.0,
-			"memory_bytes":   0,
-			"network_rx":     0,
-			"network_tx":     0,
+		// Get VM directory and API socket path
+		vmDir := filepath.Join(p.daemon.cfg.ZFS.VMsPath, task.VMID)
+		apiSocketPath := filepath.Join(vmDir, "api.sock")
+
+		// Check if socket exists
+		if _, err := os.Stat(apiSocketPath); os.IsNotExist(err) {
+			continue
+		}
+
+		// Fetch metrics from Firecracker API
+		apiClient := firecracker.NewAPIClient(apiSocketPath)
+		fcMetrics, err := apiClient.GetMetrics(ctx)
+		if err != nil {
+			continue // Skip this VM if we can't get metrics
+		}
+
+		// Convert to dashboard metrics format
+		metrics := dashboard.VMMetrics{
+			CPUPercent:     0, // CPU % requires calculation from vcpu counters over time
+			MemoryBytes:    0, // Memory requires reading from machine-config
+			MemoryMaxBytes: 0,
+			NetworkRxBytes: fcMetrics.Net.RxBytes,
+			NetworkTxBytes: fcMetrics.Net.TxBytes,
+			DiskUsedBytes:  fcMetrics.Block.ReadBytes + fcMetrics.Block.WriteBytes,
+			DiskTotalBytes: 0, // Would need to query disk size
 		}
 
 		p.sink.SendMetrics(task.ID, metrics)
@@ -1399,6 +1709,133 @@ git commit -m "feat(dashboard): add status change broadcasting"
 
 ---
 
+## Task 10A: Wire Status Changes to Broadcaster
+
+**Files:**
+- Modify: `/home/jesse/git/stockyard/pkg/daemon/state.go`
+- Modify: `/home/jesse/git/stockyard/pkg/daemon/state_test.go`
+
+**Context:** The StatusBroadcaster exists but nothing calls `TaskStatusChanged()`. We need to add a callback mechanism to State so it notifies when task status changes.
+
+**Step 1: Write the failing test**
+
+Add to `pkg/daemon/state_test.go`:
+
+```go
+func TestState_StatusChangeCallback(t *testing.T) {
+	state, err := NewState()
+	if err != nil {
+		t.Fatalf("NewState: %v", err)
+	}
+	defer state.Close()
+
+	// Track callback invocations
+	var called bool
+	var receivedTaskID, receivedOld, receivedNew string
+
+	state.SetStatusChangeCallback(func(taskID, oldStatus, newStatus string) {
+		called = true
+		receivedTaskID = taskID
+		receivedOld = oldStatus
+		receivedNew = newStatus
+	})
+
+	// Create a task
+	task := &Task{ID: "test-callback", Status: "pending"}
+	if err := state.CreateTask(task); err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	// Update status
+	if err := state.UpdateTaskStatus("test-callback", "running"); err != nil {
+		t.Fatalf("UpdateTaskStatus: %v", err)
+	}
+
+	if !called {
+		t.Error("callback was not called")
+	}
+	if receivedTaskID != "test-callback" {
+		t.Errorf("expected taskID test-callback, got %s", receivedTaskID)
+	}
+	if receivedOld != "pending" {
+		t.Errorf("expected old status pending, got %s", receivedOld)
+	}
+	if receivedNew != "running" {
+		t.Errorf("expected new status running, got %s", receivedNew)
+	}
+}
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `go test ./pkg/daemon/... -run TestState_StatusChangeCallback -v`
+Expected: FAIL - SetStatusChangeCallback undefined
+
+**Step 3: Write minimal implementation**
+
+Add to `pkg/daemon/state.go`:
+
+```go
+// StatusChangeCallback is called when a task's status changes.
+type StatusChangeCallback func(taskID, oldStatus, newStatus string)
+
+// Add to State struct:
+type State struct {
+	// ... existing fields
+	statusCallback StatusChangeCallback
+	callbackMu     sync.RWMutex
+}
+
+// SetStatusChangeCallback sets the callback for status changes.
+func (s *State) SetStatusChangeCallback(cb StatusChangeCallback) {
+	s.callbackMu.Lock()
+	defer s.callbackMu.Unlock()
+	s.statusCallback = cb
+}
+
+// Update UpdateTaskStatus to call the callback:
+func (s *State) UpdateTaskStatus(id, status string) error {
+	// Get old status first
+	task, err := s.GetTask(id)
+	if err != nil {
+		return err
+	}
+	oldStatus := task.Status
+
+	// Update in database
+	_, err = s.db.Exec("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
+		status, time.Now(), id)
+	if err != nil {
+		return err
+	}
+
+	// Notify callback if registered
+	s.callbackMu.RLock()
+	cb := s.statusCallback
+	s.callbackMu.RUnlock()
+
+	if cb != nil && oldStatus != status {
+		cb(id, oldStatus, status)
+	}
+
+	return nil
+}
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `go test ./pkg/daemon/... -run TestState_StatusChangeCallback -v`
+Expected: PASS
+
+**Step 5: Commit**
+
+```bash
+git add pkg/daemon/state.go pkg/daemon/state_test.go
+git commit -m "feat(daemon): add status change callback to State"
+```
+
+---
+
 ## Task 11: Update Fleet Template for Live Status
 
 **Files:**
@@ -1501,6 +1938,7 @@ Add imports:
 import (
 	// ... existing imports
 	"github.com/obra/stockyard/pkg/dashboard"
+	"github.com/obra/stockyard/pkg/firecracker"
 )
 ```
 
@@ -1509,9 +1947,11 @@ Add fields to Daemon struct:
 ```go
 type Daemon struct {
 	// ... existing fields
-	httpServer      *http.Server
-	dashboardServer *dashboard.Server
-	metricsPoller   *MetricsPoller
+	httpServer        *http.Server
+	dashboardServer   *dashboard.Server
+	metricsPoller     *MetricsPoller
+	logTailer         *LogTailer
+	statusBroadcaster *dashboard.StatusBroadcaster
 }
 ```
 
@@ -1520,31 +1960,56 @@ Update Start() to wire up real-time components:
 ```go
 // Start HTTP server if enabled
 if d.cfg.HTTP.Enabled {
-	d.dashboardServer = dashboard.NewServer(d)
-	handler := dashboard.AuthMiddleware(d.dashboardServer, nil)
+	// Create dashboard facade and adapter
+	facade := NewDashboardFacade(d.state, d.tasks)
+	adapter := dashboard.NewDaemonAdapter(facade)
+	d.dashboardServer = dashboard.NewServer(adapter)
+	tsClient := tailscale.NewLocalClient()
+	handler := dashboard.AuthMiddleware(d.dashboardServer, tsClient)
 
 	d.httpServer = &http.Server{
 		Addr:    d.cfg.HTTP.Addr,
 		Handler: handler,
 	}
 
-	// Start metrics polling
-	metricsCollector := dashboard.NewMetricsCollector(d.dashboardServer.Hub())
+	// Create real-time components
+	hub := d.dashboardServer.Hub()
+
+	// Status broadcaster - wire to state callback
+	d.statusBroadcaster = dashboard.NewStatusBroadcaster(hub)
+	d.state.SetStatusChangeCallback(func(taskID, oldStatus, newStatus string) {
+		d.statusBroadcaster.TaskStatusChanged(taskID, oldStatus, newStatus)
+	})
+
+	// Log streamer and tailer
+	logStreamer := dashboard.NewLogStreamer(hub)
+	d.logTailer = NewLogTailer(&dashboardLogSink{logStreamer})
+
+	// Metrics collector and poller
+	metricsCollector := dashboard.NewMetricsCollector(hub)
 	d.metricsPoller = NewMetricsPoller(d, &dashboardMetricsSink{metricsCollector}, 5*time.Second)
 	d.metricsPoller.Start()
 
 	go func() {
-		log.Printf("Starting HTTP server on %s", d.cfg.HTTP.Addr)
+		fmt.Printf("Starting HTTP server on %s\n", d.cfg.HTTP.Addr)
 		if err := d.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("HTTP server error: %v", err)
+			fmt.Printf("HTTP server error: %v\n", err)
 		}
 	}()
 }
 ```
 
-Add adapter for metrics sink:
+Add adapters for log and metrics sinks:
 
 ```go
+type dashboardLogSink struct {
+	streamer *dashboard.LogStreamer
+}
+
+func (s *dashboardLogSink) SendLog(taskID, stream, line string) {
+	s.streamer.SendLog(taskID, stream, line)
+}
+
 type dashboardMetricsSink struct {
 	collector *dashboard.MetricsCollector
 }
@@ -1560,6 +2025,11 @@ Update Stop():
 
 ```go
 func (d *Daemon) Stop() {
+	// Stop log tailer
+	if d.logTailer != nil {
+		d.logTailer.Stop()
+	}
+
 	// Stop metrics polling
 	if d.metricsPoller != nil {
 		d.metricsPoller.Stop()
@@ -1581,6 +2051,28 @@ func (d *Daemon) Stop() {
 }
 ```
 
+**Step 2: Start log tailing when task starts**
+
+Add to TaskManager.StartTask() after VM is created:
+
+```go
+// Start log tailing if dashboard is enabled
+if tm.daemon.logTailer != nil && vm != nil {
+	vmDir := filepath.Join(tm.daemon.cfg.ZFS.VMsPath, vm.ID)
+	tm.daemon.logTailer.TailFile(taskID, "stdout", filepath.Join(vmDir, "stdout.log"))
+	tm.daemon.logTailer.TailFile(taskID, "stderr", filepath.Join(vmDir, "stderr.log"))
+}
+```
+
+Add to TaskManager.StopTask() before stopping VM:
+
+```go
+// Stop log tailing
+if tm.daemon.logTailer != nil {
+	tm.daemon.logTailer.StopTask(taskID)
+}
+```
+
 **Step 2: Run tests**
 
 Run: `go test ./pkg/daemon/... -v`
@@ -1598,20 +2090,31 @@ git commit -m "feat(daemon): wire real-time components for dashboard"
 ## Summary
 
 Phase 2 implementation creates:
-- WebSocket hub for managing client connections
-- WebSocket handler with gorilla/websocket
-- Log streaming infrastructure
-- Metrics streaming infrastructure
-- Firecracker metrics parsing
-- Metrics polling in daemon
-- Live-updating VM detail template
-- Live status updates on fleet page
-- Status change broadcasting
+- WebSocket hub for managing client connections (Task 2)
+- WebSocket handler with gorilla/websocket (Task 3)
+- Log streaming infrastructure (Task 5)
+- **Log tailer that reads VM stdout/stderr log files** (Task 5A - NEW)
+- Metrics streaming infrastructure (Task 6)
+- Firecracker metrics parsing (Task 7)
+- **GetMetrics() API call to Firecracker** (Task 7A - NEW)
+- Metrics polling in daemon with real Firecracker data (Task 8 - FIXED)
+- Live-updating VM detail template (Task 9)
+- Status change broadcasting (Task 10)
+- **Status change callback in State for broadcasting** (Task 10A - NEW)
+- Live status updates on fleet page (Task 11)
+- Full wiring of all real-time components (Task 12 - EXPANDED)
+
+**Gaps fixed in this revision:**
+1. Task 5A: LogTailer reads `stdout.log`/`stderr.log` from VM directories
+2. Task 7A: GetMetrics() calls Firecracker `/metrics` API endpoint
+3. Task 8: collectMetrics() now uses real Firecracker metrics instead of placeholders
+4. Task 10A: State.SetStatusChangeCallback() notifies when task status changes
+5. Task 12: Full wiring including log tailing start/stop with task lifecycle
 
 After Phase 2, the dashboard:
-- Shows live CPU, memory, network, disk metrics
-- Streams logs in real-time with pause/resume/filter
-- Updates VM status live without page refresh
+- Shows live CPU, memory, network, disk metrics (from Firecracker API)
+- Streams logs in real-time with pause/resume/filter (from VM log files)
+- Updates VM status live without page refresh (via State callback)
 - Connects via WebSocket for efficient real-time updates
 
 Phase 3 adds polish: grouped cards, split view, sparklines, charts, activity feed, alerts, and responsive layouts.
