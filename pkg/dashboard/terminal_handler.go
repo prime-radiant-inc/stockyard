@@ -3,14 +3,11 @@ package dashboard
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os/exec"
 	"strconv"
 	"strings"
 
-	"github.com/creack/pty"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/mdlayher/vsock"
@@ -129,41 +126,6 @@ func extractTaskID(path string) string {
 		return parts[2]
 	}
 	return ""
-}
-
-// createSSHSession creates a new SSH connection to the specified host via local IP.
-func (h *TerminalHandler) createSSHSession(hostname, user string) (*TerminalSession, error) {
-	// Build SSH command with options for ephemeral VMs:
-	// - StrictHostKeyChecking=no: Don't reject unknown hosts
-	// - UserKnownHostsFile=/dev/null: Don't save host keys (ephemeral VMs)
-	target := hostname
-	if user != "" {
-		target = user + "@" + hostname
-	}
-
-	cmd := exec.Command("ssh",
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "LogLevel=ERROR",
-		target,
-	)
-
-	// Start command with PTY
-	ptmx, err := pty.Start(cmd)
-	if err != nil {
-		return nil, fmt.Errorf("start pty: %w", err)
-	}
-
-	// Set initial size
-	pty.Setsize(ptmx, &pty.Winsize{Rows: 24, Cols: 80})
-
-	return &TerminalSession{
-		ID:       uuid.New().String(),
-		Hostname: hostname,
-		User:     user,
-		cmd:      cmd,
-		pty:      ptmx,
-	}, nil
 }
 
 // createVsockSession creates a new vsock connection to the VM.
@@ -296,85 +258,6 @@ func (h *TerminalHandler) handleVsockSession(conn *websocket.Conn, session *Vsoc
 	}
 
 	// Wait for vsock reader goroutine to complete
-	<-done
-}
-
-// handleSession manages bidirectional I/O between WebSocket and PTY.
-func (h *TerminalHandler) handleSession(conn *websocket.Conn, session *TerminalSession) {
-	done := make(chan struct{})
-
-	// Read from PTY and send to WebSocket
-	go func() {
-		defer close(done)
-		buf := make([]byte, 4096)
-		for {
-			n, err := session.pty.Read(buf)
-			if err != nil {
-				if err != io.EOF {
-					log.Printf("terminal: pty read error: %v", err)
-				}
-				return
-			}
-			if n > 0 {
-				msg := TerminalOutputMessage{
-					Type: "terminal_output",
-					Data: string(buf[:n]),
-				}
-				if err := conn.WriteJSON(msg); err != nil {
-					log.Printf("terminal: websocket write error: %v", err)
-					return
-				}
-			}
-		}
-	}()
-
-	// Read from WebSocket and send to PTY
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-				log.Printf("terminal: websocket read error: %v", err)
-			}
-			break
-		}
-
-		// Parse message to determine type
-		var baseMsg struct {
-			Type string `json:"type"`
-		}
-		if err := json.Unmarshal(message, &baseMsg); err != nil {
-			log.Printf("terminal: invalid message format: %v", err)
-			continue
-		}
-
-		switch baseMsg.Type {
-		case "terminal_input":
-			var inputMsg TerminalInputMessage
-			if err := json.Unmarshal(message, &inputMsg); err != nil {
-				log.Printf("terminal: invalid input message: %v", err)
-				continue
-			}
-			if _, err := session.pty.Write([]byte(inputMsg.Data)); err != nil {
-				log.Printf("terminal: pty write error: %v", err)
-				break
-			}
-
-		case "terminal_resize":
-			var resizeMsg TerminalResizeMessage
-			if err := json.Unmarshal(message, &resizeMsg); err != nil {
-				log.Printf("terminal: invalid resize message: %v", err)
-				continue
-			}
-			if err := session.Resize(resizeMsg.Cols, resizeMsg.Rows); err != nil {
-				log.Printf("terminal: resize error: %v", err)
-			}
-
-		default:
-			log.Printf("terminal: unknown message type: %s", baseMsg.Type)
-		}
-	}
-
-	// Wait for PTY reader goroutine to complete
 	<-done
 }
 
