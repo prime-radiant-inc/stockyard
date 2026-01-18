@@ -17,7 +17,8 @@
           statusUpdates: {},
           connected: false,
           selectedVM: null,
-          viewTab: 'all'
+          viewTab: 'all',
+          showActivity: false
       }"
       x-init="
           const ws = new WebSocket('ws://' + window.location.host + '/ws');
@@ -50,11 +51,11 @@
             <span class="font-semibold text-lg">Stockyard</span>
         </div>
         <div class="flex items-center gap-4">
-            <button class="p-2 hover:bg-gray-100 rounded relative">
+            <button @click="showActivity = !showActivity" class="p-2 hover:bg-gray-100 rounded relative">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
                 </svg>
-                {{if .AlertCount}}<span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{{.AlertCount}}</span>{{end}}
+                {{if .ActivityCount}}<span class="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{{.ActivityCount}}</span>{{end}}
             </button>
             <span class="text-sm text-gray-600">{{.User}}</span>
         </div>
@@ -466,6 +467,23 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Activity slide-over panel -->
+    <div x-show="showActivity" class="fixed inset-0 z-40" @close-activity.window="showActivity = false" x-cloak>
+        <div class="absolute inset-0 bg-black bg-opacity-25" @click="showActivity = false"></div>
+        <div x-show="showActivity"
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="translate-x-full"
+             x-transition:enter-end="translate-x-0"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="translate-x-0"
+             x-transition:leave-end="translate-x-full"
+             class="absolute right-0 top-0 h-full w-96 bg-white shadow-xl">
+            <div hx-get="/activity" hx-trigger="revealed" hx-swap="innerHTML" class="h-full">
+                <div class="p-4 text-center text-gray-500">Loading...</div>
+            </div>
+        </div>
     </div>
 
     <script>

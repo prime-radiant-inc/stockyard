@@ -12,11 +12,12 @@ import (
 
 // Server is the HTTP server for the web dashboard.
 type Server struct {
-	mux        *http.ServeMux
-	daemon     DaemonAPI
-	templates  *template.Template
-	hub        *Hub
-	logHistory *LogHistory
+	mux          *http.ServeMux
+	daemon       DaemonAPI
+	templates    *template.Template
+	hub          *Hub
+	logHistory   *LogHistory
+	activityFeed *ActivityFeed
 }
 
 // NewServer creates a new dashboard HTTP server.
@@ -26,10 +27,11 @@ func NewServer(daemon DaemonAPI) *Server {
 	go hub.Run()
 
 	s := &Server{
-		mux:        http.NewServeMux(),
-		daemon:     daemon,
-		hub:        hub,
-		logHistory: NewLogHistory(10000),
+		mux:          http.NewServeMux(),
+		daemon:       daemon,
+		hub:          hub,
+		logHistory:   NewLogHistory(10000),
+		activityFeed: NewActivityFeedWithHub(100, hub),
 	}
 	// Load templates, but don't fail if they're not available (for testing)
 	s.templates, _ = LoadTemplates()
@@ -40,6 +42,7 @@ func NewServer(daemon DaemonAPI) *Server {
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/health", s.handleHealth)
 	s.mux.HandleFunc("/ws", s.handleWebSocket)
+	s.mux.HandleFunc("/activity", s.handleActivity)
 	s.mux.HandleFunc("/api/vm-logs/", s.handleLogSearch)
 	s.mux.HandleFunc("/api/vm/", s.handleAPIVM)
 	s.mux.HandleFunc("/preview/vm/", s.handleVMPreview)
@@ -321,4 +324,32 @@ func (s *Server) handleLogSearch(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(lines)
+}
+
+func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
+	events := s.activityFeed.GetRecent(50)
+
+	data := map[string]interface{}{
+		"Events": events,
+	}
+
+	// Check if template exists, fallback for testing
+	if s.templates == nil || s.templates.Lookup("activity_panel.html") == nil {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte("Activity panel"))
+		return
+	}
+
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, "activity_panel.html", data); err != nil {
+		http.Error(w, "Failed to render template", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
+	buf.WriteTo(w)
+}
+
+// ActivityFeed returns the activity feed for recording events.
+func (s *Server) ActivityFeed() *ActivityFeed {
+	return s.activityFeed
 }

@@ -1,0 +1,51 @@
+<div class="h-full flex flex-col" x-data="{ filter: 'all' }">
+    <div class="flex items-center justify-between p-4 border-b border-gray-200">
+        <h2 class="font-semibold text-gray-900">Activity</h2>
+        <button @click="$dispatch('close-activity')" class="p-1 hover:bg-gray-100 rounded">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Filter buttons -->
+    <div class="flex gap-2 p-4 border-b border-gray-200">
+        <button @click="filter = 'all'" :class="filter === 'all' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'" class="px-2 py-1 text-xs rounded">All</button>
+        <button @click="filter = 'started'" :class="filter === 'started' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'" class="px-2 py-1 text-xs rounded">Started</button>
+        <button @click="filter = 'stopped'" :class="filter === 'stopped' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'" class="px-2 py-1 text-xs rounded">Stopped</button>
+        <button @click="filter = 'failed'" :class="filter === 'failed' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'" class="px-2 py-1 text-xs rounded">Failed</button>
+    </div>
+
+    <!-- Event list -->
+    <div class="flex-1 overflow-auto">
+        {{range .Events}}
+        <div class="px-4 py-3 border-b border-gray-100 hover:bg-gray-50"
+             x-show="filter === 'all' || (filter === 'started' && '{{.Type}}' === 'vm_started') || (filter === 'stopped' && '{{.Type}}' === 'vm_stopped') || (filter === 'failed' && '{{.Type}}' === 'vm_failed')">
+            <div class="flex items-start gap-3">
+                <!-- Status dot based on .Type -->
+                {{if eq .Type "vm_started"}}
+                <span class="w-2 h-2 mt-2 bg-green-500 rounded-full flex-shrink-0"></span>
+                {{else if eq .Type "vm_stopped"}}
+                <span class="w-2 h-2 mt-2 bg-gray-400 rounded-full flex-shrink-0"></span>
+                {{else if eq .Type "vm_failed"}}
+                <span class="w-2 h-2 mt-2 bg-red-500 rounded-full flex-shrink-0"></span>
+                {{else}}
+                <span class="w-2 h-2 mt-2 bg-blue-500 rounded-full flex-shrink-0"></span>
+                {{end}}
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between">
+                        <a href="/vm/{{.TaskID}}" class="font-medium text-gray-900 hover:text-blue-600 truncate">{{.TaskID}}</a>
+                        <span class="text-xs text-gray-400 flex-shrink-0 ml-2">{{.Timestamp.Format "15:04"}}</span>
+                    </div>
+                    <p class="text-sm text-gray-600">{{.Message}}</p>
+                    {{if .RepoURL}}
+                    <p class="text-xs text-gray-400 truncate">{{.RepoURL}}</p>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+        {{else}}
+        <div class="p-4 text-center text-gray-500">No activity yet</div>
+        {{end}}
+    </div>
+</div>
