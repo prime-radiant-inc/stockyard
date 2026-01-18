@@ -15,8 +15,8 @@ STOCKYARD_URL=<scheme>://<host>:<port>
 | Scheme | Description | Example |
 |--------|-------------|---------|
 | `unix` | Local Unix socket | `unix:///var/run/stockyard/stockyard.sock` |
-| `grpc` | Remote gRPC over TCP | `grpc://stockyard.example.com:65432` |
-| `grpcs` | Remote gRPC over TLS | `grpcs://stockyard.example.com:65432` |
+| `grpc` | Remote gRPC over TCP | `grpc://stockyard.example.com:65433` |
+| `grpcs` | Remote gRPC over TLS | `grpcs://stockyard.example.com:65433` |
 
 If no scheme is provided, assume `grpc://` for `host:port` format.
 
@@ -27,11 +27,11 @@ If no scheme is provided, assume `grpc://` for `host:port` format.
 STOCKYARD_URL=unix:///var/run/stockyard/stockyard.sock
 
 # Remote, no TLS
-STOCKYARD_URL=grpc://192.168.1.100:65432
-STOCKYARD_URL=stockyard-server:65432  # scheme defaults to grpc://
+STOCKYARD_URL=grpc://192.168.1.100:65433
+STOCKYARD_URL=stockyard-server:65433  # scheme defaults to grpc://
 
 # Remote with TLS
-STOCKYARD_URL=grpcs://stockyard.example.com:65432
+STOCKYARD_URL=grpcs://stockyard.example.com:65433
 ```
 
 ## Connection Resolution
@@ -93,7 +93,7 @@ No user config file. Remote connections use `--url` flag or `STOCKYARD_URL` env 
 Add `--url` flag to root command:
 
 ```bash
-stockyard --url grpc://remote:65432 list
+stockyard --url grpc://remote:65433 list
 stockyard --url unix:///tmp/test.sock run --repo github.com/foo/bar
 ```
 
@@ -129,7 +129,7 @@ func NewFromURL(url string) (*Client, error)
 
 The daemon currently listens on a Unix socket only. For remote CLI access, it needs to also listen on TCP.
 
-### Option A: Separate gRPC TCP listener
+### Option A: Separate gRPC TCP listener (Implemented)
 
 Add config option:
 
@@ -137,16 +137,20 @@ Add config option:
 {
   "daemon": {
     "socket_path": "/var/run/stockyard/stockyard.sock",
-    "grpc_addr": ":65432",      // TCP listener (optional)
-    "grpc_tls_cert": "",        // TLS cert path (optional)
-    "grpc_tls_key": ""          // TLS key path (optional)
+    "grpc_addr": ":65433"       // TCP listener (optional)
   }
 }
 ```
 
+**Current Implementation Status:**
+- `grpc_addr` is implemented - daemon listens on TCP when configured
+- `grpcs://` URLs work on the client side (uses system CA certificates)
+- Daemon TLS (`grpc_tls_cert`, `grpc_tls_key`) is NOT yet implemented
+- For TLS, use a reverse proxy or Tailscale (which encrypts at the network level)
+
 ### Option B: Use existing HTTP server
 
-The daemon already has an HTTP server on `:65432`. We could:
+The daemon already has an HTTP server on `:65433`. We could:
 - Add gRPC-Web support to the existing HTTP server
 - Or use gRPC's HTTP/2 support on the same port
 
@@ -171,7 +175,7 @@ Option A is simpler and keeps gRPC separate from the dashboard.
 For now, rely on network-level security:
 - Run stockyard daemon on Tailscale network
 - Use `grpc://` (no TLS) since Tailscale encrypts traffic
-- Remote URL would be `grpc://stockyard-server:65432` (Tailscale hostname)
+- Remote URL would be `grpc://stockyard-server:65433` (Tailscale hostname)
 
 ## Migration
 
@@ -205,14 +209,14 @@ stockyard list
 stockyard --url unix:///var/run/stockyard/stockyard.sock list
 
 # Remote server via env var
-export STOCKYARD_URL=grpc://stockyard-prod:65432
+export STOCKYARD_URL=grpc://stockyard-prod:65433
 stockyard list
 stockyard run --repo github.com/foo/bar
 
 # Remote server via flag (overrides env)
-STOCKYARD_URL=grpc://prod:65432 stockyard --url grpc://dev:65432 list
+STOCKYARD_URL=grpc://prod:65433 stockyard --url grpc://dev:65433 list
 
 # Shell alias for frequent remote access
-alias stockyard-prod='stockyard --url grpc://stockyard-prod:65432'
+alias stockyard-prod='stockyard --url grpc://stockyard-prod:65433'
 stockyard-prod list
 ```

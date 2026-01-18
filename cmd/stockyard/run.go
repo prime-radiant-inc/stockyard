@@ -9,8 +9,6 @@ import (
 	"strings"
 
 	pb "github.com/obra/stockyard/pkg/api/v1"
-	"github.com/obra/stockyard/pkg/client"
-	"github.com/obra/stockyard/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -51,14 +49,9 @@ Examples:
 			return fmt.Errorf("command is required after --")
 		}
 
-		cfg, err := config.Load()
+		c, err := getClient()
 		if err != nil {
 			return err
-		}
-
-		c, err := client.New(cfg.Daemon.SocketPath)
-		if err != nil {
-			return fmt.Errorf("failed to connect to daemon: %w\nIs stockyardd running?", err)
 		}
 		defer c.Close()
 

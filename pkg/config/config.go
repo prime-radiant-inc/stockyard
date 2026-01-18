@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 )
 
+// DefaultSocketPath is the default Unix socket path for the daemon.
+const DefaultSocketPath = "/var/run/stockyard/stockyard.sock"
+
 type Config struct {
 	InstanceID  string            `json:"instance_id"`
 	Secrets     SecretsConfig     `json:"secrets"`
@@ -31,6 +34,7 @@ type SecretsConfig struct {
 type DaemonConfig struct {
 	SocketPath string `json:"socket_path"`
 	DataDir    string `json:"data_dir"`
+	GRPCAddr   string `json:"grpc_addr,omitempty"` // Optional TCP address for remote gRPC (e.g., ":65433")
 }
 
 type ZFSConfig struct {
@@ -64,7 +68,7 @@ func DefaultConfig() *Config {
 			Vault:    "Stockyard",
 		},
 		Daemon: DaemonConfig{
-			SocketPath: "/var/run/stockyard/stockyard.sock",
+			SocketPath: DefaultSocketPath,
 			DataDir:    "/var/lib/stockyard",
 		},
 		ZFS: ZFSConfig{

@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var urlFlag string
+
 var rootCmd = &cobra.Command{
 	Use:   "stockyard",
 	Short: "Coding agent VM orchestrator",
@@ -28,6 +30,14 @@ Quick Start:
   stockyard attach <task-id>
 
   # List running tasks
+  stockyard list
+
+Remote Access:
+  # Connect to a remote daemon
+  stockyard --url grpc://stockyard-server:65433 list
+
+  # Or via environment variable
+  export STOCKYARD_URL=grpc://stockyard-server:65433
   stockyard list`,
 }
 
@@ -36,4 +46,8 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringVar(&urlFlag, "url", "", "Daemon URL (env: STOCKYARD_URL)\n  Formats: unix:///path, grpc://host:port, grpcs://host:port")
 }

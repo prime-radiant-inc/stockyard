@@ -13,7 +13,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/obra/stockyard/pkg/client"
 	"github.com/obra/stockyard/pkg/config"
 	"github.com/obra/stockyard/pkg/vmutil"
 	"github.com/spf13/cobra"
@@ -140,7 +139,7 @@ func (rc *ResourceCollector) loadDHCPLeases() {
 }
 
 func (rc *ResourceCollector) collectFromDaemon() error {
-	c, err := client.New(rc.cfg.Daemon.SocketPath)
+	c, err := getClient()
 	if err != nil {
 		return err
 	}

@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/obra/stockyard/pkg/client"
 	"github.com/obra/stockyard/pkg/config"
 	"github.com/spf13/cobra"
 )
@@ -29,16 +28,16 @@ var cpCmd = &cobra.Command{
 		taskID := parts[0]
 		remotePath := parts[1]
 
+		c, err := getClient()
+		if err != nil {
+			return err
+		}
+		defer c.Close()
+
 		cfg, err := config.Load()
 		if err != nil {
 			return err
 		}
-
-		c, err := client.New(cfg.Daemon.SocketPath)
-		if err != nil {
-			return fmt.Errorf("failed to connect to daemon: %w\nIs stockyardd running?", err)
-		}
-		defer c.Close()
 
 		task, err := c.GetTask(context.Background(), taskID)
 		if err != nil {

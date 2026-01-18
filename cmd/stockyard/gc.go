@@ -129,7 +129,7 @@ type GarbageCollector struct {
 }
 
 func (gc *GarbageCollector) loadTasks() error {
-	c, err := client.New(gc.cfg.Daemon.SocketPath)
+	c, err := getClient()
 	if err != nil {
 		return err
 	}
