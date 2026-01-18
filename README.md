@@ -74,3 +74,18 @@ To enable remote access, configure the daemon to listen on TCP:
 When `grpc_addr` is set, the daemon listens on both the Unix socket (for local access) and TCP (for remote access).
 
 **Note:** For secure remote access, use Tailscale or a reverse proxy with TLS. The daemon does not yet support TLS directly.
+
+## VM Services
+
+VMs include built-in services that communicate with the host via vsock:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| `stockyard-shell` | 52 | Terminal access via vsock (no SSH needed) |
+| `stockyard-snapshot` | 51 | ZFS snapshot coordination |
+
+### Terminal Access
+
+The dashboard provides browser-based terminal access to VMs using `stockyard-shell`. This eliminates SSH key management and works even when VM networking is misconfigured.
+
+See [docs/specs/vsock-shell-service.md](docs/specs/vsock-shell-service.md) for protocol details.
