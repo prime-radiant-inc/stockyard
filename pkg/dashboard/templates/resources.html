@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - Stockyard</title>
+    <script src="/static/js/htmx.min.js"></script>
+    <script defer src="/static/js/alpine.min.js"></script>
+    <script src="/static/js/tailwind.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-4">
+            <a href="/" class="font-semibold text-lg hover:text-blue-600">Stockyard</a>
+            <span class="text-gray-400">/</span>
+            <span class="text-gray-600">Resources</span>
+        </div>
+        <div class="flex items-center gap-4">
+            {{if .UserAvatar}}
+            <img src="{{.UserAvatar}}" alt="{{.User}}" class="w-8 h-8 rounded-full">
+            {{else}}
+            <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-bold uppercase">
+                {{if .User}}{{slice .User 0 1}}{{else}}?{{end}}
+            </div>
+            {{end}}
+            <span class="text-sm text-gray-600 hidden sm:inline">{{.User}}</span>
+        </div>
+    </header>
+
+    <!-- Main content -->
+    <main class="flex-1 overflow-auto p-6">
+        <div class="max-w-6xl mx-auto">
+            <!-- Summary -->
+            <div class="mb-6 flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-semibold">System Resources</h1>
+                    <p class="text-gray-500 text-sm mt-1">
+                        {{.TotalCount}} total resources
+                        {{if gt .OrphanCount 0}}
+                        <span class="text-orange-600 font-medium">({{.OrphanCount}} orphaned)</span>
+                        {{end}}
+                    </p>
+                </div>
+                {{if gt .OrphanCount 0}}
+                <div class="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2 text-sm">
+                    <span class="text-orange-700">Run <code class="bg-orange-100 px-1 rounded">stockyard gc</code> to clean up orphaned resources</span>
+                </div>
+                {{end}}
+            </div>
+
+            <!-- VM Directories -->
+            {{with index .Resources "vm"}}
+            <div class="bg-white rounded-lg shadow border border-gray-200 mb-6">
+                <div class="p-4 border-b border-gray-200">
+                    <h2 class="text-lg font-semibold text-gray-900">VM Directories</h2>
+                    <p class="text-sm text-gray-500">Local filesystem directories for VM state</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {{range .}}
+                            <tr class="{{if eq .Status "orphan"}}bg-orange-50{{end}}">
+                                <td class="px-4 py-2 whitespace-nowrap">
+                                    <a href="/vm/{{.ID}}" class="text-blue-600 hover:text-blue-800 hover:underline font-mono text-sm">{{.ID}}</a>
+                                </td>
+                                <td class="px-4 py-2 whitespace-nowrap">
+                                    {{if eq .Status "running"}}
+                                    <span class="inline-flex items-center gap-1 text-green-700">
+                                        <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                                        running
+                                    </span>
+                                    {{else if eq .Status "stopped"}}
+                                    <span class="inline-flex items-center gap-1 text-gray-500">
+                                        <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
+                                        stopped
+                                    </span>
+                                    {{else if eq .Status "orphan"}}
+                                    <span class="inline-flex items-center gap-1 text-orange-600">
+                                        <span class="w-2 h-2 bg-orange-500 rounded-full"></span>
+                                        orphan
+                                    </span>
+                                    {{else}}
+                                    <span class="text-gray-500">{{.Status}}</span>
+                                    {{end}}
+                                </td>
+                                <td class="px-4 py-2 text-sm text-gray-500 font-mono">{{.Details}}</td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {{end}}
+
+            <!-- ZFS VM Datasets -->
+            {{with index .Resources "zfs_vm"}}
+            <div class="bg-white rounded-lg shadow border border-gray-200 mb-6">
+                <div class="p-4 border-b border-gray-200">
+                    <h2 class="text-lg font-semibold text-gray-900">ZFS VM Datasets</h2>
+                    <p class="text-sm text-gray-500">ZFS datasets for VM root filesystems</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dataset</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {{range .}}
+                            <tr class="{{if eq .Status "orphan"}}bg-orange-50{{end}}">
+                                <td class="px-4 py-2 whitespace-nowrap font-mono text-sm">{{.ID}}</td>
+                                <td class="px-4 py-2 whitespace-nowrap">
+                                    {{if eq .Status "active"}}
+                                    <span class="inline-flex items-center gap-1 text-green-700">
+                                        <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                                        active
+                                    </span>
+                                    {{else if eq .Status "stopped"}}
+                                    <span class="inline-flex items-center gap-1 text-gray-500">
+                                        <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
+                                        stopped
+                                    </span>
+                                    {{else if eq .Status "orphan"}}
+                                    <span class="inline-flex items-center gap-1 text-orange-600">
+                                        <span class="w-2 h-2 bg-orange-500 rounded-full"></span>
+                                        orphan
+                                    </span>
+                                    {{else}}
+                                    <span class="text-gray-500">{{.Status}}</span>
+                                    {{end}}
+                                </td>
+                                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{{.Size}}</td>
+                                <td class="px-4 py-2 text-sm text-gray-500 font-mono">{{.Details}}</td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {{end}}
+
+            <!-- ZFS Workspace Datasets -->
+            {{with index .Resources "zfs_workspace"}}
+            <div class="bg-white rounded-lg shadow border border-gray-200 mb-6">
+                <div class="p-4 border-b border-gray-200">
+                    <h2 class="text-lg font-semibold text-gray-900">ZFS Workspace Datasets</h2>
+                    <p class="text-sm text-gray-500">ZFS datasets for VM workspace storage</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dataset</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {{range .}}
+                            <tr class="{{if eq .Status "orphan"}}bg-orange-50{{end}}">
+                                <td class="px-4 py-2 whitespace-nowrap font-mono text-sm">{{.ID}}</td>
+                                <td class="px-4 py-2 whitespace-nowrap">
+                                    {{if eq .Status "active"}}
+                                    <span class="inline-flex items-center gap-1 text-green-700">
+                                        <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                                        active
+                                    </span>
+                                    {{else if eq .Status "stopped"}}
+                                    <span class="inline-flex items-center gap-1 text-gray-500">
+                                        <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
+                                        stopped
+                                    </span>
+                                    {{else if eq .Status "orphan"}}
+                                    <span class="inline-flex items-center gap-1 text-orange-600">
+                                        <span class="w-2 h-2 bg-orange-500 rounded-full"></span>
+                                        orphan
+                                    </span>
+                                    {{else}}
+                                    <span class="text-gray-500">{{.Status}}</span>
+                                    {{end}}
+                                </td>
+                                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{{.Size}}</td>
+                                <td class="px-4 py-2 text-sm text-gray-500 font-mono">{{.Details}}</td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {{end}}
+
+            <!-- TAP Interfaces -->
+            {{with index .Resources "tap"}}
+            <div class="bg-white rounded-lg shadow border border-gray-200 mb-6">
+                <div class="p-4 border-b border-gray-200">
+                    <h2 class="text-lg font-semibold text-gray-900">TAP Interfaces</h2>
+                    <p class="text-sm text-gray-500">Network TAP interfaces for VM networking</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Interface</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task ID</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {{range .}}
+                            <tr class="{{if eq .Status "orphan"}}bg-orange-50{{end}}">
+                                <td class="px-4 py-2 whitespace-nowrap font-mono text-sm">{{.ID}}</td>
+                                <td class="px-4 py-2 whitespace-nowrap">
+                                    {{if eq .Status "active"}}
+                                    <span class="inline-flex items-center gap-1 text-green-700">
+                                        <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                                        active
+                                    </span>
+                                    {{else if eq .Status "stopped"}}
+                                    <span class="inline-flex items-center gap-1 text-gray-500">
+                                        <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
+                                        stopped
+                                    </span>
+                                    {{else if eq .Status "orphan"}}
+                                    <span class="inline-flex items-center gap-1 text-orange-600">
+                                        <span class="w-2 h-2 bg-orange-500 rounded-full"></span>
+                                        orphan
+                                    </span>
+                                    {{else}}
+                                    <span class="text-gray-500">{{.Status}}</span>
+                                    {{end}}
+                                </td>
+                                <td class="px-4 py-2 whitespace-nowrap text-sm">
+                                    {{if .TaskID}}
+                                    <a href="/vm/{{.TaskID}}" class="text-blue-600 hover:text-blue-800 hover:underline font-mono">{{.TaskID}}</a>
+                                    {{else}}
+                                    <span class="text-gray-400">-</span>
+                                    {{end}}
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {{end}}
+
+            <!-- DHCP Leases -->
+            {{with index .Resources "dhcp"}}
+            <div class="bg-white rounded-lg shadow border border-gray-200 mb-6">
+                <div class="p-4 border-b border-gray-200">
+                    <h2 class="text-lg font-semibold text-gray-900">DHCP Leases</h2>
+                    <p class="text-sm text-gray-500">Active DHCP leases from dnsmasq</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP Address</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task ID</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {{range .}}
+                            <tr class="{{if eq .Status "expired"}}bg-gray-50{{end}}">
+                                <td class="px-4 py-2 whitespace-nowrap font-mono text-sm">{{.ID}}</td>
+                                <td class="px-4 py-2 whitespace-nowrap">
+                                    {{if eq .Status "active"}}
+                                    <span class="inline-flex items-center gap-1 text-green-700">
+                                        <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                                        active
+                                    </span>
+                                    {{else if eq .Status "expired"}}
+                                    <span class="inline-flex items-center gap-1 text-gray-500">
+                                        <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
+                                        expired
+                                    </span>
+                                    {{else}}
+                                    <span class="text-gray-500">{{.Status}}</span>
+                                    {{end}}
+                                </td>
+                                <td class="px-4 py-2 text-sm text-gray-500 font-mono">{{.Details}}</td>
+                                <td class="px-4 py-2 whitespace-nowrap text-sm">
+                                    {{if .TaskID}}
+                                    <a href="/vm/{{.TaskID}}" class="text-blue-600 hover:text-blue-800 hover:underline font-mono">{{.TaskID}}</a>
+                                    {{else}}
+                                    <span class="text-gray-400">-</span>
+                                    {{end}}
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {{end}}
+
+            <!-- Empty state -->
+            {{if eq .TotalCount 0}}
+            <div class="bg-white rounded-lg shadow border border-gray-200 p-12 text-center">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">No Resources</h3>
+                <p class="mt-1 text-sm text-gray-500">No system resources found.</p>
+            </div>
+            {{end}}
+        </div>
+    </main>
+</body>
+</html>

@@ -59,6 +59,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/ws/terminal/", s.terminalHandler.ServeHTTP)
 	s.mux.HandleFunc("/activity", s.handleActivity)
 	s.mux.HandleFunc("/settings", s.handleSettings)
+	s.mux.HandleFunc("/resources", s.handleResources)
 	s.mux.HandleFunc("/api/vm-logs/", s.handleLogSearch)
 	s.mux.HandleFunc("/api/vm/create", s.handleAPIVMCreate)
 	s.mux.HandleFunc("/api/vm/", s.handleAPIVM)
@@ -469,6 +470,71 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 
 	var buf bytes.Buffer
 	if err := s.templates.ExecuteTemplate(&buf, "settings.html", data); err != nil {
+		http.Error(w, "Failed to render template", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
+	buf.WriteTo(w)
+}
+
+func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
+	if s.daemon == nil {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	tasks, err := s.daemon.ListTasks(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get paths from environment or use defaults
+	collector := NewResourceCollector(
+		"/var/lib/stockyard/vms/stockyard",
+		"/var/lib/stockyard/dnsmasq.leases",
+		"tank/stockyard",
+	)
+
+	resources, err := collector.Collect(tasks)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Group by type
+	grouped := make(map[string][]Resource)
+	for _, res := range resources {
+		grouped[res.Type] = append(grouped[res.Type], res)
+	}
+
+	// Count orphans
+	orphanCount := 0
+	for _, res := range resources {
+		if res.Status == "orphan" {
+			orphanCount++
+		}
+	}
+
+	data := map[string]interface{}{
+		"Title":       "Resources",
+		"User":        GetUser(r.Context()),
+		"UserAvatar":  GetUserAvatar(r.Context()),
+		"ActiveNav":   "resources",
+		"Resources":   grouped,
+		"OrphanCount": orphanCount,
+		"TotalCount":  len(resources),
+	}
+
+	// Check if template exists, fallback for testing
+	if s.templates == nil || s.templates.Lookup("resources.html") == nil {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte("Resources page"))
+		return
+	}
+
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, "resources.html", data); err != nil {
 		http.Error(w, "Failed to render template", http.StatusInternalServerError)
 		return
 	}

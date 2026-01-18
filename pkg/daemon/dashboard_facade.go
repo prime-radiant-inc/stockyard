@@ -53,6 +53,28 @@ func (f *DashboardFacade) GetTask(ctx context.Context, id string) (*dashboard.Da
 	return convertToDashboardTask(task), nil
 }
 
+// CreateTask creates a new task.
+func (f *DashboardFacade) CreateTask(ctx context.Context, req *dashboard.DaemonCreateTaskRequest) (*dashboard.DaemonTask, error) {
+	if f.tasks == nil {
+		return nil, fmt.Errorf("TaskManager not available")
+	}
+
+	daemonReq := &CreateTaskRequest{
+		Repo:     req.Repo,
+		Ref:      req.Ref,
+		Name:     req.Name,
+		CPUs:     req.CPUs,
+		MemoryMB: req.MemoryMB,
+		Env:      req.Env,
+	}
+
+	task, err := f.tasks.CreateTask(ctx, daemonReq)
+	if err != nil {
+		return nil, err
+	}
+	return convertToDashboardTask(task), nil
+}
+
 // StopTask stops a running task.
 func (f *DashboardFacade) StopTask(ctx context.Context, id string) error {
 	if f.tasks != nil {
@@ -60,6 +82,14 @@ func (f *DashboardFacade) StopTask(ctx context.Context, id string) error {
 	}
 	// Fallback to just updating status if TaskManager not available
 	return f.state.UpdateTaskStatus(id, "stopped")
+}
+
+// RestartTask restarts a stopped task.
+func (f *DashboardFacade) RestartTask(ctx context.Context, id string) error {
+	if f.tasks == nil {
+		return fmt.Errorf("TaskManager not available")
+	}
+	return f.tasks.RestartTask(ctx, id)
 }
 
 // DestroyTask destroys a task and its resources.
