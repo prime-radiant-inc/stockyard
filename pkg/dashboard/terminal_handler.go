@@ -178,6 +178,112 @@ func (h *TerminalHandler) createVsockSession(cid uint32, user string, cols, rows
 	return session, nil
 }
 
+// handleVsockSession manages bidirectional I/O between WebSocket and vsock.
+func (h *TerminalHandler) handleVsockSession(conn *websocket.Conn, session *VsockSession) {
+	done := make(chan struct{})
+
+	// Read from vsock and send to WebSocket
+	go func() {
+		defer close(done)
+		for {
+			msgType, payload, err := session.ReadMessage()
+			if err != nil {
+				// Check if it's a normal close
+				if !strings.Contains(err.Error(), "use of closed") {
+					log.Printf("terminal: vsock read error: %v", err)
+				}
+				return
+			}
+
+			switch msgType {
+			case shell.MsgData:
+				msg := TerminalOutputMessage{
+					Type: "terminal_output",
+					Data: string(payload),
+				}
+				if err := conn.WriteJSON(msg); err != nil {
+					log.Printf("terminal: websocket write error: %v", err)
+					return
+				}
+
+			case shell.MsgExit:
+				var exitMsg shell.ExitMessage
+				exitMsg.Unmarshal(payload)
+				log.Printf("terminal: shell exited with code %d", exitMsg.Code)
+				// Send a message to indicate session ended
+				msg := TerminalOutputMessage{
+					Type: "terminal_output",
+					Data: fmt.Sprintf("\r\n\033[33m[Session ended with code %d]\033[0m\r\n", exitMsg.Code),
+				}
+				conn.WriteJSON(msg)
+				return
+
+			case shell.MsgError:
+				var errMsg shell.ErrorMessage
+				errMsg.Unmarshal(payload)
+				log.Printf("terminal: VM error: %s", errMsg.Error)
+				msg := TerminalOutputMessage{
+					Type: "terminal_output",
+					Data: fmt.Sprintf("\r\n\033[31mError: %s\033[0m\r\n", errMsg.Error),
+				}
+				conn.WriteJSON(msg)
+				return
+
+			default:
+				log.Printf("terminal: unknown message type from VM: %d", msgType)
+			}
+		}
+	}()
+
+	// Read from WebSocket and send to vsock
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+				log.Printf("terminal: websocket read error: %v", err)
+			}
+			break
+		}
+
+		var baseMsg struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(message, &baseMsg); err != nil {
+			log.Printf("terminal: invalid message format: %v", err)
+			continue
+		}
+
+		switch baseMsg.Type {
+		case "terminal_input":
+			var inputMsg TerminalInputMessage
+			if err := json.Unmarshal(message, &inputMsg); err != nil {
+				log.Printf("terminal: invalid input message: %v", err)
+				continue
+			}
+			if err := session.SendData([]byte(inputMsg.Data)); err != nil {
+				log.Printf("terminal: vsock write error: %v", err)
+				break
+			}
+
+		case "terminal_resize":
+			var resizeMsg TerminalResizeMessage
+			if err := json.Unmarshal(message, &resizeMsg); err != nil {
+				log.Printf("terminal: invalid resize message: %v", err)
+				continue
+			}
+			if err := session.SendResize(resizeMsg.Cols, resizeMsg.Rows); err != nil {
+				log.Printf("terminal: resize error: %v", err)
+			}
+
+		default:
+			log.Printf("terminal: unknown message type: %s", baseMsg.Type)
+		}
+	}
+
+	// Wait for vsock reader goroutine to complete
+	<-done
+}
+
 // handleSession manages bidirectional I/O between WebSocket and PTY.
 func (h *TerminalHandler) handleSession(conn *websocket.Conn, session *TerminalSession) {
 	done := make(chan struct{})
