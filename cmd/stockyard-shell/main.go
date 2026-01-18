@@ -226,8 +226,9 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 
 	// Send exit message (best effort)
 	exitMsg := shell.ExitMessage{Code: exitCode}
-	exitPayload, _ := exitMsg.Marshal()
-	shell.WriteMessage(conn, shell.MsgExit, exitPayload)
+	if exitPayload, err := exitMsg.Marshal(); err == nil {
+		shell.WriteMessage(conn, shell.MsgExit, exitPayload)
+	}
 
 	// Cancel to stop I/O goroutines
 	connCancel()
@@ -236,6 +237,7 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 
 func sendError(conn net.Conn, message string) {
 	errMsg := shell.ErrorMessage{Error: message}
-	payload, _ := errMsg.Marshal()
-	shell.WriteMessage(conn, shell.MsgError, payload)
+	if payload, err := errMsg.Marshal(); err == nil {
+		shell.WriteMessage(conn, shell.MsgError, payload)
+	}
 }
