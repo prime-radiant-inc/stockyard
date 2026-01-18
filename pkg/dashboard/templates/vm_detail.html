@@ -444,7 +444,7 @@
 
                 <!-- Terminal Panel -->
                 <div class="bg-white rounded-lg shadow border border-gray-200"
-                     x-data="{ showTerminal: false, connected: false, connecting: false }">
+                     x-data="terminalPanel('{{.Task.ID}}')">
                     <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                         <h2 class="text-lg font-medium">Terminal</h2>
                         <div class="flex items-center gap-2">
@@ -453,7 +453,8 @@
                                 Connected
                             </span>
                             <span x-show="connecting" class="text-xs text-yellow-600">Connecting...</span>
-                            <button @click="showTerminal = !showTerminal"
+                            <span x-show="error" class="text-xs text-red-600" x-text="error"></span>
+                            <button @click="toggleTerminal()"
                                     class="text-xs text-blue-600 hover:underline"
                                     x-text="showTerminal ? 'Hide' : 'Open Terminal'">
                             </button>
@@ -461,7 +462,7 @@
                     </div>
                     <div class="p-4">
                         <div x-show="showTerminal" x-transition class="rounded overflow-hidden">
-                            <div id="terminal-container" class="h-80 bg-black"></div>
+                            <div x-ref="terminalContainer" class="h-80 bg-black"></div>
                         </div>
                         <div x-show="!showTerminal" class="text-center py-6">
                             <svg class="mx-auto h-10 w-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -611,6 +612,160 @@ document.addEventListener('alpine:initialized', () => {
     window.memSparklineExpanded = createSparkline('memSparklineExpanded', '#3b82f6');
     window.netSparklineExpanded = createSparkline('netSparklineExpanded', '#8b5cf6');
 });
+    </script>
+
+    <script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('terminalPanel', (taskID) => ({
+            terminal: null,
+            fitAddon: null,
+            ws: null,
+            connected: false,
+            connecting: false,
+            showTerminal: false,
+            error: null,
+            taskID: taskID,
+
+            init() {
+                this.$watch('showTerminal', (value) => {
+                    if (value) {
+                        this.$nextTick(() => {
+                            this.initTerminal();
+                            this.connect();
+                        });
+                    } else {
+                        this.disconnect();
+                    }
+                });
+            },
+
+            toggleTerminal() {
+                this.showTerminal = !this.showTerminal;
+            },
+
+            initTerminal() {
+                if (this.terminal) {
+                    return;
+                }
+
+                const container = this.$refs.terminalContainer;
+                if (!container) {
+                    return;
+                }
+
+                this.terminal = new Terminal({
+                    cursorBlink: true,
+                    fontSize: 14,
+                    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+                    theme: {
+                        background: '#1a1a2e',
+                        foreground: '#eaeaea',
+                        cursor: '#eaeaea',
+                        cursorAccent: '#1a1a2e',
+                        selection: 'rgba(255, 255, 255, 0.3)'
+                    }
+                });
+
+                this.fitAddon = new FitAddon.FitAddon();
+                this.terminal.loadAddon(this.fitAddon);
+
+                const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+                this.terminal.loadAddon(webLinksAddon);
+
+                this.terminal.open(container);
+                this.fitAddon.fit();
+
+                // Handle window resize
+                window.addEventListener('resize', () => {
+                    if (this.fitAddon && this.showTerminal) {
+                        this.fitAddon.fit();
+                        this.sendResize();
+                    }
+                });
+
+                // Send user input to WebSocket
+                this.terminal.onData((data) => {
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({
+                            type: 'terminal_input',
+                            data: data
+                        }));
+                    }
+                });
+
+                // Handle terminal resize
+                this.terminal.onResize(() => {
+                    this.sendResize();
+                });
+            },
+
+            connect() {
+                if (this.ws) {
+                    return;
+                }
+
+                this.connecting = true;
+                this.error = null;
+
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = protocol + '//' + window.location.host + '/ws/terminal/' + this.taskID;
+
+                this.ws = new WebSocket(wsUrl);
+
+                this.ws.onopen = () => {
+                    this.connecting = false;
+                    this.connected = true;
+                    this.error = null;
+                    this.terminal.focus();
+                    this.sendResize();
+                };
+
+                this.ws.onmessage = (event) => {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        if (msg.type === 'terminal_output') {
+                            this.terminal.write(msg.data);
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse terminal message:', e);
+                    }
+                };
+
+                this.ws.onerror = (event) => {
+                    console.error('Terminal WebSocket error:', event);
+                    this.error = 'Connection error';
+                };
+
+                this.ws.onclose = (event) => {
+                    this.connecting = false;
+                    this.connected = false;
+                    this.ws = null;
+                    if (event.code !== 1000) {
+                        this.error = 'Connection closed';
+                    }
+                };
+            },
+
+            disconnect() {
+                if (this.ws) {
+                    this.ws.close(1000);
+                    this.ws = null;
+                }
+                this.connected = false;
+                this.connecting = false;
+            },
+
+            sendResize() {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN && this.terminal) {
+                    this.ws.send(JSON.stringify({
+                        type: 'terminal_resize',
+                        cols: this.terminal.cols,
+                        rows: this.terminal.rows
+                    }));
+                }
+            }
+        }));
+    });
     </script>
 </body>
 </html>
