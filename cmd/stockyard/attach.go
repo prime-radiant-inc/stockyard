@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"syscall"
 
-	"github.com/obra/stockyard/pkg/client"
 	"github.com/obra/stockyard/pkg/config"
 	"github.com/spf13/cobra"
 )
@@ -21,16 +20,16 @@ var attachCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskID := args[0]
 
+		c, err := getClient()
+		if err != nil {
+			return err
+		}
+		defer c.Close()
+
 		cfg, err := config.Load()
 		if err != nil {
 			return err
 		}
-
-		c, err := client.New(cfg.Daemon.SocketPath)
-		if err != nil {
-			return fmt.Errorf("failed to connect to daemon: %w\nIs stockyardd running?", err)
-		}
-		defer c.Close()
 
 		// Get task details
 		task, err := c.GetTask(context.Background(), taskID)
