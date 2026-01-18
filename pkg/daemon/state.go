@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -25,9 +26,14 @@ type Task struct {
 	StoppedAt         *time.Time
 }
 
+// StatusChangeCallback is called when a task's status changes.
+type StatusChangeCallback func(taskID, oldStatus, newStatus string)
+
 // State manages persistent state for the daemon using SQLite.
 type State struct {
-	db *sql.DB
+	db             *sql.DB
+	statusCallback StatusChangeCallback
+	callbackMu     sync.RWMutex
 }
 
 // DataDir returns the XDG-compliant data directory for stockyard.
@@ -122,6 +128,13 @@ func (s *State) migrate() error {
 // Close closes the database connection.
 func (s *State) Close() error {
 	return s.db.Close()
+}
+
+// SetStatusChangeCallback sets a callback that will be invoked when a task's status changes.
+func (s *State) SetStatusChangeCallback(cb StatusChangeCallback) {
+	s.callbackMu.Lock()
+	defer s.callbackMu.Unlock()
+	s.statusCallback = cb
 }
 
 // CreateTask creates a new task in the database.
@@ -276,6 +289,16 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 // UpdateTaskStatus updates the status of a task.
 // If the new status is "stopped", the stopped_at timestamp is also set.
 func (s *State) UpdateTaskStatus(id, status string) error {
+	// Get the old status before updating
+	var oldStatus string
+	err := s.db.QueryRow("SELECT status FROM tasks WHERE id = ?", id).Scan(&oldStatus)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("task not found: %s", id)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get current task status: %w", err)
+	}
+
 	var query string
 	var args []interface{}
 
@@ -296,17 +319,19 @@ func (s *State) UpdateTaskStatus(id, status string) error {
 		args = []interface{}{status, id}
 	}
 
-	result, err := s.db.Exec(query, args...)
+	_, err = s.db.Exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to update task status: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("task not found: %s", id)
+	// Call the callback if registered and status actually changed
+	if oldStatus != status {
+		s.callbackMu.RLock()
+		cb := s.statusCallback
+		s.callbackMu.RUnlock()
+		if cb != nil {
+			cb(id, oldStatus, status)
+		}
 	}
 
 	return nil

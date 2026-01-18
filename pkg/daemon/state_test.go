@@ -300,3 +300,46 @@ func containsAt(s, substr string, start int) bool {
 	}
 	return false
 }
+
+func TestState_StatusChangeCallback(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	// Track callback invocations
+	var called bool
+	var receivedTaskID, receivedOld, receivedNew string
+
+	state.SetStatusChangeCallback(func(taskID, oldStatus, newStatus string) {
+		called = true
+		receivedTaskID = taskID
+		receivedOld = oldStatus
+		receivedNew = newStatus
+	})
+
+	// Create a task
+	task := &Task{ID: "test-callback", Status: "pending", Repo: "test", Ref: "main", Command: "cmd", CreatedAt: time.Now()}
+	if err := state.CreateTask(task); err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	// Update status
+	if err := state.UpdateTaskStatus("test-callback", "running"); err != nil {
+		t.Fatalf("UpdateTaskStatus: %v", err)
+	}
+
+	if !called {
+		t.Error("callback was not called")
+	}
+	if receivedTaskID != "test-callback" {
+		t.Errorf("expected taskID test-callback, got %s", receivedTaskID)
+	}
+	if receivedOld != "pending" {
+		t.Errorf("expected old status pending, got %s", receivedOld)
+	}
+	if receivedNew != "running" {
+		t.Errorf("expected new status running, got %s", receivedNew)
+	}
+}
