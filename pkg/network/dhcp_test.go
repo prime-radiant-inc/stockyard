@@ -143,3 +143,83 @@ func TestDHCPServer_IsRunning(t *testing.T) {
 		t.Error("expected not running before start")
 	}
 }
+
+func TestDHCPServer_GetIPForMAC(t *testing.T) {
+	dataDir := t.TempDir()
+
+	srv, err := NewDHCPServer(DHCPConfig{
+		Bridge:     "flbr0",
+		Gateway:    "192.168.64.1",
+		RangeStart: "192.168.64.2",
+		RangeEnd:   "192.168.127.254",
+		Netmask:    "255.255.192.0",
+		LeaseTime:  "12h",
+		DNS:        "8.8.8.8",
+	}, dataDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Create a fake lease file
+	// Format: <expiry> <MAC> <IP> <hostname> <client-id>
+	leaseContent := `1737200000 02:7a:77:e8:87:9e 192.168.64.2 stockyard-abc123 *
+1737200000 02:8d:3f:70:39:a9 192.168.64.3 stockyard-def456 *
+`
+	if err := os.WriteFile(srv.leasePath, []byte(leaseContent), 0644); err != nil {
+		t.Fatalf("failed to write lease file: %v", err)
+	}
+
+	tests := []struct {
+		mac      string
+		wantIP   string
+		wantFind bool
+	}{
+		{"02:7a:77:e8:87:9e", "192.168.64.2", true},
+		{"02:8d:3f:70:39:a9", "192.168.64.3", true},
+		{"02:00:00:00:00:00", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.mac, func(t *testing.T) {
+			ip, found := srv.GetIPForMAC(tt.mac)
+			if found != tt.wantFind {
+				t.Errorf("GetIPForMAC(%s) found = %v, want %v", tt.mac, found, tt.wantFind)
+			}
+			if ip != tt.wantIP {
+				t.Errorf("GetIPForMAC(%s) = %s, want %s", tt.mac, ip, tt.wantIP)
+			}
+		})
+	}
+}
+
+func TestDHCPServer_GetIPForMAC_CaseInsensitive(t *testing.T) {
+	dataDir := t.TempDir()
+
+	srv, err := NewDHCPServer(DHCPConfig{
+		Bridge:     "flbr0",
+		Gateway:    "192.168.64.1",
+		RangeStart: "192.168.64.2",
+		RangeEnd:   "192.168.127.254",
+		Netmask:    "255.255.192.0",
+		LeaseTime:  "12h",
+		DNS:        "8.8.8.8",
+	}, dataDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	leaseContent := `1737200000 02:7a:77:e8:87:9e 192.168.64.2 vm1 *
+`
+	if err := os.WriteFile(srv.leasePath, []byte(leaseContent), 0644); err != nil {
+		t.Fatalf("failed to write lease file: %v", err)
+	}
+
+	// Test uppercase lookup
+	ip, found := srv.GetIPForMAC("02:7A:77:E8:87:9E")
+	if !found {
+		t.Error("expected to find MAC with uppercase")
+	}
+	if ip != "192.168.64.2" {
+		t.Errorf("got IP %s, want 192.168.64.2", ip)
+	}
+}

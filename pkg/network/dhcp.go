@@ -2,10 +2,12 @@
 package network
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"text/template"
@@ -236,4 +238,38 @@ func (s *DHCPServer) IsRunning() bool {
 	// Check if process is still running by sending signal 0
 	err := s.cmd.Process.Signal(syscall.Signal(0))
 	return err == nil
+}
+
+// GetIPForMAC looks up the IP address for a given MAC address in the lease file.
+// MAC comparison is case-insensitive. Returns the IP and true if found,
+// or empty string and false if not found.
+func (s *DHCPServer) GetIPForMAC(mac string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	file, err := os.Open(s.leasePath)
+	if err != nil {
+		return "", false
+	}
+	defer file.Close()
+
+	// Normalize the search MAC to lowercase for comparison
+	searchMAC := strings.ToLower(mac)
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// dnsmasq lease format: <expiry> <MAC> <IP> <hostname> <client-id>
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+
+		leaseMAC := strings.ToLower(fields[1])
+		if leaseMAC == searchMAC {
+			return fields[2], true
+		}
+	}
+
+	return "", false
 }
