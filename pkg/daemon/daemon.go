@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -32,9 +33,10 @@ type Daemon struct {
 	snapshots *SnapshotService
 	dhcp      *network.DHCPServer
 
-	listener   net.Listener
-	grpcServer *grpc.Server
-	httpServer *http.Server
+	listener     net.Listener
+	grpcListener net.Listener // TCP listener for remote gRPC (optional)
+	grpcServer   *grpc.Server
+	httpServer   *http.Server
 	mu         sync.Mutex
 	running    bool
 
@@ -236,6 +238,23 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 	fmt.Printf("gRPC server started on %s\n", d.cfg.Daemon.SocketPath)
 
+	// Start optional TCP listener for remote gRPC access
+	if d.cfg.Daemon.GRPCAddr != "" {
+		tcpListener, err := net.Listen("tcp", d.cfg.Daemon.GRPCAddr)
+		if err != nil {
+			d.listener.Close()
+			return fmt.Errorf("failed to listen on TCP %s: %w", d.cfg.Daemon.GRPCAddr, err)
+		}
+		d.grpcListener = tcpListener
+		fmt.Printf("gRPC server listening on %s\n", d.cfg.Daemon.GRPCAddr)
+
+		go func() {
+			if err := grpcSrv.Serve(tcpListener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+				fmt.Printf("gRPC TCP server error: %v\n", err)
+			}
+		}()
+	}
+
 	// Start HTTP server if enabled
 	if d.cfg.HTTP.Enabled {
 		// Create dashboard facade and adapter
@@ -334,6 +353,10 @@ func (d *Daemon) Stop() error {
 
 	if d.listener != nil {
 		d.listener.Close()
+	}
+
+	if d.grpcListener != nil {
+		d.grpcListener.Close()
 	}
 
 	// Stop DHCP server
