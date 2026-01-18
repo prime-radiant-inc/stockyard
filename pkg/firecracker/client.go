@@ -586,6 +586,15 @@ func (c *Client) StartVM(ctx context.Context, config *VMConfig) (*VMInfo, error)
 		return nil, fmt.Errorf("set machine config: %w", err)
 	}
 
+	// Allocate CID and configure vsock for terminal access
+	cid := c.allocateCID()
+	vsockPath := filepath.Join(vmDir, "vsock.sock")
+	if err := apiClient.SetVsock(ctx, cid, vsockPath); err != nil {
+		cmd.Process.Kill()
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("set vsock: %w", err)
+	}
+
 	// Configure MMDS for cloud-init
 	if err := apiClient.SetMMDSConfig(ctx, []string{"eth0"}); err != nil {
 		cmd.Process.Kill()
@@ -646,6 +655,8 @@ func (c *Client) StartVM(ctx context.Context, config *VMConfig) (*VMInfo, error)
 		APISocketPath: apiSocketPath,
 		RootfsPath:    vmRootfs,
 		MetricsPath:   metricsPath,
+		CID:           cid,
+		VsockPath:     vsockPath,
 		State:         "running",
 		CreatedAt:     time.Now(),
 	}, nil
