@@ -282,9 +282,7 @@ func (tm *TaskManager) FailTask(ctx context.Context, taskID string, reason strin
 		return err
 	}
 
-	// Record activity event for VM failed
-	// Note: The status change callback in daemon.go will also call VMFailed,
-	// but we call it here with a specific reason for better context
+	// Record activity event for VM failed with specific reason
 	if af := tm.daemon.ActivityFeed(); af != nil {
 		af.VMFailed(taskID, task.Name, reason)
 	}
