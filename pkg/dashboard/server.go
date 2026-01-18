@@ -77,7 +77,7 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	// Render template
 	data := map[string]interface{}{
 		"Title":        "Fleet",
-		"User":         "user", // TODO: get from auth
+		"User":         GetUser(r.Context()),
 		"ActiveNav":    "fleet",
 		"Tasks":        tasks,
 		"GroupedTasks": grouped,
@@ -119,7 +119,7 @@ func (s *Server) handleVMDetail(w http.ResponseWriter, r *http.Request) {
 
 	data := map[string]interface{}{
 		"Title":     task.ID,
-		"User":      "user", // TODO: get from auth
+		"User":      GetUser(r.Context()),
 		"ActiveNav": "fleet",
 		"Task":      task,
 		"Snapshots": snapshots,
