@@ -225,6 +225,9 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 
 	// Configure via API
 	bootArgs := "console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw"
+	if config.StaticIPArgs != "" {
+		bootArgs += " " + config.StaticIPArgs
+	}
 	if err := apiClient.SetBootSource(ctx, kernelPath, bootArgs); err != nil {
 		cmd.Process.Kill()
 		destroyZFSDataset(vmDatasetPath)
@@ -278,6 +281,7 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 		TailscaleAuthKey:  config.TailscaleAuthKey,
 		SSHAuthorizedKeys: config.SSHAuthorizedKeys,
 		UserData:          config.CloudInitData,
+		NetworkConfig:     config.NetworkMMDS,
 	})
 	if err := apiClient.SetMMDSData(ctx, mmdsData); err != nil {
 		cmd.Process.Kill()
@@ -562,6 +566,9 @@ func (c *Client) StartVM(ctx context.Context, config *VMConfig) (*VMInfo, error)
 
 	// Configure via API
 	bootArgs := "console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw"
+	if config.StaticIPArgs != "" {
+		bootArgs += " " + config.StaticIPArgs
+	}
 	if err := apiClient.SetBootSource(ctx, config.KernelPath, bootArgs); err != nil {
 		cmd.Process.Kill()
 		c.network.DeleteTap(tapName)
@@ -609,6 +616,7 @@ func (c *Client) StartVM(ctx context.Context, config *VMConfig) (*VMInfo, error)
 		TailscaleAuthKey:  config.TailscaleAuthKey,
 		SSHAuthorizedKeys: config.SSHAuthorizedKeys,
 		UserData:          config.CloudInitData,
+		NetworkConfig:     config.NetworkMMDS,
 	})
 	if err := apiClient.SetMMDSData(ctx, mmdsData); err != nil {
 		cmd.Process.Kill()
