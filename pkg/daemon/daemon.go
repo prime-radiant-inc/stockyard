@@ -308,6 +308,15 @@ func (d *Daemon) DHCP() *network.DHCPServer {
 	return d.dhcp
 }
 
+// ActivityFeed returns the activity feed for recording events.
+// Returns nil if the dashboard is not enabled.
+func (d *Daemon) ActivityFeed() *dashboard.ActivityFeed {
+	if d.dashboardServer == nil {
+		return nil
+	}
+	return d.dashboardServer.ActivityFeed()
+}
+
 // ensureBaseImage checks if the base rootfs snapshot exists and imports it if not.
 func (d *Daemon) ensureBaseImage(ctx context.Context) error {
 	// Construct the expected snapshot path: pool/ImagesPath/rootfs@base

@@ -217,6 +217,11 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		return nil, fmt.Errorf("failed to record task: %w", err)
 	}
 
+	// Record activity event for VM started
+	if af := tm.daemon.ActivityFeed(); af != nil {
+		af.VMStarted(taskID, req.Name, req.Repo, "")
+	}
+
 	// Start log tailing if dashboard is enabled
 	if tm.daemon.logTailer != nil && vmID != "" {
 		vmDir := filepath.Join(tm.daemon.cfg.ZFS.VMsPath, vmID)
@@ -247,7 +252,16 @@ func (tm *TaskManager) StopTask(ctx context.Context, taskID string) error {
 	}
 
 	// Update task status
-	return tm.daemon.state.UpdateTaskStatus(taskID, "stopped")
+	if err := tm.daemon.state.UpdateTaskStatus(taskID, "stopped"); err != nil {
+		return err
+	}
+
+	// Record activity event for VM stopped
+	if af := tm.daemon.ActivityFeed(); af != nil {
+		af.VMStopped(taskID, task.Name)
+	}
+
+	return nil
 }
 
 // DestroyTask destroys a task and its associated resources.
@@ -272,6 +286,13 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 	// Destroy ZFS dataset
 	if err := tm.daemon.zfs.DestroyDataset(ctx, taskID); err != nil {
 		fmt.Printf("Warning: failed to destroy ZFS dataset for %s: %v\n", taskID, err)
+	}
+
+	// Record activity event for VM stopped (if it was running)
+	if task.Status == "running" {
+		if af := tm.daemon.ActivityFeed(); af != nil {
+			af.VMStopped(taskID, task.Name)
+		}
 	}
 
 	// Delete task from database
