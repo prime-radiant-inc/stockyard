@@ -122,3 +122,11 @@ func TestConfig_DHCPLeaseFile(t *testing.T) {
 		t.Errorf("DHCPLeaseFile() with custom DataDir = %q, want %q", got, expected)
 	}
 }
+
+func TestConfig_GRPCAddrDefault(t *testing.T) {
+	cfg := DefaultConfig()
+
+	if cfg.Daemon.GRPCAddr != "" {
+		t.Errorf("expected GRPCAddr to be empty by default, got %q", cfg.Daemon.GRPCAddr)
+	}
+}

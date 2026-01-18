@@ -31,6 +31,7 @@ type SecretsConfig struct {
 type DaemonConfig struct {
 	SocketPath string `json:"socket_path"`
 	DataDir    string `json:"data_dir"`
+	GRPCAddr   string `json:"grpc_addr,omitempty"` // Optional TCP address for remote gRPC (e.g., ":65433")
 }
 
 type ZFSConfig struct {
