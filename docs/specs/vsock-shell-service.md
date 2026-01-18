@@ -248,3 +248,8 @@ Port number and message types are defined in `pkg/shell/protocol.go` and used by
 - **Session recording**: Could log all terminal I/O for audit
 - **Idle timeout**: Disconnect shells that are idle too long
 - **Rate limiting**: Prevent too many concurrent shells to one VM
+
+## Implementation Status
+
+- **VM side**: Complete (`cmd/stockyard-shell`, `pkg/shell`)
+- **Host side**: Complete (`pkg/dashboard` terminal handler)
