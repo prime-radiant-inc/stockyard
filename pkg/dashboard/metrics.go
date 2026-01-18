@@ -25,14 +25,22 @@ type MetricsMessage struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// AlertsMessage is the WebSocket message for alert updates.
+type AlertsMessage struct {
+	Type   string  `json:"type"` // "alerts"
+	TaskID string  `json:"task_id"`
+	Alerts []Alert `json:"alerts"`
+}
+
 // MetricsCollector manages metrics collection and broadcasting.
 type MetricsCollector struct {
-	hub *Hub
+	hub          *Hub
+	alertChecker *AlertChecker
 }
 
 // NewMetricsCollector creates a new metrics collector.
-func NewMetricsCollector(hub *Hub) *MetricsCollector {
-	return &MetricsCollector{hub: hub}
+func NewMetricsCollector(hub *Hub, alertChecker *AlertChecker) *MetricsCollector {
+	return &MetricsCollector{hub: hub, alertChecker: alertChecker}
 }
 
 // SendMetrics broadcasts metrics to subscribed clients.
@@ -42,6 +50,28 @@ func (m *MetricsCollector) SendMetrics(taskID string, metrics VMMetrics) {
 		TaskID:    taskID,
 		Metrics:   metrics,
 		Timestamp: time.Now(),
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+
+	m.hub.Broadcast(taskID, data)
+
+	// Check for alerts and broadcast them if alertChecker is configured
+	if m.alertChecker != nil {
+		alerts := m.alertChecker.Check(taskID, metrics)
+		m.sendAlerts(taskID, alerts)
+	}
+}
+
+// sendAlerts broadcasts alerts to subscribed clients.
+func (m *MetricsCollector) sendAlerts(taskID string, alerts []Alert) {
+	msg := AlertsMessage{
+		Type:   "alerts",
+		TaskID: taskID,
+		Alerts: alerts,
 	}
 
 	data, err := json.Marshal(msg)

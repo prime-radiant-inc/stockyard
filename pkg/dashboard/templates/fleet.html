@@ -163,7 +163,7 @@
                                 <tr class="hover:bg-gray-50 cursor-pointer transition-colors"
                                     :class="{
                                         'bg-blue-50 hover:bg-blue-100': selectedVM === '{{.ID}}',
-                                        'bg-red-50': alerts['{{.ID}}']?.length > 0 && selectedVM !== '{{.ID}}'
+                                        'bg-red-50 border-l-2 border-red-500': alerts['{{.ID}}']?.length > 0 && selectedVM !== '{{.ID}}'
                                     }"
                                     @click="selectedVM = '{{.ID}}'; htmx.ajax('GET', '/preview/vm/{{.ID}}', '#vm-preview-content')"
                                     @dblclick="window.location.href = '/vm/{{.ID}}'">
@@ -256,7 +256,7 @@
                                     <tr class="hover:bg-gray-50 cursor-pointer transition-colors"
                                         :class="{
                                             'bg-blue-50 hover:bg-blue-100': selectedVM === '{{.ID}}',
-                                            'bg-red-50': alerts['{{.ID}}']?.length > 0 && selectedVM !== '{{.ID}}'
+                                            'bg-red-50 border-l-2 border-red-500': alerts['{{.ID}}']?.length > 0 && selectedVM !== '{{.ID}}'
                                         }"
                                         @click="selectedVM = '{{.ID}}'; htmx.ajax('GET', '/preview/vm/{{.ID}}', '#vm-preview-content')"
                                         @dblclick="window.location.href = '/vm/{{.ID}}'">
@@ -350,7 +350,7 @@
                                     <tr class="hover:bg-gray-50 cursor-pointer transition-colors"
                                         :class="{
                                             'bg-blue-50 hover:bg-blue-100': selectedVM === '{{.ID}}',
-                                            'bg-red-50': alerts['{{.ID}}']?.length > 0 && selectedVM !== '{{.ID}}'
+                                            'bg-red-50 border-l-2 border-red-500': alerts['{{.ID}}']?.length > 0 && selectedVM !== '{{.ID}}'
                                         }"
                                         @click="selectedVM = '{{.ID}}'; htmx.ajax('GET', '/preview/vm/{{.ID}}', '#vm-preview-content')"
                                         @dblclick="window.location.href = '/vm/{{.ID}}'">
@@ -434,7 +434,7 @@
                                 <tr class="hover:bg-gray-50 cursor-pointer transition-colors"
                                     :class="{
                                         'bg-blue-50 hover:bg-blue-100': selectedVM === '{{.ID}}',
-                                        'bg-red-50': alerts['{{.ID}}']?.length > 0 && selectedVM !== '{{.ID}}'
+                                        'bg-red-50 border-l-2 border-red-500': alerts['{{.ID}}']?.length > 0 && selectedVM !== '{{.ID}}'
                                     }"
                                     @click="selectedVM = '{{.ID}}'; htmx.ajax('GET', '/preview/vm/{{.ID}}', '#vm-preview-content')"
                                     @dblclick="window.location.href = '/vm/{{.ID}}'">

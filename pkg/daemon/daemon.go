@@ -192,8 +192,8 @@ func (d *Daemon) Start(ctx context.Context) error {
 		logStreamer := dashboard.NewLogStreamer(hub)
 		d.logTailer = NewLogTailer(&dashboardLogSink{logStreamer})
 
-		// Metrics collector and poller
-		metricsCollector := dashboard.NewMetricsCollector(hub)
+		// Metrics collector and poller (with alert checking)
+		metricsCollector := dashboard.NewMetricsCollector(hub, d.dashboardServer.AlertChecker())
 		d.metricsPoller = NewMetricsPoller(d, &dashboardMetricsSink{metricsCollector}, 5*time.Second)
 		d.metricsPoller.Start()
 
