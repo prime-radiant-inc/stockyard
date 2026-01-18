@@ -2,13 +2,37 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add visual polish and UX improvements: split view layout, sparkline charts, activity feed, alert indicators, and responsive design.
+**Goal:** Add visual polish and UX improvements: split view layout, sparkline charts, activity feed, alert indicators, responsive design, log controls, and filtering.
 
-**Architecture:** Extends Phase 2 with Chart.js for sparklines, additional WebSocket message types for activity feed, CSS media queries and Alpine.js for responsive behavior.
+**Architecture:** Extends Phase 2 with Chart.js for sparklines, additional WebSocket message types for activity feed, CSS media queries and Alpine.js for responsive behavior, log history storage.
 
 **Tech Stack:** Chart.js (CDN), Tailwind CSS responsive utilities, Alpine.js for interactive components
 
 **Prerequisites:** Phase 1 and Phase 2 must be complete.
+
+---
+
+## Task Overview
+
+| Task | Description |
+|------|-------------|
+| 1 | Add Chart.js for Sparklines |
+| 2 | Update Resources Panel with Sparklines |
+| 2A | Add Log Pause/Resume Controls |
+| 2B | Add Historical Log Search |
+| 2C | Add Log Filter Input |
+| 3 | Implement Split View Layout |
+| 3A | Add "By Repo" and "By Owner" Tabs |
+| 3B | Add Double-Click to Open Detail |
+| 3C | Add Sparklines to Preview Panel |
+| 4 | Add Activity Feed Infrastructure |
+| 5 | Add Activity Feed UI |
+| 5A | Add User Avatar to Header |
+| 6 | Add Alert Infrastructure |
+| 6A | Add Unresponsive VM Detection |
+| 7 | Add Alert Badge to Fleet Page |
+| 8 | Add Responsive Layout |
+| 9 | Final Integration and Polish |
 
 ---
 
@@ -248,6 +272,354 @@ git commit -m "feat(dashboard): add sparkline charts to resources panel"
 
 ---
 
+## Task 2A: Add Log Pause/Resume Controls
+
+**Files:**
+- Modify: `/home/jesse/git/stockyard/pkg/dashboard/templates/vm_detail.html`
+
+**Step 1: Add pause/resume state and button**
+
+Update the logs panel to include pause control:
+
+```html
+<!-- Logs panel -->
+<div class="bg-white rounded-lg border border-gray-200 p-4"
+     x-data="{
+         paused: false,
+         logLines: [],
+         maxLines: 500,
+         pendingLines: []
+     }">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold text-gray-900">Logs</h2>
+        <div class="flex items-center gap-2">
+            <button @click="paused = !paused; if (!paused) { logLines = logLines.concat(pendingLines); pendingLines = []; }"
+                    :class="paused ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'"
+                    class="px-2 py-1 text-xs rounded flex items-center gap-1">
+                <template x-if="paused">
+                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                    </svg>
+                </template>
+                <template x-if="!paused">
+                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M5.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75A.75.75 0 007.25 3h-1.5zM12.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75a.75.75 0 00-.75-.75h-1.5z"/>
+                    </svg>
+                </template>
+                <span x-text="paused ? 'Resume' + (pendingLines.length > 0 ? ' (' + pendingLines.length + ')' : '') : 'Pause'"></span>
+            </button>
+        </div>
+    </div>
+    <!-- Log content with pause-aware updates -->
+    <div class="bg-gray-900 text-gray-300 rounded-lg p-4 font-mono text-xs h-64 overflow-auto" id="logs">
+        <template x-for="line in logLines" :key="line.id">
+            <div :class="line.stream === 'stderr' ? 'text-red-400' : ''" x-text="line.text"></div>
+        </template>
+    </div>
+</div>
+```
+
+**Step 2: Update WebSocket handler to respect pause state**
+
+Add to the WebSocket message handler:
+
+```javascript
+ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === 'log') {
+        const newLine = { id: Date.now() + Math.random(), stream: data.stream, text: data.line };
+        if (paused) {
+            pendingLines.push(newLine);
+        } else {
+            logLines.push(newLine);
+            if (logLines.length > maxLines) logLines.shift();
+        }
+    }
+};
+```
+
+**Step 3: Commit**
+
+```bash
+git add pkg/dashboard/templates/vm_detail.html
+git commit -m "feat(dashboard): add log pause/resume controls"
+```
+
+---
+
+## Task 2B: Add Historical Log Search
+
+**Files:**
+- Modify: `/home/jesse/git/stockyard/pkg/dashboard/templates/vm_detail.html`
+- Create: `/home/jesse/git/stockyard/pkg/dashboard/log_history.go`
+- Create: `/home/jesse/git/stockyard/pkg/dashboard/log_history_test.go`
+
+**Step 1: Write failing test for log history storage**
+
+Create `pkg/dashboard/log_history_test.go`:
+
+```go
+package dashboard
+
+import (
+	"testing"
+)
+
+func TestLogHistory_StoresLines(t *testing.T) {
+	history := NewLogHistory(100)
+
+	history.AddLine("task-1", "stdout", "line 1")
+	history.AddLine("task-1", "stdout", "line 2")
+	history.AddLine("task-1", "stderr", "error line")
+
+	lines := history.Search("task-1", "line")
+	if len(lines) != 3 {
+		t.Errorf("expected 3 matching lines, got %d", len(lines))
+	}
+}
+
+func TestLogHistory_FiltersStream(t *testing.T) {
+	history := NewLogHistory(100)
+
+	history.AddLine("task-1", "stdout", "out line")
+	history.AddLine("task-1", "stderr", "err line")
+
+	lines := history.SearchStream("task-1", "stderr", "")
+	if len(lines) != 1 {
+		t.Errorf("expected 1 stderr line, got %d", len(lines))
+	}
+}
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `go test ./pkg/dashboard/... -run TestLogHistory -v`
+Expected: FAIL - LogHistory undefined
+
+**Step 3: Write minimal implementation**
+
+Create `pkg/dashboard/log_history.go`:
+
+```go
+package dashboard
+
+import (
+	"strings"
+	"sync"
+	"time"
+)
+
+// LogLine represents a stored log line.
+type LogLine struct {
+	TaskID    string    `json:"task_id"`
+	Stream    string    `json:"stream"`
+	Text      string    `json:"text"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// LogHistory stores recent log lines for search.
+type LogHistory struct {
+	lines    []LogLine
+	maxLines int
+	mu       sync.RWMutex
+}
+
+// NewLogHistory creates a new log history store.
+func NewLogHistory(maxLines int) *LogHistory {
+	return &LogHistory{
+		lines:    make([]LogLine, 0, maxLines),
+		maxLines: maxLines,
+	}
+}
+
+// AddLine stores a log line.
+func (lh *LogHistory) AddLine(taskID, stream, text string) {
+	lh.mu.Lock()
+	defer lh.mu.Unlock()
+
+	lh.lines = append(lh.lines, LogLine{
+		TaskID:    taskID,
+		Stream:    stream,
+		Text:      text,
+		Timestamp: time.Now(),
+	})
+
+	if len(lh.lines) > lh.maxLines {
+		lh.lines = lh.lines[1:]
+	}
+}
+
+// Search finds lines matching a query string.
+func (lh *LogHistory) Search(taskID, query string) []LogLine {
+	lh.mu.RLock()
+	defer lh.mu.RUnlock()
+
+	var results []LogLine
+	query = strings.ToLower(query)
+	for _, line := range lh.lines {
+		if line.TaskID == taskID {
+			if query == "" || strings.Contains(strings.ToLower(line.Text), query) {
+				results = append(results, line)
+			}
+		}
+	}
+	return results
+}
+
+// SearchStream finds lines matching query in a specific stream.
+func (lh *LogHistory) SearchStream(taskID, stream, query string) []LogLine {
+	lh.mu.RLock()
+	defer lh.mu.RUnlock()
+
+	var results []LogLine
+	query = strings.ToLower(query)
+	for _, line := range lh.lines {
+		if line.TaskID == taskID && line.Stream == stream {
+			if query == "" || strings.Contains(strings.ToLower(line.Text), query) {
+				results = append(results, line)
+			}
+		}
+	}
+	return results
+}
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `go test ./pkg/dashboard/... -run TestLogHistory -v`
+Expected: PASS
+
+**Step 5: Add log search API endpoint**
+
+Add to `server.go`:
+
+```go
+func (s *Server) registerRoutes() {
+	// ... existing routes
+	s.mux.HandleFunc("/api/vm/", s.handleAPIVM)
+	s.mux.HandleFunc("/api/vm-logs/", s.handleLogSearch)  // Add this
+}
+
+func (s *Server) handleLogSearch(w http.ResponseWriter, r *http.Request) {
+	// /api/vm-logs/task-123?q=error&stream=stderr
+	id := strings.TrimPrefix(r.URL.Path, "/api/vm-logs/")
+	if id == "" {
+		http.Error(w, "missing task ID", http.StatusBadRequest)
+		return
+	}
+
+	query := r.URL.Query().Get("q")
+	stream := r.URL.Query().Get("stream")
+
+	var lines []LogLine
+	if stream != "" && stream != "all" {
+		lines = s.logHistory.SearchStream(id, stream, query)
+	} else {
+		lines = s.logHistory.Search(id, query)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(lines)
+}
+```
+
+**Step 6: Add search UI to template**
+
+Add search input to log panel:
+
+```html
+<div class="flex items-center gap-2 mb-4"
+     x-data="{ searchQuery: '', searchResults: [], searching: false }">
+    <input type="text" x-model="searchQuery"
+           @input.debounce.300ms="
+               if (searchQuery.length >= 2) {
+                   searching = true;
+                   fetch('/api/vm-logs/{{.Task.ID}}?q=' + encodeURIComponent(searchQuery))
+                       .then(r => r.json())
+                       .then(data => { searchResults = data; searching = false; });
+               } else {
+                   searchResults = [];
+               }
+           "
+           placeholder="Search historical logs..."
+           class="flex-1 px-3 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+    <span x-show="searching" class="text-xs text-gray-400">Searching...</span>
+    <button @click="searchQuery = ''; searchResults = []"
+            x-show="searchQuery"
+            class="px-2 py-1 text-xs text-gray-500 hover:text-gray-700">
+        Clear
+    </button>
+</div>
+<!-- Search results -->
+<div x-show="searchResults.length > 0" class="mb-2 text-xs text-gray-500">
+    Found <span x-text="searchResults.length"></span> matches
+</div>
+```
+
+**Step 7: Commit**
+
+```bash
+git add pkg/dashboard/log_history.go pkg/dashboard/log_history_test.go pkg/dashboard/server.go pkg/dashboard/templates/vm_detail.html
+git commit -m "feat(dashboard): add historical log search"
+```
+
+---
+
+## Task 2C: Add Log Filter Input
+
+**Files:**
+- Modify: `/home/jesse/git/stockyard/pkg/dashboard/templates/vm_detail.html`
+
+**Step 1: Add filter state and UI**
+
+Extend the log panel with real-time filtering:
+
+```html
+<div class="flex items-center gap-2 mb-2">
+    <input type="text" x-model="filterText"
+           placeholder="Filter current logs..."
+           class="flex-1 px-3 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+    <select x-model="filterStream" class="px-2 py-1 text-sm border border-gray-300 rounded">
+        <option value="all">All</option>
+        <option value="stdout">stdout</option>
+        <option value="stderr">stderr</option>
+    </select>
+</div>
+
+<!-- Filtered log display -->
+<div class="bg-gray-900 text-gray-300 rounded-lg p-4 font-mono text-xs h-64 overflow-auto">
+    <template x-for="line in filteredLines" :key="line.id">
+        <div :class="line.stream === 'stderr' ? 'text-red-400' : ''" x-text="line.text"></div>
+    </template>
+</div>
+```
+
+**Step 2: Add computed property for filtered lines**
+
+```javascript
+// Add to x-data
+filterText: '',
+filterStream: 'all',
+
+// Add computed getter
+get filteredLines() {
+    return this.logLines.filter(line => {
+        const matchesStream = this.filterStream === 'all' || line.stream === this.filterStream;
+        const matchesText = !this.filterText || line.text.toLowerCase().includes(this.filterText.toLowerCase());
+        return matchesStream && matchesText;
+    });
+}
+```
+
+**Step 3: Commit**
+
+```bash
+git add pkg/dashboard/templates/vm_detail.html
+git commit -m "feat(dashboard): add log filter input"
+```
+
+---
+
 ## Task 3: Implement Split View Layout
 
 **Files:**
@@ -461,6 +833,317 @@ Update fleet.html to load preview via htmx:
 ```bash
 git add pkg/dashboard/templates/fleet.html pkg/dashboard/templates/vm_preview.html pkg/dashboard/server.go
 git commit -m "feat(dashboard): add split view layout with VM preview"
+```
+
+---
+
+## Task 3A: Add "By Repo" and "By Owner" Tabs
+
+**Files:**
+- Modify: `/home/jesse/git/stockyard/pkg/dashboard/templates/fleet.html`
+- Modify: `/home/jesse/git/stockyard/pkg/dashboard/server.go`
+
+**Step 1: Update fleet handler to provide grouped data**
+
+Add grouped data preparation to `handleFleet()` in `server.go`:
+
+```go
+func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	tasks, err := s.daemon.ListTasks(ctx, "")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Group by repo
+	byRepo := make(map[string][]*DaemonTask)
+	for _, t := range tasks {
+		repo := t.Repo
+		if repo == "" {
+			repo = "(none)"
+		}
+		byRepo[repo] = append(byRepo[repo], t)
+	}
+
+	// Group by owner
+	byOwner := make(map[string][]*DaemonTask)
+	for _, t := range tasks {
+		owner := t.Owner
+		if owner == "" {
+			owner = "(unknown)"
+		}
+		byOwner[owner] = append(byOwner[owner], t)
+	}
+
+	data := map[string]interface{}{
+		"Title":        "Fleet",
+		"User":         GetUser(r.Context()),
+		"ActiveNav":    "fleet",
+		"Tasks":        tasks,
+		"GroupedByRepo": byRepo,
+		"GroupedByOwner": byOwner,
+	}
+
+	// ... rest of handler
+}
+```
+
+**Step 2: Add view tabs to fleet template**
+
+Add tabs at the top of the VM list section:
+
+```html
+<div class="mb-6">
+    <div class="flex gap-4 border-b border-gray-200">
+        <button @click="viewTab = 'all'"
+                :class="viewTab === 'all' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'"
+                class="pb-2 px-1 text-sm font-medium">
+            All VMs
+        </button>
+        <button @click="viewTab = 'repo'"
+                :class="viewTab === 'repo' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'"
+                class="pb-2 px-1 text-sm font-medium">
+            By Repo
+        </button>
+        <button @click="viewTab = 'owner'"
+                :class="viewTab === 'owner' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'"
+                class="pb-2 px-1 text-sm font-medium">
+            By Owner
+        </button>
+        <button @click="viewTab = 'running'"
+                :class="viewTab === 'running' ? 'border-b-2 border-green-500 text-green-600' : 'text-gray-500'"
+                class="pb-2 px-1 text-sm font-medium">
+            Running
+        </button>
+        <button @click="viewTab = 'alerts'"
+                :class="viewTab === 'alerts' ? 'border-b-2 border-red-500 text-red-600' : 'text-gray-500'"
+                class="pb-2 px-1 text-sm font-medium flex items-center gap-1">
+            Alerts
+            {{if .AlertCount}}
+            <span class="bg-red-100 text-red-700 text-xs px-1.5 py-0.5 rounded-full">{{.AlertCount}}</span>
+            {{end}}
+        </button>
+    </div>
+</div>
+
+<!-- By Repo view -->
+<div x-show="viewTab === 'repo'" class="space-y-4">
+    {{range $repo, $tasks := .GroupedByRepo}}
+    <div class="bg-white rounded-lg border border-gray-200 overflow-hidden" x-data="{ open: true }">
+        <button @click="open = !open" class="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100">
+            <div class="flex items-center gap-2">
+                <svg :class="open ? 'rotate-90' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+                <span class="font-medium truncate">{{$repo}}</span>
+                <span class="text-sm text-gray-500">({{len $tasks}})</span>
+            </div>
+        </button>
+        <div x-show="open" x-collapse>
+            <div class="divide-y divide-gray-100">
+                {{range $tasks}}
+                <!-- VM row - same as in Task 3 -->
+                {{end}}
+            </div>
+        </div>
+    </div>
+    {{end}}
+</div>
+
+<!-- By Owner view -->
+<div x-show="viewTab === 'owner'" class="space-y-4">
+    {{range $owner, $tasks := .GroupedByOwner}}
+    <div class="bg-white rounded-lg border border-gray-200 overflow-hidden" x-data="{ open: true }">
+        <button @click="open = !open" class="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100">
+            <div class="flex items-center gap-2">
+                <svg :class="open ? 'rotate-90' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+                <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold uppercase">
+                        {{slice $owner 0 1}}
+                    </div>
+                    <span class="font-medium">{{$owner}}</span>
+                </div>
+                <span class="text-sm text-gray-500">({{len $tasks}})</span>
+            </div>
+        </button>
+        <div x-show="open" x-collapse>
+            <div class="divide-y divide-gray-100">
+                {{range $tasks}}
+                <!-- VM row - same as in Task 3 -->
+                {{end}}
+            </div>
+        </div>
+    </div>
+    {{end}}
+</div>
+```
+
+**Step 3: Add viewTab to x-data**
+
+Update the x-data initialization:
+
+```html
+x-data="{
+    selectedVM: null,
+    showActivity: false,
+    showSidebar: window.innerWidth >= 1024,
+    viewTab: 'all',
+    metrics: {},
+    alerts: {},
+    connected: false
+}"
+```
+
+**Step 4: Commit**
+
+```bash
+git add pkg/dashboard/templates/fleet.html pkg/dashboard/server.go
+git commit -m "feat(dashboard): add By Repo and By Owner view tabs"
+```
+
+---
+
+## Task 3B: Add Double-Click to Open Detail
+
+**Files:**
+- Modify: `/home/jesse/git/stockyard/pkg/dashboard/templates/fleet.html`
+
+**Step 1: Add double-click handler to VM rows**
+
+Update the VM row in the fleet template:
+
+```html
+<div class="px-4 py-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
+     @click="selectedVM = '{{.ID}}'; $dispatch('select-vm', { id: '{{.ID}}' })"
+     @dblclick="window.location.href = '/vm/{{.ID}}'"
+     :class="selectedVM === '{{.ID}}' ? 'bg-blue-50 border-l-2 border-blue-500' : ''">
+    <!-- ... existing content ... -->
+</div>
+```
+
+**Step 2: Add visual hint for double-click**
+
+Add a tooltip or small hint:
+
+```html
+<div class="text-xs text-gray-400 mt-1 hidden lg:block">
+    Click to preview • Double-click to open
+</div>
+```
+
+**Step 3: Commit**
+
+```bash
+git add pkg/dashboard/templates/fleet.html
+git commit -m "feat(dashboard): add double-click to open VM detail"
+```
+
+---
+
+## Task 3C: Add Sparklines to Preview Panel
+
+**Files:**
+- Modify: `/home/jesse/git/stockyard/pkg/dashboard/templates/vm_preview.html`
+
+**Step 1: Add mini sparkline charts to preview**
+
+Update the preview panel quick metrics section:
+
+```html
+<!-- Quick metrics with sparklines -->
+<div class="grid grid-cols-2 gap-2">
+    <div class="p-3 bg-white rounded-lg border border-gray-200">
+        <div class="flex items-center justify-between mb-1">
+            <span class="text-xs text-gray-500">CPU</span>
+            <span class="text-sm font-bold text-gray-900" id="preview-cpu">--</span>
+        </div>
+        <div class="h-8">
+            <canvas id="preview-cpu-sparkline"></canvas>
+        </div>
+    </div>
+    <div class="p-3 bg-white rounded-lg border border-gray-200">
+        <div class="flex items-center justify-between mb-1">
+            <span class="text-xs text-gray-500">Memory</span>
+            <span class="text-sm font-bold text-gray-900" id="preview-mem">--</span>
+        </div>
+        <div class="h-8">
+            <canvas id="preview-mem-sparkline"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const cpuData = [];
+    const memData = [];
+
+    const createMiniSparkline = (id, color) => {
+        const ctx = document.getElementById(id);
+        if (!ctx) return null;
+        return new Chart(ctx, {
+            type: 'line',
+            data: { labels: [], datasets: [{ data: [], borderColor: color, backgroundColor: 'transparent', tension: 0.4, pointRadius: 0, borderWidth: 1 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false, min: 0, max: 100 } }, animation: false }
+        });
+    };
+
+    const cpuChart = createMiniSparkline('preview-cpu-sparkline', '#10b981');
+    const memChart = createMiniSparkline('preview-mem-sparkline', '#3b82f6');
+
+    // Update from parent's WebSocket metrics
+    window.addEventListener('preview-metrics', (e) => {
+        if (e.detail.taskId === '{{.Task.ID}}') {
+            const m = e.detail.metrics;
+            document.getElementById('preview-cpu').textContent = m.cpu_percent.toFixed(0) + '%';
+            document.getElementById('preview-mem').textContent = formatBytes(m.memory_bytes);
+
+            cpuData.push(m.cpu_percent);
+            if (cpuData.length > 20) cpuData.shift();
+            if (cpuChart) {
+                cpuChart.data.labels = cpuData.map((_, i) => i);
+                cpuChart.data.datasets[0].data = cpuData;
+                cpuChart.update('none');
+            }
+
+            const memPct = (m.memory_bytes / m.memory_max_bytes) * 100;
+            memData.push(memPct);
+            if (memData.length > 20) memData.shift();
+            if (memChart) {
+                memChart.data.labels = memData.map((_, i) => i);
+                memChart.data.datasets[0].data = memData;
+                memChart.update('none');
+            }
+        }
+    });
+})();
+</script>
+```
+
+**Step 2: Dispatch metrics events from main page**
+
+Add to fleet.html WebSocket handler:
+
+```javascript
+ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === 'metrics') {
+        metrics[data.task_id] = data.metrics;
+        // Dispatch for preview panel
+        window.dispatchEvent(new CustomEvent('preview-metrics', {
+            detail: { taskId: data.task_id, metrics: data.metrics }
+        }));
+    }
+};
+```
+
+**Step 3: Commit**
+
+```bash
+git add pkg/dashboard/templates/vm_preview.html pkg/dashboard/templates/fleet.html
+git commit -m "feat(dashboard): add sparklines to preview panel"
 ```
 
 ---
@@ -843,6 +1526,104 @@ git commit -m "feat(dashboard): add activity feed slide-over panel"
 
 ---
 
+## Task 5A: Add User Avatar to Header
+
+**Files:**
+- Modify: `/home/jesse/git/stockyard/pkg/dashboard/templates/fleet.html`
+- Modify: `/home/jesse/git/stockyard/pkg/dashboard/templates/vm_detail.html`
+- Modify: `/home/jesse/git/stockyard/pkg/dashboard/templates/layout.html` (if using shared layout)
+
+**Step 1: Create avatar component**
+
+Add a reusable avatar display that uses Tailscale user info:
+
+```html
+<!-- Avatar component - used in header -->
+<div class="flex items-center gap-2">
+    {{if .UserAvatar}}
+    <img src="{{.UserAvatar}}" alt="{{.User}}" class="w-8 h-8 rounded-full">
+    {{else}}
+    <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-bold uppercase">
+        {{slice .User 0 1}}
+    </div>
+    {{end}}
+    <span class="text-sm text-gray-600 hidden sm:inline">{{.User}}</span>
+</div>
+```
+
+**Step 2: Add avatar URL to context**
+
+Update the Tailscale auth middleware to extract avatar URL:
+
+```go
+// In pkg/dashboard/auth.go or where user context is set
+type UserInfo struct {
+    Name      string
+    LoginName string
+    AvatarURL string
+}
+
+func getUserFromWhoIs(who *apitype.WhoIsResponse) UserInfo {
+    user := UserInfo{
+        Name:      who.UserProfile.DisplayName,
+        LoginName: who.UserProfile.LoginName,
+    }
+    // Tailscale provides profile photo URL
+    if who.UserProfile.ProfilePicURL != "" {
+        user.AvatarURL = who.UserProfile.ProfilePicURL
+    }
+    return user
+}
+```
+
+**Step 3: Update fleet template header**
+
+Replace the plain text user display with avatar:
+
+```html
+<header class="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between shrink-0">
+    <div class="flex items-center gap-4">
+        <!-- Mobile menu button -->
+        <button @click="showSidebar = !showSidebar" class="lg:hidden p-2 hover:bg-gray-100 rounded">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+        </button>
+        <span class="font-semibold text-lg">Stockyard</span>
+    </div>
+
+    <div class="flex items-center gap-4">
+        <!-- Activity button -->
+        <button @click="showActivity = !showActivity" class="p-2 hover:bg-gray-100 rounded relative">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+            </svg>
+        </button>
+
+        <!-- User avatar -->
+        <div class="flex items-center gap-2">
+            {{if .UserAvatar}}
+            <img src="{{.UserAvatar}}" alt="{{.User}}" class="w-8 h-8 rounded-full">
+            {{else}}
+            <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-bold uppercase">
+                {{slice .User 0 1}}
+            </div>
+            {{end}}
+            <span class="text-sm text-gray-600 hidden sm:inline">{{.User}}</span>
+        </div>
+    </div>
+</header>
+```
+
+**Step 4: Commit**
+
+```bash
+git add pkg/dashboard/templates/fleet.html pkg/dashboard/templates/vm_detail.html pkg/dashboard/auth.go
+git commit -m "feat(dashboard): add user avatar to header"
+```
+
+---
+
 ## Task 6: Add Alert Indicators
 
 **Files:**
@@ -1046,6 +1827,180 @@ Expected: PASS
 ```bash
 git add pkg/dashboard/alerts.go pkg/dashboard/alerts_test.go
 git commit -m "feat(dashboard): add alert checking infrastructure"
+```
+
+---
+
+## Task 6A: Add Unresponsive VM Detection
+
+**Files:**
+- Modify: `/home/jesse/git/stockyard/pkg/dashboard/alerts.go`
+- Modify: `/home/jesse/git/stockyard/pkg/dashboard/alerts_test.go`
+
+**Step 1: Write failing test for unresponsive detection**
+
+Add to `alerts_test.go`:
+
+```go
+func TestAlertChecker_DetectsUnresponsive(t *testing.T) {
+	checker := NewAlertChecker()
+	// Override unresponsive threshold for faster testing
+	checker.unresponsiveTime = 50 * time.Millisecond
+
+	// First call - normal metrics
+	_ = checker.Check("task-1", VMMetrics{
+		CPUPercent:     10.0,
+		MemoryBytes:    1024 * 1024 * 1024,
+		MemoryMaxBytes: 4 * 1024 * 1024 * 1024,
+	})
+
+	// Wait for the unresponsive threshold to pass
+	time.Sleep(100 * time.Millisecond)
+
+	// Check again - should detect unresponsive
+	alerts := checker.CheckUnresponsive("task-1")
+
+	found := false
+	for _, a := range alerts {
+		if a.Type == "unresponsive" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected unresponsive alert type")
+	}
+}
+
+func TestAlertChecker_NoUnresponsiveForRecentMetrics(t *testing.T) {
+	checker := NewAlertChecker()
+
+	// Recent metrics
+	_ = checker.Check("task-1", VMMetrics{
+		CPUPercent:     10.0,
+		MemoryBytes:    1024 * 1024 * 1024,
+		MemoryMaxBytes: 4 * 1024 * 1024 * 1024,
+	})
+
+	// Check immediately - should not be unresponsive
+	alerts := checker.CheckUnresponsive("task-1")
+
+	for _, a := range alerts {
+		if a.Type == "unresponsive" {
+			t.Error("should not flag recent metrics as unresponsive")
+		}
+	}
+}
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `go test ./pkg/dashboard/... -run TestAlertChecker_DetectsUnresponsive -v`
+Expected: FAIL - lastMetricsTime undefined
+
+**Step 3: Add unresponsive detection to AlertChecker**
+
+Update `alerts.go`:
+
+```go
+type AlertChecker struct {
+	cpuThreshold      float64
+	memoryThreshold   float64
+	cpuDuration       time.Duration
+	unresponsiveTime  time.Duration
+	activeAlerts      map[string][]Alert
+	highCPUSince      map[string]time.Time
+	lastMetricsTime   map[string]time.Time  // Track last metrics received
+	mu                sync.RWMutex
+}
+
+func NewAlertChecker() *AlertChecker {
+	return &AlertChecker{
+		cpuThreshold:     90.0,
+		memoryThreshold:  95.0,
+		cpuDuration:      5 * time.Minute,
+		unresponsiveTime: 60 * time.Second,  // No metrics for 60s = unresponsive
+		activeAlerts:     make(map[string][]Alert),
+		highCPUSince:     make(map[string]time.Time),
+		lastMetricsTime:  make(map[string]time.Time),
+	}
+}
+
+// Check evaluates metrics and returns any active alerts.
+func (ac *AlertChecker) Check(taskID string, metrics VMMetrics) []Alert {
+	ac.mu.Lock()
+	defer ac.mu.Unlock()
+
+	// Record that we received metrics
+	ac.lastMetricsTime[taskID] = time.Now()
+
+	// ... rest of existing Check implementation ...
+}
+
+// CheckUnresponsive checks if a VM hasn't reported metrics recently.
+func (ac *AlertChecker) CheckUnresponsive(taskID string) []Alert {
+	ac.mu.RLock()
+	defer ac.mu.RUnlock()
+
+	var alerts []Alert
+	now := time.Now()
+
+	if lastTime, ok := ac.lastMetricsTime[taskID]; ok {
+		if now.Sub(lastTime) > ac.unresponsiveTime {
+			alerts = append(alerts, Alert{
+				Type:     "unresponsive",
+				TaskID:   taskID,
+				Severity: "critical",
+				Message:  "VM not responding - no metrics received",
+				Since:    lastTime,
+			})
+		}
+	}
+
+	return alerts
+}
+
+// CheckAllUnresponsive checks all known VMs for unresponsive state.
+func (ac *AlertChecker) CheckAllUnresponsive() []Alert {
+	ac.mu.RLock()
+	taskIDs := make([]string, 0, len(ac.lastMetricsTime))
+	for id := range ac.lastMetricsTime {
+		taskIDs = append(taskIDs, id)
+	}
+	ac.mu.RUnlock()
+
+	var alerts []Alert
+	for _, id := range taskIDs {
+		alerts = append(alerts, ac.CheckUnresponsive(id)...)
+	}
+	return alerts
+}
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `go test ./pkg/dashboard/... -run TestAlertChecker_DetectsUnresponsive -v`
+Expected: PASS
+
+**Step 5: Add unresponsive indicator to UI**
+
+Add to the VM row in fleet.html:
+
+```html
+<!-- Alert indicators -->
+<template x-if="alerts['{{.ID}}']?.some(a => a.type === 'unresponsive')">
+    <span class="text-yellow-500" title="Unresponsive">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+        </svg>
+    </span>
+</template>
+```
+
+**Step 6: Commit**
+
+```bash
+git add pkg/dashboard/alerts.go pkg/dashboard/alerts_test.go pkg/dashboard/templates/fleet.html
+git commit -m "feat(dashboard): add unresponsive VM detection"
 ```
 
 ---
@@ -1368,18 +2323,29 @@ git commit -m "feat(daemon): integrate activity feed and alert checking"
 Phase 3 implementation adds:
 - Chart.js sparklines for resource metrics
 - Expandable full charts for detailed analysis
+- Log pause/resume controls
+- Historical log search
+- Log filter input (real-time filtering)
 - Split view layout with preview panel
+- "By Repo" and "By Owner" view tabs
+- Double-click to open VM detail
+- Sparklines in preview panel
 - Activity feed with slide-over panel
 - Event recording for VM lifecycle
+- User avatar display in header
 - Alert detection for high CPU/memory
+- Unresponsive VM detection
 - Alert badges and indicators
 - Responsive design for mobile/tablet
 
 After Phase 3, the dashboard is fully polished with:
 - Visual sparklines showing resource trends
+- Complete log viewing controls (pause, search, filter)
+- Multiple view modes (All, By Repo, By Owner, Running, Alerts)
 - Quick preview without leaving fleet page
 - Real-time activity feed
-- Alert indicators for problem VMs
+- User profile display with avatar
+- Alert indicators for problem VMs (high CPU, high memory, unresponsive)
 - Full functionality on any device size
 
 Phase 4 (Terminal) adds xterm.js for in-browser SSH access.
