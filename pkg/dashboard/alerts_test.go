@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"testing"
+	"time"
 )
 
 func TestAlertChecker_DetectsHighCPU(t *testing.T) {
@@ -45,5 +46,48 @@ func TestAlertChecker_DetectsHighMemory(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected high_memory alert type")
+	}
+}
+
+func TestAlertChecker_DetectsUnresponsive(t *testing.T) {
+	checker := NewAlertChecker()
+	checker.unresponsiveTime = 50 * time.Millisecond
+
+	_ = checker.Check("task-1", VMMetrics{
+		CPUPercent:     10.0,
+		MemoryBytes:    1024 * 1024 * 1024,
+		MemoryMaxBytes: 4 * 1024 * 1024 * 1024,
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	alerts := checker.CheckUnresponsive("task-1")
+
+	found := false
+	for _, a := range alerts {
+		if a.Type == "unresponsive" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected unresponsive alert type")
+	}
+}
+
+func TestAlertChecker_NoUnresponsiveForRecentMetrics(t *testing.T) {
+	checker := NewAlertChecker()
+
+	_ = checker.Check("task-1", VMMetrics{
+		CPUPercent:     10.0,
+		MemoryBytes:    1024 * 1024 * 1024,
+		MemoryMaxBytes: 4 * 1024 * 1024 * 1024,
+	})
+
+	alerts := checker.CheckUnresponsive("task-1")
+
+	for _, a := range alerts {
+		if a.Type == "unresponsive" {
+			t.Error("should not flag recent metrics as unresponsive")
+		}
 	}
 }

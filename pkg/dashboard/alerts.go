@@ -18,18 +18,22 @@ type Alert struct {
 
 // AlertChecker evaluates metrics and detects problems.
 type AlertChecker struct {
-	cpuThreshold    float64
-	memoryThreshold float64
-	activeAlerts    map[string][]Alert
-	mu              sync.RWMutex
+	cpuThreshold     float64
+	memoryThreshold  float64
+	unresponsiveTime time.Duration
+	activeAlerts     map[string][]Alert
+	lastMetricsTime  map[string]time.Time
+	mu               sync.RWMutex
 }
 
 // NewAlertChecker creates a new alert checker with default thresholds.
 func NewAlertChecker() *AlertChecker {
 	return &AlertChecker{
-		cpuThreshold:    90.0, // 90% CPU
-		memoryThreshold: 95.0, // 95% memory
-		activeAlerts:    make(map[string][]Alert),
+		cpuThreshold:     90.0,              // 90% CPU
+		memoryThreshold:  95.0,              // 95% memory
+		unresponsiveTime: 60 * time.Second,  // 60s without metrics
+		activeAlerts:     make(map[string][]Alert),
+		lastMetricsTime:  make(map[string]time.Time),
 	}
 }
 
@@ -40,6 +44,9 @@ func (ac *AlertChecker) Check(taskID string, metrics VMMetrics) []Alert {
 
 	var alerts []Alert
 	now := time.Now()
+
+	// Record when metrics were received for unresponsive detection
+	ac.lastMetricsTime[taskID] = now
 
 	// Check CPU - trigger immediately for simplicity (duration check can be added later)
 	if metrics.CPUPercent >= ac.cpuThreshold {
@@ -103,4 +110,26 @@ func (ac *AlertChecker) ClearAlerts(taskID string) {
 	ac.mu.Lock()
 	defer ac.mu.Unlock()
 	delete(ac.activeAlerts, taskID)
+}
+
+// CheckUnresponsive checks if a VM has stopped reporting metrics.
+func (ac *AlertChecker) CheckUnresponsive(taskID string) []Alert {
+	ac.mu.RLock()
+	defer ac.mu.RUnlock()
+
+	var alerts []Alert
+	now := time.Now()
+
+	if lastTime, ok := ac.lastMetricsTime[taskID]; ok {
+		if now.Sub(lastTime) > ac.unresponsiveTime {
+			alerts = append(alerts, Alert{
+				Type:     "unresponsive",
+				TaskID:   taskID,
+				Severity: "critical",
+				Message:  "VM has not reported metrics recently",
+				Since:    lastTime,
+			})
+		}
+	}
+	return alerts
 }
