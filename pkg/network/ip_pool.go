@@ -129,6 +129,12 @@ func (p *IPPool) Gateway() string {
 
 // Netmask returns the netmask in dotted-decimal notation.
 func (p *IPPool) Netmask() string {
+	return p.netmask()
+}
+
+// netmask returns the netmask in dotted-decimal notation.
+// This is an internal method safe to call while holding the lock.
+func (p *IPPool) netmask() string {
 	mask := p.network.Mask
 	if len(mask) == 4 {
 		return fmt.Sprintf("%d.%d.%d.%d", mask[0], mask[1], mask[2], mask[3])
@@ -261,4 +267,49 @@ func (p *IPPool) LoadState() error {
 	}
 
 	return nil
+}
+
+// StaticNetworkConfig contains network configuration for a VM.
+type StaticNetworkConfig struct {
+	IP      string `json:"ip"`
+	Netmask string `json:"netmask"`
+	Gateway string `json:"gateway"`
+	DNS     string `json:"dns"`
+}
+
+// NetworkConfig returns the complete network configuration for a VM.
+// Returns nil if the VM has no allocation.
+func (p *IPPool) NetworkConfig(vmID string) *StaticNetworkConfig {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	ip, ok := p.allocated[vmID]
+	if !ok {
+		return nil
+	}
+
+	return &StaticNetworkConfig{
+		IP:      ip,
+		Netmask: p.netmask(),
+		Gateway: p.gateway,
+		DNS:     "8.8.8.8",
+	}
+}
+
+// KernelIPArgs returns the kernel command line IP configuration string.
+// Format: ip=<client-ip>::<gw-ip>:<netmask>::<device>:<autoconf>
+// This configures the IP in the kernel before userspace starts.
+// Returns empty string if VM has no allocation.
+func (p *IPPool) KernelIPArgs(vmID string) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	ip, ok := p.allocated[vmID]
+	if !ok {
+		return ""
+	}
+
+	// Format: ip=<client-ip>:<server-ip>:<gw-ip>:<netmask>:<hostname>:<device>:<autoconf>
+	// We leave server-ip and hostname empty
+	return fmt.Sprintf("ip=%s::%s:%s::eth0:off", ip, p.gateway, p.netmask())
 }

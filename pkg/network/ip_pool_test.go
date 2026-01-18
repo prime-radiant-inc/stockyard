@@ -110,3 +110,43 @@ func TestIPPoolPersistence(t *testing.T) {
 		t.Errorf("vm-002: expected %s, got %s", ip2, ip2Again)
 	}
 }
+
+func TestIPPoolNetworkConfig(t *testing.T) {
+	pool, _ := NewIPPool("10.0.100.0/24", "10.0.100.1")
+	ip, _ := pool.Allocate("vm-001")
+
+	cfg := pool.NetworkConfig("vm-001")
+	if cfg == nil {
+		t.Fatal("expected non-nil NetworkConfig")
+	}
+	if cfg.IP != ip {
+		t.Errorf("expected IP %s, got %s", ip, cfg.IP)
+	}
+	if cfg.Gateway != "10.0.100.1" {
+		t.Errorf("expected gateway 10.0.100.1, got %s", cfg.Gateway)
+	}
+	if cfg.Netmask != "255.255.255.0" {
+		t.Errorf("expected netmask 255.255.255.0, got %s", cfg.Netmask)
+	}
+
+	// Non-existent VM should return nil
+	if pool.NetworkConfig("no-such-vm") != nil {
+		t.Error("expected nil for non-existent VM")
+	}
+}
+
+func TestIPPoolKernelIPArgs(t *testing.T) {
+	pool, _ := NewIPPool("10.0.100.0/24", "10.0.100.1")
+	pool.Allocate("vm-001")
+
+	args := pool.KernelIPArgs("vm-001")
+	expected := "ip=10.0.100.2::10.0.100.1:255.255.255.0::eth0:off"
+	if args != expected {
+		t.Errorf("expected %q, got %q", expected, args)
+	}
+
+	// Non-existent VM should return empty
+	if pool.KernelIPArgs("no-such-vm") != "" {
+		t.Error("expected empty string for non-existent VM")
+	}
+}
