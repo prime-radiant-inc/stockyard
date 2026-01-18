@@ -7,13 +7,17 @@
 #   make clean    - Remove build artifacts
 #   make help     - Show this help
 
-.PHONY: all docker rootfs clean help
+.PHONY: all docker rootfs clean help build-deps
+
+# Build dependencies (shell binary)
+build-deps:
+	$(MAKE) -C .. build-shell
 
 # Default target: build everything
 all: rootfs
 
 # Build Docker image
-docker:
+docker: build-deps
 	@./build.sh
 
 # Convert to Firecracker rootfs (depends on docker image)

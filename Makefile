@@ -1,10 +1,14 @@
-.PHONY: all build proto clean test test-unit lint fmt install uninstall deploy
+.PHONY: all build proto clean test test-unit lint fmt install uninstall deploy build-shell
 
 all: proto build
 
 build:
 	go build -o bin/stockyard ./cmd/stockyard
 	go build -o bin/stockyardd ./cmd/stockyardd
+
+# Build stockyard-shell for VM (static binary for Linux)
+build-shell:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o vm-image/scripts/stockyard-shell/stockyard-shell ./cmd/stockyard-shell
 
 proto:
 	mkdir -p pkg/api/v1
