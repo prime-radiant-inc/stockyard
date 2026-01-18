@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestServer_HealthEndpoint(t *testing.T) {
@@ -227,5 +228,43 @@ func TestServer_DestroyVM_Error(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", w.Code)
+	}
+}
+
+func TestServer_FleetPage_WithAdapter(t *testing.T) {
+	// Use MockRealDaemon from adapter_test.go to test full integration flow:
+	// MockRealDaemon -> DaemonAdapter -> Server -> HTML output
+	mock := &MockRealDaemon{
+		tasks: []*DaemonTask{
+			{
+				ID:                "task-1",
+				Name:              "test-vm",
+				Repo:              "github.com/test/repo",
+				Ref:               "main",
+				Status:            "running",
+				TailscaleHostname: "stockyard-task-1",
+				CreatedAt:         time.Now(),
+			},
+		},
+	}
+
+	adapter := NewDaemonAdapter(mock)
+	srv := NewServer(adapter)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "task-1") {
+		t.Error("expected task-1 in output")
+	}
+	if !strings.Contains(body, "running") {
+		t.Error("expected running status in output")
 	}
 }
