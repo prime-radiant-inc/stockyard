@@ -79,6 +79,10 @@ func (m *MockDaemon) CreateSnapshot(ctx context.Context, taskID, label string) (
 	return &Snapshot{Name: "snap-1", TaskID: taskID, Label: label}, nil
 }
 
+func (m *MockDaemon) RestoreSnapshot(ctx context.Context, taskID, snapshotName string) error {
+	return m.err
+}
+
 func TestServer_FleetPage(t *testing.T) {
 	mock := &MockDaemon{
 		tasks: []Task{

@@ -33,4 +33,5 @@ type DaemonAPI interface {
 	DestroyTask(ctx context.Context, id string) error
 	ListSnapshots(ctx context.Context, taskID string) ([]Snapshot, error)
 	CreateSnapshot(ctx context.Context, taskID, label string) (*Snapshot, error)
+	RestoreSnapshot(ctx context.Context, taskID, snapshotName string) error
 }

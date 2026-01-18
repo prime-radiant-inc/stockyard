@@ -18,6 +18,7 @@ type MockRealDaemon struct {
 	stopped   []string
 	destroyed []string
 	created   []string
+	restored  []string
 }
 
 func (m *MockRealDaemon) ListTasks(ctx context.Context, status string) ([]*DaemonTask, error) {
@@ -59,6 +60,11 @@ func (m *MockRealDaemon) ListTaskSnapshots(ctx context.Context, taskID string) (
 func (m *MockRealDaemon) CreateSnapshot(ctx context.Context, taskID, label string) (string, error) {
 	m.created = append(m.created, taskID+":"+label)
 	return "snap-" + taskID, nil
+}
+
+func (m *MockRealDaemon) RestoreSnapshot(ctx context.Context, taskID, snapshotName string) error {
+	m.restored = append(m.restored, taskID+":"+snapshotName)
+	return nil
 }
 
 func TestDaemonAdapter_ListTasks(t *testing.T) {
@@ -222,5 +228,22 @@ func TestDaemonAdapter_CreateSnapshot(t *testing.T) {
 
 	if len(mock.created) != 1 || mock.created[0] != "task-1:test-label" {
 		t.Errorf("expected task-1:test-label to be created, got %v", mock.created)
+	}
+}
+
+func TestDaemonAdapter_RestoreSnapshot(t *testing.T) {
+	mock := &MockRealDaemon{
+		tasks:     []*DaemonTask{{ID: "task-1", Status: "stopped"}},
+		snapshots: make(map[string][]DaemonSnapshot),
+	}
+
+	adapter := NewDaemonAdapter(mock)
+	err := adapter.RestoreSnapshot(context.Background(), "task-1", "task-1@my-label")
+	if err != nil {
+		t.Fatalf("RestoreSnapshot failed: %v", err)
+	}
+
+	if len(mock.restored) != 1 || mock.restored[0] != "task-1:task-1@my-label" {
+		t.Errorf("expected RestoreSnapshot called with task-1:task-1@my-label, got %v", mock.restored)
 	}
 }

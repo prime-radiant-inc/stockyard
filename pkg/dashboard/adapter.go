@@ -18,6 +18,7 @@ type RealDaemon interface {
 	// Snapshot operations - matches daemon.State.ListTaskSnapshots and ZFS manager
 	ListTaskSnapshots(ctx context.Context, taskID string) ([]DaemonSnapshot, error)
 	CreateSnapshot(ctx context.Context, taskID, label string) (string, error)
+	RestoreSnapshot(ctx context.Context, taskID, snapshotName string) error
 }
 
 // DaemonTask mirrors daemon.Task to avoid import cycles.
@@ -107,6 +108,10 @@ func (a *DaemonAdapter) CreateSnapshot(ctx context.Context, taskID, label string
 		Label:     label,
 		CreatedAt: time.Now(),
 	}, nil
+}
+
+func (a *DaemonAdapter) RestoreSnapshot(ctx context.Context, taskID, snapshotName string) error {
+	return a.daemon.RestoreSnapshot(ctx, taskID, snapshotName)
 }
 
 // convertTask converts a daemon task to a dashboard task.
