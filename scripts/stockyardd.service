@@ -10,6 +10,10 @@ ExecStart=/usr/local/bin/stockyardd
 Restart=on-failure
 RestartSec=5
 
+# Only kill the daemon process, not child VMs
+# This allows VMs to survive daemon restarts
+KillMode=process
+
 # Runtime directory for socket
 RuntimeDirectory=stockyard
 RuntimeDirectoryMode=0755

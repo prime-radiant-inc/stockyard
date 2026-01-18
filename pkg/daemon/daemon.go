@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
@@ -114,6 +115,61 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 	return d, nil
 }
 
+// reconcileRunningVMs checks all tasks marked as "running" and updates their
+// status if the underlying Firecracker process is no longer alive. This handles
+// VMs that may have died while the daemon was stopped.
+func (d *Daemon) reconcileRunningVMs() {
+	tasks, err := d.state.ListTasks("running")
+	if err != nil {
+		fmt.Printf("Warning: Failed to list running tasks for reconciliation: %v\n", err)
+		return
+	}
+
+	if len(tasks) == 0 {
+		return
+	}
+
+	fmt.Printf("Reconciling %d running task(s)...\n", len(tasks))
+
+	// VM state directory: /var/lib/stockyard/vms/stockyard/<task-id>/
+	const vmStateDir = "/var/lib/stockyard/vms"
+	const vmNamespace = "stockyard"
+
+	for _, task := range tasks {
+		pidFile := filepath.Join(vmStateDir, vmNamespace, task.ID, "firecracker.pid")
+		pidData, err := os.ReadFile(pidFile)
+		if err != nil {
+			// PID file doesn't exist - VM is definitely not running
+			fmt.Printf("  Task %s: PID file missing, marking as stopped\n", task.ID)
+			d.state.UpdateTaskStatus(task.ID, "stopped")
+			continue
+		}
+
+		var pid int
+		if _, err := fmt.Sscanf(string(pidData), "%d", &pid); err != nil {
+			fmt.Printf("  Task %s: Invalid PID file, marking as stopped\n", task.ID)
+			d.state.UpdateTaskStatus(task.ID, "stopped")
+			continue
+		}
+
+		// Check if the process is still running
+		process, err := os.FindProcess(pid)
+		if err != nil {
+			fmt.Printf("  Task %s: Process %d not found, marking as stopped\n", task.ID, pid)
+			d.state.UpdateTaskStatus(task.ID, "stopped")
+			continue
+		}
+
+		// Signal 0 checks if process exists without actually sending a signal
+		if err := process.Signal(syscall.Signal(0)); err != nil {
+			fmt.Printf("  Task %s: Process %d not running, marking as stopped\n", task.ID, pid)
+			d.state.UpdateTaskStatus(task.ID, "stopped")
+		} else {
+			fmt.Printf("  Task %s: Process %d still running\n", task.ID, pid)
+		}
+	}
+}
+
 // Start begins the daemon, listening on the configured Unix socket.
 // It blocks until the context is cancelled or an error occurs.
 func (d *Daemon) Start(ctx context.Context) error {
@@ -125,6 +181,9 @@ func (d *Daemon) Start(ctx context.Context) error {
 	d.running = true
 	d.snapshots = NewSnapshotService(d)
 	d.mu.Unlock()
+
+	// Reconcile running VMs - update status for any that died while daemon was stopped
+	d.reconcileRunningVMs()
 
 	// Ensure base rootfs image is available for VM creation
 	if err := d.ensureBaseImage(ctx); err != nil {
@@ -178,7 +237,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 		// Create dashboard facade and adapter
 		facade := NewDashboardFacade(d.state, d.tasks, d.zfs)
 		adapter := dashboard.NewDaemonAdapter(facade)
-		d.dashboardServer = dashboard.NewServer(adapter)
+		d.dashboardServer = dashboard.NewServer(adapter, d.cfg.VM.User)
 		tsClient := tailscale.NewLocalClient()
 		handler := dashboard.AuthMiddleware(d.dashboardServer, tsClient)
 
