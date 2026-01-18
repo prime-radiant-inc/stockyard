@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -265,6 +267,34 @@ func (tm *TaskManager) Close() error {
 		return tm.fc.Close()
 	}
 	return nil
+}
+
+// GetVMMAC reads the MAC address for a VM from its state directory.
+func (tm *TaskManager) GetVMMAC(namespace, vmID string) (string, error) {
+	macPath := filepath.Join("/var/lib/stockyard/vms", namespace, vmID, "mac_addr")
+	data, err := os.ReadFile(macPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read MAC address: %w", err)
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// GetVMIP looks up a VM's IP address via DHCP leases.
+func (tm *TaskManager) GetVMIP(namespace, vmID string) (string, error) {
+	mac, err := tm.GetVMMAC(namespace, vmID)
+	if err != nil {
+		return "", err
+	}
+
+	if tm.daemon.DHCP() == nil {
+		return "", fmt.Errorf("DHCP server not available")
+	}
+
+	ip, found := tm.daemon.DHCP().GetIPForMAC(mac)
+	if !found {
+		return "", fmt.Errorf("no DHCP lease found for MAC %s", mac)
+	}
+	return ip, nil
 }
 
 // parseMemory parses a memory string like "512m", "2g", "2GB" into megabytes.
