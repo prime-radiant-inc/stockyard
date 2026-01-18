@@ -120,7 +120,10 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 	// Start HTTP server if enabled
 	if d.cfg.HTTP.Enabled {
-		dashboardServer := dashboard.NewServer(nil) // TODO: implement DaemonAPI on Daemon
+		// Create dashboard facade and adapter
+		facade := NewDashboardFacade(d.state, d.tasks)
+		adapter := dashboard.NewDaemonAdapter(facade)
+		dashboardServer := dashboard.NewServer(adapter)
 		handler := dashboard.AuthMiddleware(dashboardServer, nil) // TODO: add Tailscale client
 
 		d.httpServer = &http.Server{
