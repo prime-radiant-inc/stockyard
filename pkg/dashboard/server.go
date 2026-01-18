@@ -12,13 +12,15 @@ import (
 
 // Server is the HTTP server for the web dashboard.
 type Server struct {
-	mux          *http.ServeMux
-	daemon       DaemonAPI
-	templates    *template.Template
-	hub          *Hub
-	logHistory   *LogHistory
-	activityFeed *ActivityFeed
-	alertChecker *AlertChecker
+	mux             *http.ServeMux
+	daemon          DaemonAPI
+	templates       *template.Template
+	hub             *Hub
+	logHistory      *LogHistory
+	activityFeed    *ActivityFeed
+	alertChecker    *AlertChecker
+	terminalManager *TerminalManager
+	terminalHandler *TerminalHandler
 }
 
 // NewServer creates a new dashboard HTTP server.
@@ -27,13 +29,16 @@ func NewServer(daemon DaemonAPI) *Server {
 	hub := NewHub()
 	go hub.Run()
 
+	terminalManager := NewTerminalManager()
 	s := &Server{
-		mux:          http.NewServeMux(),
-		daemon:       daemon,
-		hub:          hub,
-		logHistory:   NewLogHistory(10000),
-		activityFeed: NewActivityFeedWithHub(100, hub),
-		alertChecker: NewAlertChecker(),
+		mux:             http.NewServeMux(),
+		daemon:          daemon,
+		hub:             hub,
+		logHistory:      NewLogHistory(10000),
+		activityFeed:    NewActivityFeedWithHub(100, hub),
+		alertChecker:    NewAlertChecker(),
+		terminalManager: terminalManager,
+		terminalHandler: NewTerminalHandler(terminalManager, "vscode"),
 	}
 	// Load templates, but don't fail if they're not available (for testing)
 	s.templates, _ = LoadTemplates()
@@ -44,6 +49,7 @@ func NewServer(daemon DaemonAPI) *Server {
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/health", s.handleHealth)
 	s.mux.HandleFunc("/ws", s.handleWebSocket)
+	s.mux.HandleFunc("/ws/terminal/", s.terminalHandler.ServeHTTP)
 	s.mux.HandleFunc("/activity", s.handleActivity)
 	s.mux.HandleFunc("/api/vm-logs/", s.handleLogSearch)
 	s.mux.HandleFunc("/api/vm/", s.handleAPIVM)
