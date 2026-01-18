@@ -40,9 +40,14 @@ type ZFSConfig struct {
 }
 
 type FirecrackerConfig struct {
-	KernelPath string `json:"kernel_path"`
-	RootfsPath string `json:"rootfs_path"`
-	BridgeName string `json:"bridge_name"`
+	KernelPath     string `json:"kernel_path"`
+	RootfsPath     string `json:"rootfs_path"`
+	BridgeName     string `json:"bridge_name"`
+	VMSubnet       string `json:"vm_subnet"`
+	VMGateway      string `json:"vm_gateway"`
+	DHCPRangeStart string `json:"dhcp_range_start"`
+	DHCPRangeEnd   string `json:"dhcp_range_end"`
+	DHCPLeaseTime  string `json:"dhcp_lease_time"`
 }
 
 // HTTPConfig configures the web dashboard HTTP server.
@@ -67,9 +72,14 @@ func DefaultConfig() *Config {
 			VMsPath:    "stockyard/vms",
 		},
 		Firecracker: FirecrackerConfig{
-			KernelPath: "/tmp/vmlinux.bin",
-			RootfsPath: "/var/lib/stockyard/rootfs.ext4",
-			BridgeName: "flbr0",
+			KernelPath:     "/tmp/vmlinux.bin",
+			RootfsPath:     "/var/lib/stockyard/rootfs.ext4",
+			BridgeName:     "flbr0",
+			VMSubnet:       "192.168.64.0/18",
+			VMGateway:      "192.168.64.1",
+			DHCPRangeStart: "192.168.64.2",
+			DHCPRangeEnd:   "192.168.127.254",
+			DHCPLeaseTime:  "12h",
 		},
 		VM: VMConfig{
 			User: "mooby",
