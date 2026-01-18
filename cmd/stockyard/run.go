@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	pb "github.com/obra/stockyard/pkg/api/v1"
@@ -75,16 +76,20 @@ Examples:
 			ref = "main"
 		}
 
+		// Read SSH public keys from ~/.ssh/
+		sshKeys := readSSHPublicKeys()
+
 		req := &pb.CreateTaskRequest{
-			Repo:             runRepo,
-			Ref:              ref,
-			Name:             runName,
-			Command:          command,
-			Env:              env,
-			Cpus:             runCPUs,
-			Memory:           runMemory,
-			NoTailscale:      runNoTailscale,
-			TailscaleAuthKey: runTailscaleAuthKey,
+			Repo:              runRepo,
+			Ref:               ref,
+			Name:              runName,
+			Command:           command,
+			Env:               env,
+			Cpus:              runCPUs,
+			Memory:            runMemory,
+			NoTailscale:       runNoTailscale,
+			TailscaleAuthKey:  runTailscaleAuthKey,
+			SshAuthorizedKeys: sshKeys,
 		}
 
 		fmt.Printf("Creating task for %s@%s...\n", runRepo, ref)
@@ -102,6 +107,44 @@ Examples:
 
 		return nil
 	},
+}
+
+// readSSHPublicKeys reads SSH public keys from ~/.ssh/*.pub
+func readSSHPublicKeys() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	sshDir := filepath.Join(home, ".ssh")
+	patterns := []string{"id_*.pub", "*.pub"}
+
+	var keys []string
+	seen := make(map[string]bool)
+
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(filepath.Join(sshDir, pattern))
+		if err != nil {
+			continue
+		}
+		for _, path := range matches {
+			if seen[path] {
+				continue
+			}
+			seen[path] = true
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			key := strings.TrimSpace(string(data))
+			if key != "" && strings.HasPrefix(key, "ssh-") {
+				keys = append(keys, key)
+			}
+		}
+	}
+
+	return keys
 }
 
 func init() {
