@@ -78,7 +78,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	// Only handle exact "/" path
 	if r.URL.Path != "/" {
-		http.NotFound(w, r)
+		s.renderError(w, r, http.StatusNotFound, "Page Not Found", "The page you're looking for doesn't exist.")
 		return
 	}
 
@@ -149,7 +149,7 @@ func (s *Server) handleVMDetail(w http.ResponseWriter, r *http.Request) {
 	// Extract VM ID from path: /vm/{id}
 	id := strings.TrimPrefix(r.URL.Path, "/vm/")
 	if id == "" {
-		http.NotFound(w, r)
+		s.renderError(w, r, http.StatusNotFound, "VM Not Found", "No VM ID was provided.")
 		return
 	}
 
@@ -165,7 +165,7 @@ func (s *Server) handleVMDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if task == nil {
-		http.NotFound(w, r)
+		s.renderError(w, r, http.StatusNotFound, "VM Not Found", "The VM you're looking for doesn't exist or has been destroyed.")
 		return
 	}
 
@@ -201,7 +201,7 @@ func (s *Server) handleVMPreview(w http.ResponseWriter, r *http.Request) {
 	// Extract VM ID from path: /preview/vm/{id}
 	id := strings.TrimPrefix(r.URL.Path, "/preview/vm/")
 	if id == "" {
-		http.NotFound(w, r)
+		s.renderError(w, r, http.StatusNotFound, "VM Not Found", "No VM ID was provided.")
 		return
 	}
 
@@ -217,7 +217,7 @@ func (s *Server) handleVMPreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if task == nil {
-		http.NotFound(w, r)
+		s.renderError(w, r, http.StatusNotFound, "VM Not Found", "The VM you're looking for doesn't exist or has been destroyed.")
 		return
 	}
 
@@ -248,6 +248,40 @@ func (s *Server) handleVMPreview(w http.ResponseWriter, r *http.Request) {
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
+}
+
+// renderError renders a styled error page for browser requests.
+// API requests (paths starting with /api/) get plain text errors instead.
+func (s *Server) renderError(w http.ResponseWriter, r *http.Request, code int, title, message string) {
+	// API requests get plain text errors
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		http.Error(w, message, code)
+		return
+	}
+
+	// If templates not available, fall back to plain text
+	if s.templates == nil || s.templates.Lookup("error.html") == nil {
+		http.Error(w, message, code)
+		return
+	}
+
+	data := map[string]interface{}{
+		"Code":       code,
+		"Title":      title,
+		"Message":    message,
+		"User":       GetUser(r.Context()),
+		"UserAvatar": GetUserAvatar(r.Context()),
+		"ActiveNav":  "",
+	}
+
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, "error.html", data); err != nil {
+		http.Error(w, message, code)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(code)
+	buf.WriteTo(w)
 }
 
 func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
@@ -436,6 +470,7 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 		"Events":     events,
 		"User":       GetUser(r.Context()),
 		"UserAvatar": GetUserAvatar(r.Context()),
+		"ActiveNav":  "activity",
 	}
 
 	// Check if template exists, fallback for testing
@@ -458,6 +493,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"User":       GetUser(r.Context()),
 		"UserAvatar": GetUserAvatar(r.Context()),
+		"ActiveNav":  "settings",
 		"InstanceID": "stockyard",
 		"Version":    "dev",
 		"ZFSPool":    "tank",

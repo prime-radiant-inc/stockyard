@@ -1,0 +1,17 @@
+{{template "layout-start" .}}
+            <div class="max-w-lg mx-auto mt-16">
+                <div class="text-center">
+                    <h1 class="text-6xl font-bold text-gray-300">{{.Code}}</h1>
+                    <h2 class="mt-4 text-2xl font-semibold text-gray-900">{{.Title}}</h2>
+                    <p class="mt-2 text-gray-600">{{.Message}}</p>
+                    <div class="mt-8">
+                        <a href="/" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                            </svg>
+                            Back to Fleet
+                        </a>
+                    </div>
+                </div>
+            </div>
+{{template "layout-end" .}}

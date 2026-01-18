@@ -1,0 +1,13 @@
+{{define "layout-start"}}
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body class="bg-gray-50 text-gray-900 h-screen flex flex-col"
+      x-data="{showSidebar: window.innerWidth >= 1024}"
+      @resize.window="showSidebar = window.innerWidth >= 1024">
+    {{template "header" .}}
+    <div class="flex flex-1 overflow-hidden">
+        {{template "mobile-backdrop"}}
+        {{template "sidebar" .}}
+        <main class="flex-1 overflow-auto p-6">
+{{end}}
