@@ -523,3 +523,122 @@ func TestState_CID_PreservedInListTasks(t *testing.T) {
 		t.Errorf("expected CID 400, got %d", tasks[0].CID)
 	}
 }
+
+func TestState_Owner_PreservedInGetTask(t *testing.T) {
+	s, err := NewStateInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	task := &Task{
+		ID:        "task-123",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "test",
+		Status:    "running",
+		Owner:     "jesse@example.com",
+		CreatedAt: time.Now(),
+	}
+	if err := s.CreateTask(task); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := s.GetTask("task-123")
+	if err != nil {
+		t.Fatalf("GetTask failed: %v", err)
+	}
+	if found.Owner != "jesse@example.com" {
+		t.Errorf("expected owner 'jesse@example.com', got %q", found.Owner)
+	}
+}
+
+func TestState_Owner_PreservedInListTasks(t *testing.T) {
+	s, err := NewStateInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	task := &Task{
+		ID:        "task-owner-list",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "test",
+		Status:    "running",
+		Owner:     "bob@example.com",
+		CreatedAt: time.Now(),
+	}
+	if err := s.CreateTask(task); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks, err := s.ListTasks("running")
+	if err != nil {
+		t.Fatalf("ListTasks failed: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(tasks))
+	}
+	if tasks[0].Owner != "bob@example.com" {
+		t.Errorf("expected owner 'bob@example.com', got %q", tasks[0].Owner)
+	}
+}
+
+func TestState_Owner_PreservedInGetTaskByCID(t *testing.T) {
+	s, err := NewStateInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	task := &Task{
+		ID:        "task-owner-cid",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "test",
+		Status:    "running",
+		CID:       500,
+		Owner:     "alice@example.com",
+		CreatedAt: time.Now(),
+	}
+	if err := s.CreateTask(task); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := s.GetTaskByCID(500)
+	if err != nil {
+		t.Fatalf("GetTaskByCID failed: %v", err)
+	}
+	if found.Owner != "alice@example.com" {
+		t.Errorf("expected owner 'alice@example.com', got %q", found.Owner)
+	}
+}
+
+func TestState_Owner_EmptyByDefault(t *testing.T) {
+	s, err := NewStateInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	task := &Task{
+		ID:        "task-no-owner",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "test",
+		Status:    "running",
+		CreatedAt: time.Now(),
+	}
+	if err := s.CreateTask(task); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := s.GetTask("task-no-owner")
+	if err != nil {
+		t.Fatalf("GetTask failed: %v", err)
+	}
+	if found.Owner != "" {
+		t.Errorf("expected empty owner, got %q", found.Owner)
+	}
+}

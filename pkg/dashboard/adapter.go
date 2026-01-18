@@ -30,6 +30,7 @@ type DaemonTask struct {
 	Command           string
 	Status            string
 	VMID              string
+	Owner             string
 	TailscaleHostname string
 	CreatedAt         time.Time
 	StoppedAt         *time.Time
@@ -122,6 +123,7 @@ func convertTask(dt *DaemonTask) Task {
 		RepoURL:       dt.Repo,
 		GitRef:        dt.Ref,
 		Status:        dt.Status,
+		Owner:         dt.Owner,
 		TailscaleHost: dt.TailscaleHostname,
 		CreatedAt:     dt.CreatedAt,
 		StoppedAt:     dt.StoppedAt,

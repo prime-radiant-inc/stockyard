@@ -12,6 +12,7 @@ type Task struct {
 	RepoURL       string
 	GitRef        string
 	Status        string
+	Owner         string
 	TailscaleHost string
 	CreatedAt     time.Time
 	StoppedAt     *time.Time

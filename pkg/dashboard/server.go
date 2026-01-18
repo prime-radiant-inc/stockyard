@@ -85,10 +85,13 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		groupedByRepo[repo] = append(groupedByRepo[repo], task)
 	}
 
-	// Group tasks by Owner (placeholder - Owner field not yet in Task struct)
+	// Group tasks by Owner
 	groupedByOwner := make(map[string][]Task)
 	for _, task := range tasks {
-		owner := "(unknown)" // TODO: use task.Owner when available
+		owner := task.Owner
+		if owner == "" {
+			owner = "(unknown)"
+		}
 		groupedByOwner[owner] = append(groupedByOwner[owner], task)
 	}
 
