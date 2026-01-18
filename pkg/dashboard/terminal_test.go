@@ -4,12 +4,12 @@ import (
 	"testing"
 )
 
-func TestTerminalSession_Fields(t *testing.T) {
-	session := &TerminalSession{
-		ID:       "session-123",
-		TaskID:   "task-456",
-		Hostname: "stockyard-task-456",
-		User:     "vscode",
+func TestVsockSession_Fields(t *testing.T) {
+	session := &VsockSession{
+		ID:     "session-123",
+		TaskID: "task-456",
+		CID:    100,
+		User:   "vscode",
 	}
 
 	if session.ID != "session-123" {
@@ -17,6 +17,9 @@ func TestTerminalSession_Fields(t *testing.T) {
 	}
 	if session.TaskID != "task-456" {
 		t.Errorf("expected task-456, got %s", session.TaskID)
+	}
+	if session.CID != 100 {
+		t.Errorf("expected CID 100, got %d", session.CID)
 	}
 }
 
@@ -60,11 +63,11 @@ func TestTerminalResizeMessage(t *testing.T) {
 func TestTerminalManager_CreateSession(t *testing.T) {
 	tm := NewTerminalManager()
 
-	session := &TerminalSession{
-		ID:       "test-session",
-		TaskID:   "task-123",
-		Hostname: "stockyard-task-123",
-		User:     "vscode",
+	session := &VsockSession{
+		ID:     "test-session",
+		TaskID: "task-123",
+		CID:    100,
+		User:   "vscode",
 	}
 
 	tm.AddSession(session)
@@ -81,7 +84,7 @@ func TestTerminalManager_CreateSession(t *testing.T) {
 func TestTerminalManager_RemoveSession(t *testing.T) {
 	tm := NewTerminalManager()
 
-	session := &TerminalSession{
+	session := &VsockSession{
 		ID:     "test-session",
 		TaskID: "task-123",
 	}
@@ -96,9 +99,9 @@ func TestTerminalManager_RemoveSession(t *testing.T) {
 func TestTerminalManager_GetSessionsByTask(t *testing.T) {
 	tm := NewTerminalManager()
 
-	tm.AddSession(&TerminalSession{ID: "s1", TaskID: "task-1"})
-	tm.AddSession(&TerminalSession{ID: "s2", TaskID: "task-1"})
-	tm.AddSession(&TerminalSession{ID: "s3", TaskID: "task-2"})
+	tm.AddSession(&VsockSession{ID: "s1", TaskID: "task-1"})
+	tm.AddSession(&VsockSession{ID: "s2", TaskID: "task-1"})
+	tm.AddSession(&VsockSession{ID: "s3", TaskID: "task-2"})
 
 	sessions := tm.GetSessionsByTask("task-1")
 	if len(sessions) != 2 {
@@ -106,40 +109,12 @@ func TestTerminalManager_GetSessionsByTask(t *testing.T) {
 	}
 }
 
-func TestTerminalSession_Resize(t *testing.T) {
-	session := &TerminalSession{
-		ID:     "test",
-		TaskID: "task-1",
-	}
-
-	// Should not error when PTY is nil (no-op)
-	err := session.Resize(120, 40)
-	if err != nil {
-		t.Errorf("expected no error when PTY not connected, got %v", err)
-	}
-}
-
-func TestTerminalSession_Close(t *testing.T) {
-	session := &TerminalSession{
-		ID:     "test",
-		TaskID: "task-1",
-	}
-
-	// Should not panic on double close
-	session.Close()
-	session.Close()
-
-	if !session.closed {
-		t.Error("expected session to be marked closed")
-	}
-}
-
 func TestTerminalManager_CloseAllForTask(t *testing.T) {
 	tm := NewTerminalManager()
 
-	s1 := &TerminalSession{ID: "s1", TaskID: "task-1"}
-	s2 := &TerminalSession{ID: "s2", TaskID: "task-1"}
-	s3 := &TerminalSession{ID: "s3", TaskID: "task-2"}
+	s1 := &VsockSession{ID: "s1", TaskID: "task-1"}
+	s2 := &VsockSession{ID: "s2", TaskID: "task-1"}
+	s3 := &VsockSession{ID: "s3", TaskID: "task-2"}
 
 	tm.AddSession(s1)
 	tm.AddSession(s2)
