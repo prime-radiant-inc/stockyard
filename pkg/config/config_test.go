@@ -68,17 +68,17 @@ func TestConfig_HTTPDefaults(t *testing.T) {
 func TestConfig_DHCPDefaults(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.Firecracker.VMSubnet != "192.168.64.0/18" {
-		t.Errorf("expected VMSubnet '192.168.64.0/18', got %q", cfg.Firecracker.VMSubnet)
+	if cfg.Firecracker.VMSubnet != "10.0.100.0/24" {
+		t.Errorf("expected VMSubnet '10.0.100.0/24', got %q", cfg.Firecracker.VMSubnet)
 	}
-	if cfg.Firecracker.VMGateway != "192.168.64.1" {
-		t.Errorf("expected VMGateway '192.168.64.1', got %q", cfg.Firecracker.VMGateway)
+	if cfg.Firecracker.VMGateway != "10.0.100.1" {
+		t.Errorf("expected VMGateway '10.0.100.1', got %q", cfg.Firecracker.VMGateway)
 	}
-	if cfg.Firecracker.DHCPRangeStart != "192.168.64.2" {
-		t.Errorf("expected DHCPRangeStart '192.168.64.2', got %q", cfg.Firecracker.DHCPRangeStart)
+	if cfg.Firecracker.DHCPRangeStart != "10.0.100.2" {
+		t.Errorf("expected DHCPRangeStart '10.0.100.2', got %q", cfg.Firecracker.DHCPRangeStart)
 	}
-	if cfg.Firecracker.DHCPRangeEnd != "192.168.127.254" {
-		t.Errorf("expected DHCPRangeEnd '192.168.127.254', got %q", cfg.Firecracker.DHCPRangeEnd)
+	if cfg.Firecracker.DHCPRangeEnd != "10.0.100.254" {
+		t.Errorf("expected DHCPRangeEnd '10.0.100.254', got %q", cfg.Firecracker.DHCPRangeEnd)
 	}
 	if cfg.Firecracker.DHCPLeaseTime != "12h" {
 		t.Errorf("expected DHCPLeaseTime '12h', got %q", cfg.Firecracker.DHCPLeaseTime)

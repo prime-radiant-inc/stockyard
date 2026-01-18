@@ -74,13 +74,13 @@ func DefaultConfig() *Config {
 			VMsPath:    "stockyard/vms",
 		},
 		Firecracker: FirecrackerConfig{
-			KernelPath:     "/tmp/vmlinux.bin",
+			KernelPath:     "/var/lib/stockyard/vmlinux.bin",
 			RootfsPath:     "/var/lib/stockyard/rootfs.ext4",
 			BridgeName:     "flbr0",
-			VMSubnet:       "192.168.64.0/18",
-			VMGateway:      "192.168.64.1",
-			DHCPRangeStart: "192.168.64.2",
-			DHCPRangeEnd:   "192.168.127.254",
+			VMSubnet:       "10.0.100.0/24",
+			VMGateway:      "10.0.100.1",
+			DHCPRangeStart: "10.0.100.2",
+			DHCPRangeEnd:   "10.0.100.254",
 			DHCPLeaseTime:  "12h",
 		},
 		VM: VMConfig{
