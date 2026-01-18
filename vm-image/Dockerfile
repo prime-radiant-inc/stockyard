@@ -197,6 +197,14 @@ RUN mkdir -p /etc/stockyard /var/log/stockyard /run/stockyard
 COPY scripts/stockyard-snapshot/stockyard-snapshot /usr/local/bin/stockyard-snapshot
 RUN chmod +x /usr/local/bin/stockyard-snapshot
 
+# Copy stockyard-shell binary for vsock terminal access
+COPY scripts/stockyard-shell/stockyard-shell /usr/local/bin/stockyard-shell
+RUN chmod +x /usr/local/bin/stockyard-shell
+
+# Add the systemd service for stockyard-shell
+COPY init/stockyard-shell.service /etc/systemd/system/stockyard-shell.service
+RUN systemctl enable stockyard-shell.service 2>/dev/null || true
+
 # Copy Claude Code hooks setup script
 COPY scripts/setup-claude-hooks.sh /usr/local/bin/setup-claude-hooks.sh
 RUN chmod +x /usr/local/bin/setup-claude-hooks.sh
