@@ -98,26 +98,53 @@
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <!-- Resources Panel -->
-                <div class="bg-white rounded-lg shadow border border-gray-200">
-                    <div class="px-4 py-3 border-b border-gray-200">
+                <div class="bg-white rounded-lg shadow border border-gray-200"
+                     x-data="{
+                         cpu: '--',
+                         memory: '--',
+                         memoryMax: '--',
+                         network: '--',
+                         disk: '--',
+                         connected: false
+                     }"
+                     x-init="
+                         const ws = new WebSocket('ws://' + window.location.host + '/ws?task={{.Task.ID}}');
+                         ws.onopen = () => { connected = true; };
+                         ws.onclose = () => { connected = false; };
+                         ws.onmessage = (e) => {
+                             const data = JSON.parse(e.data);
+                             if (data.type === 'metrics') {
+                                 cpu = data.metrics.cpu_percent.toFixed(1) + '%';
+                                 memory = formatBytes(data.metrics.memory_bytes);
+                                 memoryMax = formatBytes(data.metrics.memory_max_bytes);
+                                 network = formatBytes(data.metrics.network_rx_bytes + data.metrics.network_tx_bytes) + '/s';
+                                 disk = formatBytes(data.metrics.disk_used_bytes);
+                             }
+                         };
+                     ">
+                    <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                         <h2 class="text-lg font-medium">Resources</h2>
+                        <span x-show="connected" class="text-xs text-green-600 flex items-center gap-1">
+                            <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                            Live
+                        </span>
                     </div>
                     <div class="p-4">
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-4 gap-4">
                             <div class="text-center p-3 bg-gray-50 rounded-lg">
-                                <div class="text-2xl font-semibold text-gray-900">--</div>
+                                <div class="text-2xl font-semibold text-gray-900" x-text="cpu">--</div>
                                 <div class="text-sm text-gray-500">CPU</div>
                             </div>
                             <div class="text-center p-3 bg-gray-50 rounded-lg">
-                                <div class="text-2xl font-semibold text-gray-900">--</div>
+                                <div class="text-2xl font-semibold text-gray-900" x-text="memory">--</div>
                                 <div class="text-sm text-gray-500">Memory</div>
                             </div>
                             <div class="text-center p-3 bg-gray-50 rounded-lg">
-                                <div class="text-2xl font-semibold text-gray-900">--</div>
+                                <div class="text-2xl font-semibold text-gray-900" x-text="network">--</div>
                                 <div class="text-sm text-gray-500">Network</div>
                             </div>
                             <div class="text-center p-3 bg-gray-50 rounded-lg">
-                                <div class="text-2xl font-semibold text-gray-900">--</div>
+                                <div class="text-2xl font-semibold text-gray-900" x-text="disk">--</div>
                                 <div class="text-sm text-gray-500">Disk</div>
                             </div>
                         </div>
@@ -125,13 +152,71 @@
                 </div>
 
                 <!-- Logs Panel -->
-                <div class="bg-white rounded-lg shadow border border-gray-200">
-                    <div class="px-4 py-3 border-b border-gray-200">
-                        <h2 class="text-lg font-medium">Logs</h2>
+                <div class="bg-white rounded-lg shadow border border-gray-200"
+                     x-data="{
+                         logs: [],
+                         mode: 'live',
+                         filter: '',
+                         paused: false,
+                         connected: false,
+                         maxLogs: 500
+                     }"
+                     x-init="
+                         const ws = new WebSocket('ws://' + window.location.host + '/ws?task={{.Task.ID}}');
+                         ws.onopen = () => { connected = true; };
+                         ws.onclose = () => { connected = false; };
+                         ws.onmessage = (e) => {
+                             if (paused) return;
+                             const data = JSON.parse(e.data);
+                             if (data.type === 'log') {
+                                 logs.push({
+                                     time: new Date(data.timestamp).toLocaleTimeString(),
+                                     stream: data.stream,
+                                     line: data.line
+                                 });
+                                 if (logs.length > maxLogs) {
+                                     logs = logs.slice(-maxLogs);
+                                 }
+                                 $nextTick(() => {
+                                     const el = $refs.logContainer;
+                                     if (el) el.scrollTop = el.scrollHeight;
+                                 });
+                             }
+                         };
+                     ">
+                    <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <h2 class="text-lg font-medium">Logs</h2>
+                            <span x-show="connected && !paused" class="text-xs text-green-600 flex items-center gap-1">
+                                <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                Live
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="text" x-model="filter" placeholder="Filter..."
+                                   class="px-2 py-1 text-sm border border-gray-300 rounded">
+                            <button @click="paused = !paused"
+                                    :class="paused ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100'"
+                                    class="px-2 py-1 text-xs rounded">
+                                <span x-text="paused ? 'Resume' : 'Pause'"></span>
+                            </button>
+                            <button @click="logs = []" class="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200">
+                                Clear
+                            </button>
+                        </div>
                     </div>
                     <div class="p-4">
-                        <div class="bg-gray-50 rounded-lg p-4 text-center text-gray-500">
-                            Log streaming coming in Phase 2
+                        <div x-ref="logContainer"
+                             class="bg-gray-900 text-gray-300 rounded-lg p-4 font-mono text-sm h-64 overflow-auto">
+                            <template x-if="logs.length === 0">
+                                <p class="text-gray-500">Waiting for logs...</p>
+                            </template>
+                            <template x-for="(log, i) in logs.filter(l => !filter || l.line.includes(filter))" :key="i">
+                                <div class="flex gap-2 hover:bg-gray-800">
+                                    <span class="text-gray-500 shrink-0" x-text="log.time"></span>
+                                    <span :class="log.stream === 'stderr' ? 'text-red-400' : 'text-gray-300'" x-text="log.line"></span>
+                                </div>
+                            </template>
                         </div>
                     </div>
                 </div>
@@ -215,6 +300,14 @@
     </div>
 
     <script>
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
         function copySSH(host) {
             const sshCommand = 'ssh ' + host;
             navigator.clipboard.writeText(sshCommand).then(function() {
