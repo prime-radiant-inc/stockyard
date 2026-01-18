@@ -7,6 +7,7 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         [x-cloak] { display: none !important; }
     </style>
@@ -316,6 +317,67 @@
                 console.error('Could not copy text: ', err);
             });
         }
+    </script>
+
+    <script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('sparkline', (canvasId, color = '#10b981') => ({
+        chart: null,
+        data: [],
+        maxPoints: 30,
+
+        init() {
+            const ctx = document.getElementById(canvasId);
+            if (!ctx) return;
+
+            this.chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        borderColor: color,
+                        backgroundColor: color + '20',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        borderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: false }
+                    },
+                    scales: {
+                        x: { display: false },
+                        y: {
+                            display: false,
+                            min: 0,
+                            max: 100
+                        }
+                    },
+                    animation: { duration: 0 }
+                }
+            });
+        },
+
+        addPoint(value) {
+            this.data.push(value);
+            if (this.data.length > this.maxPoints) {
+                this.data.shift();
+            }
+
+            if (this.chart) {
+                this.chart.data.labels = this.data.map((_, i) => i);
+                this.chart.data.datasets[0].data = this.data;
+                this.chart.update('none');
+            }
+        }
+    }));
+});
     </script>
 </body>
 </html>
