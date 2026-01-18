@@ -249,7 +249,8 @@
                          pendingLines: [],
                          searchResults: [],
                          mode: 'live',
-                         filter: '',
+                         filterText: '',
+                         filterStream: 'all',
                          searchQuery: '',
                          searchStream: 'all',
                          paused: false,
@@ -257,6 +258,13 @@
                          searching: false,
                          maxLogs: 500,
                          searchTimeout: null,
+                         get filteredLogs() {
+                             return this.logs.filter(log => {
+                                 const matchesStream = this.filterStream === 'all' || log.stream === this.filterStream;
+                                 const matchesText = !this.filterText || log.line.toLowerCase().includes(this.filterText.toLowerCase());
+                                 return matchesStream && matchesText;
+                             });
+                         },
                          async searchLogs() {
                              if (!this.searchQuery.trim()) {
                                  this.searchResults = [];
@@ -348,8 +356,14 @@
                         </div>
                         <!-- Live mode controls -->
                         <div x-show="mode === 'live'" class="flex items-center gap-2">
-                            <input type="text" x-model="filter" placeholder="Filter live logs..."
-                                   class="flex-1 px-2 py-1 text-sm border border-gray-300 rounded">
+                            <input type="text" x-model="filterText"
+                                   placeholder="Filter current logs..."
+                                   class="flex-1 px-3 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                            <select x-model="filterStream" class="px-2 py-1 text-sm border border-gray-300 rounded">
+                                <option value="all">All</option>
+                                <option value="stdout">stdout</option>
+                                <option value="stderr">stderr</option>
+                            </select>
                             <button @click="paused = !paused; if (!paused) { logs = logs.concat(pendingLines).slice(-maxLogs); pendingLines = []; $nextTick(() => { const el = $refs.logContainer; if (el) el.scrollTop = el.scrollHeight; }); }"
                                     :class="paused ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'"
                                     class="px-2 py-1 text-xs rounded flex items-center gap-1">
@@ -389,7 +403,7 @@
                             <template x-if="logs.length === 0">
                                 <p class="text-gray-500">Waiting for logs...</p>
                             </template>
-                            <template x-for="log in logs.filter(l => !filter || l.line.includes(filter))" :key="log.id">
+                            <template x-for="log in filteredLogs" :key="log.id">
                                 <div class="flex gap-2 hover:bg-gray-800">
                                     <span class="text-gray-500 shrink-0" x-text="log.time"></span>
                                     <span :class="log.stream === 'stderr' ? 'text-red-400' : 'text-gray-300'" x-text="log.line"></span>
