@@ -7,16 +7,16 @@
 #   make clean    - Remove build artifacts
 #   make help     - Show this help
 
-.PHONY: all docker rootfs clean help build-deps
-
-# Build dependencies (shell binary)
-build-deps:
-	$(MAKE) -C .. build-shell
+.PHONY: all build-deps docker rootfs clean help
 
 # Default target: build everything
 all: rootfs
 
-# Build Docker image
+# Build dependencies (stockyard-shell binary)
+build-deps:
+	$(MAKE) -C .. build-shell
+
+# Build Docker image (depends on shell binary)
 docker: build-deps
 	@./build.sh
 

@@ -1,4 +1,4 @@
-.PHONY: all build proto clean test test-unit lint fmt install uninstall deploy build-shell
+.PHONY: all build build-shell proto clean test test-unit lint fmt install uninstall deploy
 
 all: proto build
 
