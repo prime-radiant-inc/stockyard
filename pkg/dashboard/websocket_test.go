@@ -77,6 +77,9 @@ func TestWebSocketHandler_Connect(t *testing.T) {
 	}
 	defer conn.Close()
 
+	// Wait for client registration to be processed by the hub
+	time.Sleep(50 * time.Millisecond)
+
 	// Send a test message through the hub
 	hub.Broadcast("task-1", []byte(`{"type":"test"}`))
 

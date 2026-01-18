@@ -8,7 +8,7 @@ import (
 
 func TestTerminalHandler_Creation(t *testing.T) {
 	tm := NewTerminalManager()
-	handler := NewTerminalHandler(tm, "vscode")
+	handler := NewTerminalHandler(tm, nil, "vscode")
 
 	if handler == nil {
 		t.Fatal("expected handler to be created")
@@ -44,7 +44,7 @@ func TestExtractTaskID(t *testing.T) {
 
 func TestTerminalHandler_MissingTaskID(t *testing.T) {
 	tm := NewTerminalManager()
-	handler := NewTerminalHandler(tm, "vscode")
+	handler := NewTerminalHandler(tm, nil, "vscode")
 
 	req := httptest.NewRequest("GET", "/ws/terminal/", nil)
 	w := httptest.NewRecorder()
@@ -58,7 +58,7 @@ func TestTerminalHandler_MissingTaskID(t *testing.T) {
 
 func TestTerminalHandler_InvalidPath(t *testing.T) {
 	tm := NewTerminalManager()
-	handler := NewTerminalHandler(tm, "vscode")
+	handler := NewTerminalHandler(tm, nil, "vscode")
 
 	req := httptest.NewRequest("GET", "/invalid/path", nil)
 	w := httptest.NewRecorder()
@@ -67,5 +67,19 @@ func TestTerminalHandler_InvalidPath(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+func TestTerminalHandler_NoDaemon(t *testing.T) {
+	tm := NewTerminalManager()
+	handler := NewTerminalHandler(tm, nil, "vscode")
+
+	req := httptest.NewRequest("GET", "/ws/terminal/task-123", nil)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status %d, got %d", http.StatusServiceUnavailable, w.Code)
 	}
 }

@@ -1,12 +1,11 @@
 package dashboard
 
 import (
-	"fmt"
-	"io"
-	"net"
+	"os"
+	"os/exec"
 	"sync"
 
-	"golang.org/x/crypto/ssh"
+	"github.com/creack/pty"
 )
 
 // TerminalSession represents an active terminal connection to a VM.
@@ -16,12 +15,8 @@ type TerminalSession struct {
 	Hostname string
 	User     string
 
-	agentConn net.Conn
-	client    *ssh.Client
-	session   *ssh.Session
-	stdin     io.WriteCloser
-	stdout    io.Reader
-	stderr    io.Reader
+	cmd *exec.Cmd
+	pty *os.File
 
 	mu     sync.Mutex
 	closed bool
@@ -99,11 +94,14 @@ func (ts *TerminalSession) Resize(cols, rows int) error {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
-	if ts.session == nil {
-		return fmt.Errorf("session not connected")
+	if ts.pty == nil {
+		return nil
 	}
 
-	return ts.session.WindowChange(rows, cols)
+	return pty.Setsize(ts.pty, &pty.Winsize{
+		Rows: uint16(rows),
+		Cols: uint16(cols),
+	})
 }
 
 // Close closes the terminal session.
@@ -116,14 +114,12 @@ func (ts *TerminalSession) Close() error {
 	}
 	ts.closed = true
 
-	if ts.session != nil {
-		ts.session.Close()
+	if ts.pty != nil {
+		ts.pty.Close()
 	}
-	if ts.client != nil {
-		ts.client.Close()
-	}
-	if ts.agentConn != nil {
-		ts.agentConn.Close()
+	if ts.cmd != nil && ts.cmd.Process != nil {
+		ts.cmd.Process.Kill()
+		ts.cmd.Wait()
 	}
 	return nil
 }

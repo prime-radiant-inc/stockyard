@@ -112,10 +112,10 @@ func TestTerminalSession_Resize(t *testing.T) {
 		TaskID: "task-1",
 	}
 
-	// Should return error when session not connected
+	// Should not error when PTY is nil (no-op)
 	err := session.Resize(120, 40)
-	if err == nil {
-		t.Error("expected error when session not connected")
+	if err != nil {
+		t.Errorf("expected no error when PTY not connected, got %v", err)
 	}
 }
 
