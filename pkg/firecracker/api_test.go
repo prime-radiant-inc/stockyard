@@ -498,3 +498,43 @@ func TestAPIClient_SetMetrics(t *testing.T) {
 		t.Errorf("wrong metrics_path: %v", receivedBody)
 	}
 }
+
+func TestAPIClient_SetVsock(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+		if r.URL.Path != "/vsock" {
+			t.Errorf("expected /vsock, got %s", r.URL.Path)
+		}
+
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+
+		if body["guest_cid"].(float64) != 100 {
+			t.Errorf("expected guest_cid 100, got %v", body["guest_cid"])
+		}
+		if body["uds_path"].(string) != "/tmp/vsock.sock" {
+			t.Errorf("expected uds_path /tmp/vsock.sock, got %v", body["uds_path"])
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+	defer listener.Close()
+
+	server := &http.Server{Handler: handler}
+	go server.Serve(listener)
+	defer server.Close()
+
+	client := NewAPIClient(socketPath)
+	err = client.SetVsock(context.Background(), 100, "/tmp/vsock.sock")
+	if err != nil {
+		t.Fatalf("SetVsock failed: %v", err)
+	}
+}

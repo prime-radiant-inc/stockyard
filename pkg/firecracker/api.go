@@ -104,6 +104,17 @@ func (a *APIClient) SetMachineConfig(ctx context.Context, vcpus, memMB int32) er
 	})
 }
 
+// SetVsock configures the vsock device for host-guest communication.
+// The guest_cid must be unique across all VMs (valid range: 3-4294967294).
+// The uds_path is where Firecracker creates the Unix socket for host access.
+// Host connects to UDS, sends "CONNECT <port>\n", reads "OK <port>\n".
+func (a *APIClient) SetVsock(ctx context.Context, guestCID uint32, udsPath string) error {
+	return a.put(ctx, "/vsock", map[string]interface{}{
+		"guest_cid": guestCID,
+		"uds_path":  udsPath,
+	})
+}
+
 // SetMMDSConfig enables MMDS on the specified network interfaces.
 // Uses V1 for compatibility with cloud-init's IMDS datasource (V2 requires token auth).
 func (a *APIClient) SetMMDSConfig(ctx context.Context, networkInterfaces []string) error {
