@@ -186,6 +186,8 @@ func (d *Daemon) Start(ctx context.Context) error {
 		d.statusBroadcaster = dashboard.NewStatusBroadcaster(hub)
 		d.state.SetStatusChangeCallback(func(taskID, oldStatus, newStatus string) {
 			d.statusBroadcaster.TaskStatusChanged(taskID, oldStatus, newStatus)
+			// Note: VMFailed activity events are recorded in TaskManager.FailTask
+			// with specific failure reasons, not here in the generic callback.
 		})
 
 		// Log streamer and tailer

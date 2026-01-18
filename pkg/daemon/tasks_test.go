@@ -121,3 +121,88 @@ func TestCreateTaskRequest_Defaults(t *testing.T) {
 		// This is expected - defaults are applied during CreateTask
 	}
 }
+
+func TestTaskManager_FailTask(t *testing.T) {
+	cfg := &config.Config{
+		ZFS: config.ZFSConfig{
+			Pool:     "tank",
+			BasePath: "stockyard/workspaces",
+		},
+	}
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("failed to create state: %v", err)
+	}
+	defer state.Close()
+
+	secretsProvider := &secrets.MockProvider{
+		Secrets: map[string]string{},
+	}
+
+	d := &Daemon{
+		cfg:     cfg,
+		secrets: secretsProvider,
+		state:   state,
+	}
+
+	tm := NewTaskManager(d, nil)
+
+	// Create a task in the database
+	task := &Task{
+		ID:     "test-fail-task",
+		Name:   "Test Task",
+		Repo:   "github.com/test/repo",
+		Ref:    "main",
+		Status: "running",
+	}
+	if err := state.CreateTask(task); err != nil {
+		t.Fatalf("failed to create task: %v", err)
+	}
+
+	// Fail the task
+	err = tm.FailTask(context.Background(), "test-fail-task", "VM crashed unexpectedly")
+	if err != nil {
+		t.Fatalf("FailTask returned error: %v", err)
+	}
+
+	// Verify the status was updated to "failed"
+	updatedTask, err := state.GetTask("test-fail-task")
+	if err != nil {
+		t.Fatalf("failed to get task: %v", err)
+	}
+	if updatedTask.Status != "failed" {
+		t.Errorf("expected status 'failed', got %q", updatedTask.Status)
+	}
+}
+
+func TestTaskManager_FailTask_TaskNotFound(t *testing.T) {
+	cfg := &config.Config{
+		ZFS: config.ZFSConfig{
+			Pool:     "tank",
+			BasePath: "stockyard/workspaces",
+		},
+	}
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("failed to create state: %v", err)
+	}
+	defer state.Close()
+
+	secretsProvider := &secrets.MockProvider{
+		Secrets: map[string]string{},
+	}
+
+	d := &Daemon{
+		cfg:     cfg,
+		secrets: secretsProvider,
+		state:   state,
+	}
+
+	tm := NewTaskManager(d, nil)
+
+	// Try to fail a non-existent task
+	err = tm.FailTask(context.Background(), "non-existent-task", "some reason")
+	if err == nil {
+		t.Error("expected error for non-existent task, got nil")
+	}
+}

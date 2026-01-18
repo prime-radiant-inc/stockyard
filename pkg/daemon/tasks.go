@@ -264,6 +264,34 @@ func (tm *TaskManager) StopTask(ctx context.Context, taskID string) error {
 	return nil
 }
 
+// FailTask marks a task as failed with a reason.
+// This is called when a VM crashes or becomes unresponsive.
+func (tm *TaskManager) FailTask(ctx context.Context, taskID string, reason string) error {
+	task, err := tm.daemon.state.GetTask(taskID)
+	if err != nil {
+		return err
+	}
+
+	// Stop log tailing
+	if tm.daemon.logTailer != nil {
+		tm.daemon.logTailer.StopTask(taskID)
+	}
+
+	// Update task status to failed
+	if err := tm.daemon.state.UpdateTaskStatus(taskID, "failed"); err != nil {
+		return err
+	}
+
+	// Record activity event for VM failed
+	// Note: The status change callback in daemon.go will also call VMFailed,
+	// but we call it here with a specific reason for better context
+	if af := tm.daemon.ActivityFeed(); af != nil {
+		af.VMFailed(taskID, task.Name, reason)
+	}
+
+	return nil
+}
+
 // DestroyTask destroys a task and its associated resources.
 func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 	task, err := tm.daemon.state.GetTask(taskID)
@@ -309,7 +337,7 @@ func (tm *TaskManager) Close() error {
 
 // GetVMMAC reads the MAC address for a VM from its state directory.
 func (tm *TaskManager) GetVMMAC(namespace, vmID string) (string, error) {
-	macPath := filepath.Join("/var/lib/stockyard/vms", namespace, vmID, "mac_addr")
+	macPath := filepath.Join(tm.daemon.cfg.Daemon.DataDir, "vms", namespace, vmID, "mac_addr")
 	data, err := os.ReadFile(macPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read MAC address: %w", err)
