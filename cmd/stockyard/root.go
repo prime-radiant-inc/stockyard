@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var urlFlag string
+
 var rootCmd = &cobra.Command{
 	Use:   "stockyard",
 	Short: "Coding agent VM orchestrator",
@@ -36,4 +38,8 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringVar(&urlFlag, "url", "", "Daemon URL (env: STOCKYARD_URL)\n  Formats: unix:///path, grpc://host:port, grpcs://host:port")
 }
