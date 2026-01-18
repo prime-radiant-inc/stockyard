@@ -218,6 +218,9 @@ func TestGCCommand_Flags(t *testing.T) {
 	if flags.Lookup("dry-run") == nil {
 		t.Error("expected --dry-run flag to be registered")
 	}
+	if flags.Lookup("verbose") == nil {
+		t.Error("expected --verbose flag to be registered")
+	}
 }
 
 func TestGarbageCollector_BuildTapToTaskMap(t *testing.T) {

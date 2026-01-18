@@ -141,6 +141,13 @@ func TestResourcesCommand_Help(t *testing.T) {
 	}
 }
 
+func TestResourcesCommand_Flags(t *testing.T) {
+	flags := resourcesCmd.Flags()
+	if flags.Lookup("verbose") == nil {
+		t.Error("expected --verbose flag to be registered")
+	}
+}
+
 func TestResourceCollector_LoadDHCPLeases(t *testing.T) {
 	tmpDir := t.TempDir()
 	leaseFile := filepath.Join(tmpDir, "dnsmasq.leases")
