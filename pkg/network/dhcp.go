@@ -28,6 +28,7 @@ type DHCPServer struct {
 	leasePath  string
 	logPath    string
 	dataDir    string
+	binaryPath string
 	cmd        *exec.Cmd
 	mu         sync.Mutex
 }
@@ -45,6 +46,7 @@ func NewDHCPServer(config DHCPConfig, dataDir string) (*DHCPServer, error) {
 		leasePath:  filepath.Join(dataDir, "dnsmasq.leases"),
 		logPath:    filepath.Join(dataDir, "dnsmasq.log"),
 		dataDir:    dataDir,
+		binaryPath: "dnsmasq",
 	}, nil
 }
 
@@ -123,4 +125,114 @@ func validateDHCPConfig(config DHCPConfig) error {
 		return fmt.Errorf("dhcp: netmask is required")
 	}
 	return nil
+}
+
+// SetBinaryPath sets the path to the dnsmasq binary.
+func (s *DHCPServer) SetBinaryPath(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.binaryPath = path
+}
+
+// Start starts the DHCP server.
+func (s *DHCPServer) Start() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.cmd != nil {
+		return fmt.Errorf("dhcp: server already running")
+	}
+
+	// Check if binary exists
+	binaryPath, err := exec.LookPath(s.binaryPath)
+	if err != nil {
+		return fmt.Errorf("dhcp: dnsmasq binary not found: %w", err)
+	}
+
+	// Write config file
+	if err := s.writeConfigLocked(); err != nil {
+		return err
+	}
+
+	// Create empty lease file if it doesn't exist
+	if _, err := os.Stat(s.leasePath); os.IsNotExist(err) {
+		if err := os.WriteFile(s.leasePath, []byte{}, 0644); err != nil {
+			return fmt.Errorf("dhcp: failed to create lease file: %w", err)
+		}
+	}
+
+	// Start dnsmasq with -k (keep in foreground)
+	s.cmd = exec.Command(binaryPath, "-k", "-C", s.configPath, "--dhcp-leasefile", s.leasePath)
+	if err := s.cmd.Start(); err != nil {
+		s.cmd = nil
+		return fmt.Errorf("dhcp: failed to start dnsmasq: %w", err)
+	}
+
+	return nil
+}
+
+// writeConfigLocked writes config without acquiring the lock (caller must hold lock).
+func (s *DHCPServer) writeConfigLocked() error {
+	tmpl, err := template.New("dnsmasq").Parse(dnsmasqConfigTemplate)
+	if err != nil {
+		return fmt.Errorf("dhcp: failed to parse config template: %w", err)
+	}
+
+	data := configTemplateData{
+		Bridge:     s.config.Bridge,
+		Gateway:    s.config.Gateway,
+		RangeStart: s.config.RangeStart,
+		RangeEnd:   s.config.RangeEnd,
+		Netmask:    s.config.Netmask,
+		LeaseTime:  s.config.LeaseTime,
+		DNS:        s.config.DNS,
+		LeasePath:  s.leasePath,
+		LogPath:    s.logPath,
+	}
+
+	f, err := os.Create(s.configPath)
+	if err != nil {
+		return fmt.Errorf("dhcp: failed to create config file: %w", err)
+	}
+	defer f.Close()
+
+	if err := tmpl.Execute(f, data); err != nil {
+		return fmt.Errorf("dhcp: failed to write config: %w", err)
+	}
+
+	return nil
+}
+
+// Stop stops the DHCP server.
+func (s *DHCPServer) Stop() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.cmd == nil || s.cmd.Process == nil {
+		return nil
+	}
+
+	if err := s.cmd.Process.Kill(); err != nil {
+		return fmt.Errorf("dhcp: failed to stop dnsmasq: %w", err)
+	}
+
+	// Wait for process to exit
+	_ = s.cmd.Wait()
+	s.cmd = nil
+
+	return nil
+}
+
+// IsRunning returns true if the DHCP server is running.
+func (s *DHCPServer) IsRunning() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.cmd == nil || s.cmd.Process == nil {
+		return false
+	}
+
+	// Check if process is still running by sending signal 0
+	err := s.cmd.Process.Signal(os.Signal(nil))
+	return err == nil
 }

@@ -97,3 +97,49 @@ func TestDHCPServer_WriteConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestDHCPServer_StartStop_NoBinary(t *testing.T) {
+	dataDir := t.TempDir()
+
+	srv, err := NewDHCPServer(DHCPConfig{
+		Bridge:     "flbr0",
+		Gateway:    "192.168.64.1",
+		RangeStart: "192.168.64.2",
+		RangeEnd:   "192.168.127.254",
+		Netmask:    "255.255.192.0",
+		LeaseTime:  "12h",
+		DNS:        "8.8.8.8",
+	}, dataDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Use a non-existent binary path
+	srv.SetBinaryPath("/nonexistent/dnsmasq")
+
+	err = srv.Start()
+	if err == nil {
+		t.Error("expected error for missing binary")
+	}
+}
+
+func TestDHCPServer_IsRunning(t *testing.T) {
+	dataDir := t.TempDir()
+
+	srv, err := NewDHCPServer(DHCPConfig{
+		Bridge:     "flbr0",
+		Gateway:    "192.168.64.1",
+		RangeStart: "192.168.64.2",
+		RangeEnd:   "192.168.127.254",
+		Netmask:    "255.255.192.0",
+		LeaseTime:  "12h",
+		DNS:        "8.8.8.8",
+	}, dataDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if srv.IsRunning() {
+		t.Error("expected not running before start")
+	}
+}
