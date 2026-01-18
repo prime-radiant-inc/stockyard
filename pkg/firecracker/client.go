@@ -263,6 +263,21 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 		return nil, fmt.Errorf("set MMDS data: %w", err)
 	}
 
+	// Create metrics FIFO
+	metricsPath := filepath.Join(vmDir, "metrics.fifo")
+	if err := syscall.Mkfifo(metricsPath, 0644); err != nil && !os.IsExist(err) {
+		cmd.Process.Kill()
+		destroyZFSDataset(vmDatasetPath)
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("create metrics fifo: %w", err)
+	}
+
+	// Configure metrics before starting instance
+	if err := apiClient.SetMetrics(ctx, metricsPath); err != nil {
+		// Log warning but don't fail - metrics are optional
+		fmt.Printf("Warning: failed to configure metrics: %v\n", err)
+	}
+
 	// Start instance
 	if err := apiClient.StartInstance(ctx); err != nil {
 		cmd.Process.Kill()
@@ -277,6 +292,7 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 		PID:           cmd.Process.Pid,
 		APISocketPath: apiSocketPath,
 		RootfsPath:    vmRootfs,
+		MetricsPath:   metricsPath,
 		State:         "running",
 		CreatedAt:     time.Now(),
 	}, nil
@@ -554,6 +570,20 @@ func (c *Client) StartVM(ctx context.Context, config *VMConfig) (*VMInfo, error)
 		return nil, fmt.Errorf("set MMDS data: %w", err)
 	}
 
+	// Create metrics FIFO
+	metricsPath := filepath.Join(vmDir, "metrics.fifo")
+	if err := syscall.Mkfifo(metricsPath, 0644); err != nil && !os.IsExist(err) {
+		cmd.Process.Kill()
+		c.network.DeleteTap(tapName)
+		return nil, fmt.Errorf("create metrics fifo: %w", err)
+	}
+
+	// Configure metrics before starting instance
+	if err := apiClient.SetMetrics(ctx, metricsPath); err != nil {
+		// Log warning but don't fail - metrics are optional
+		fmt.Printf("Warning: failed to configure metrics: %v\n", err)
+	}
+
 	// Start instance
 	if err := apiClient.StartInstance(ctx); err != nil {
 		cmd.Process.Kill()
@@ -567,6 +597,7 @@ func (c *Client) StartVM(ctx context.Context, config *VMConfig) (*VMInfo, error)
 		PID:           cmd.Process.Pid,
 		APISocketPath: apiSocketPath,
 		RootfsPath:    vmRootfs,
+		MetricsPath:   metricsPath,
 		State:         "running",
 		CreatedAt:     time.Now(),
 	}, nil

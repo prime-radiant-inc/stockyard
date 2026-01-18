@@ -95,6 +95,7 @@ type VMInfo struct {
 	SocketPath    string // Console socket path
 	APISocketPath string // HTTP API socket path
 	RootfsPath    string
+	MetricsPath   string // Path to metrics FIFO
 	State         string
 	CreatedAt     time.Time
 }
