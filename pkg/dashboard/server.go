@@ -103,6 +103,7 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Title":          "Fleet",
 		"User":           GetUser(r.Context()),
+		"UserAvatar":     GetUserAvatar(r.Context()),
 		"ActiveNav":      "fleet",
 		"Tasks":          tasks,
 		"GroupedTasks":   groupedByRepo, // Keep for backward compatibility
@@ -146,11 +147,12 @@ func (s *Server) handleVMDetail(w http.ResponseWriter, r *http.Request) {
 	snapshots, _ := s.daemon.ListSnapshots(ctx, id)
 
 	data := map[string]interface{}{
-		"Title":     task.ID,
-		"User":      GetUser(r.Context()),
-		"ActiveNav": "fleet",
-		"Task":      task,
-		"Snapshots": snapshots,
+		"Title":      task.ID,
+		"User":       GetUser(r.Context()),
+		"UserAvatar": GetUserAvatar(r.Context()),
+		"ActiveNav":  "fleet",
+		"Task":       task,
+		"Snapshots":  snapshots,
 	}
 
 	// Check if template exists, fallback for testing

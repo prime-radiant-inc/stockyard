@@ -11,9 +11,10 @@ const userContextKey contextKey = "user"
 
 // User represents an authenticated user.
 type User struct {
-	Login   string
-	Name    string
-	IsAdmin bool
+	Login         string
+	Name          string
+	ProfilePicURL string
+	IsAdmin       bool
 }
 
 // TailscaleClient is the interface for Tailscale local API.
@@ -24,11 +25,11 @@ type TailscaleClient interface {
 // AuthMiddleware adds user information to the request context.
 func AuthMiddleware(next http.Handler, ts TailscaleClient) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user := "anonymous"
+		user := &User{Login: "anonymous"}
 
 		if ts != nil {
 			if u, err := ts.WhoIs(r.Context(), r.RemoteAddr); err == nil && u != nil {
-				user = u.Login
+				user = u
 			}
 		}
 
@@ -37,10 +38,18 @@ func AuthMiddleware(next http.Handler, ts TailscaleClient) http.Handler {
 	})
 }
 
-// GetUser returns the authenticated user from the context.
+// GetUser returns the authenticated user login from the context.
 func GetUser(ctx context.Context) string {
-	if user, ok := ctx.Value(userContextKey).(string); ok {
-		return user
+	if user, ok := ctx.Value(userContextKey).(*User); ok {
+		return user.Login
 	}
 	return "anonymous"
+}
+
+// GetUserAvatar returns the authenticated user's profile picture URL from the context.
+func GetUserAvatar(ctx context.Context) string {
+	if user, ok := ctx.Value(userContextKey).(*User); ok {
+		return user.ProfilePicURL
+	}
+	return ""
 }

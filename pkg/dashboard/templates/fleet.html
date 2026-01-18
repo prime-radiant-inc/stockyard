@@ -57,7 +57,16 @@
                 </svg>
                 {{if .ActivityCount}}<span class="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{{.ActivityCount}}</span>{{end}}
             </button>
-            <span class="text-sm text-gray-600">{{.User}}</span>
+            <div class="flex items-center gap-2">
+                {{if .UserAvatar}}
+                <img src="{{.UserAvatar}}" alt="{{.User}}" class="w-8 h-8 rounded-full">
+                {{else}}
+                <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-bold uppercase">
+                    {{slice .User 0 1}}
+                </div>
+                {{end}}
+                <span class="text-sm text-gray-600 hidden sm:inline">{{.User}}</span>
+            </div>
         </div>
     </header>
 

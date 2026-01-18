@@ -148,8 +148,9 @@ func (c *LocalClient) WhoIs(ctx context.Context, remoteAddr string) (*dashboard.
 	// Parse response - the Tailscale API returns UserProfile info
 	var result struct {
 		UserProfile struct {
-			LoginName   string `json:"LoginName"`
-			DisplayName string `json:"DisplayName"`
+			LoginName     string `json:"LoginName"`
+			DisplayName   string `json:"DisplayName"`
+			ProfilePicURL string `json:"ProfilePicURL"`
 		} `json:"UserProfile"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -157,7 +158,8 @@ func (c *LocalClient) WhoIs(ctx context.Context, remoteAddr string) (*dashboard.
 	}
 
 	return &dashboard.User{
-		Login: result.UserProfile.LoginName,
-		Name:  result.UserProfile.DisplayName,
+		Login:         result.UserProfile.LoginName,
+		Name:          result.UserProfile.DisplayName,
+		ProfilePicURL: result.UserProfile.ProfilePicURL,
 	}, nil
 }
