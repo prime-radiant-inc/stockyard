@@ -108,6 +108,7 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		"GroupedTasks":   groupedByRepo, // Keep for backward compatibility
 		"GroupedByRepo":  groupedByRepo,
 		"GroupedByOwner": groupedByOwner,
+		"ActivityCount":  s.activityFeed.Count(),
 	}
 	var buf bytes.Buffer
 	if err := s.templates.ExecuteTemplate(&buf, "fleet.html", data); err != nil {

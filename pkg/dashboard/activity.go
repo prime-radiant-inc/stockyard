@@ -91,6 +91,13 @@ func (af *ActivityFeed) GetRecent(n int) []ActivityEvent {
 	return result
 }
 
+// Count returns the number of events in the feed.
+func (af *ActivityFeed) Count() int {
+	af.mu.RLock()
+	defer af.mu.RUnlock()
+	return len(af.events)
+}
+
 // Helper methods for common events
 
 // VMStarted records a VM started event.
