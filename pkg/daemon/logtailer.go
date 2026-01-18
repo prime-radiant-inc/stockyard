@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"bufio"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -75,29 +76,36 @@ func (t *LogTailer) tailLoop(taskID, stream, path string, stop chan struct{}) {
 	}
 	defer file.Close()
 
-	// Read existing content first
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		select {
-		case <-stop:
-			return
-		default:
-			t.sink.SendLog(taskID, stream, scanner.Text())
-		}
-	}
+	reader := bufio.NewReader(file)
+	var lineBuf []byte
 
-	// Then tail for new content
 	for {
 		select {
 		case <-stop:
 			return
 		default:
-			if scanner.Scan() {
-				t.sink.SendLog(taskID, stream, scanner.Text())
-			} else {
-				// Wait for more content
-				time.Sleep(100 * time.Millisecond)
-			}
 		}
+
+		line, isPrefix, err := reader.ReadLine()
+		if err != nil {
+			if err == io.EOF {
+				// No more data, wait and try again
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+			// Actual error, bail
+			return
+		}
+
+		// Handle long lines that come in pieces
+		lineBuf = append(lineBuf, line...)
+		if isPrefix {
+			// Line continues, keep reading
+			continue
+		}
+
+		// Complete line received
+		t.sink.SendLog(taskID, stream, string(lineBuf))
+		lineBuf = lineBuf[:0] // Reset buffer, keep capacity
 	}
 }
