@@ -1,4 +1,4 @@
-.PHONY: all build proto clean test test-unit lint fmt install uninstall
+.PHONY: all build proto clean test test-unit lint fmt install uninstall deploy
 
 all: proto build
 
@@ -22,6 +22,19 @@ install: build
 
 uninstall:
 	rm -f /usr/local/bin/stockyard /usr/local/bin/stockyardd
+
+# Deploy: build, install, and restart the daemon
+deploy: build
+	@echo "Stopping stockyardd..."
+	sudo systemctl stop stockyardd || true
+	@echo "Installing binaries..."
+	sudo install -m 755 bin/stockyard /usr/local/bin/stockyard
+	sudo install -m 755 bin/stockyardd /usr/local/bin/stockyardd
+	@echo "Starting stockyardd..."
+	sudo systemctl start stockyardd
+	@sleep 2
+	@echo "Verifying daemon status..."
+	@systemctl is-active stockyardd && echo "Deploy successful!" || (echo "Deploy failed - daemon not running" && exit 1)
 
 test: test-unit
 

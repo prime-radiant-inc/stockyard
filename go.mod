@@ -6,7 +6,9 @@ toolchain go1.24.12
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
+	github.com/creack/pty v1.1.24
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.1
 	github.com/liquidmetal-dev/flintlock/api v0.0.0-20251202154859-49e881a25c36
 	github.com/mattn/go-sqlite3 v1.14.33
 	github.com/mdlayher/vsock v1.2.1
@@ -17,7 +19,6 @@ require (
 )
 
 require (
-	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.24.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
@@ -28,7 +29,6 @@ require (
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
-	golang.org/x/crypto v0.47.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect

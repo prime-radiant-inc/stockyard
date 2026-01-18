@@ -105,7 +105,7 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 		Gateway:    cfg.Firecracker.VMGateway,
 		RangeStart: cfg.Firecracker.DHCPRangeStart,
 		RangeEnd:   cfg.Firecracker.DHCPRangeEnd,
-		Netmask:    "255.255.192.0", // /18
+		Netmask:    "255.255.255.0", // /24
 		LeaseTime:  cfg.Firecracker.DHCPLeaseTime,
 		DNS:        "8.8.8.8",
 	}
