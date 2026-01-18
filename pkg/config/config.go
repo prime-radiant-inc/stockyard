@@ -23,8 +23,9 @@ type VMConfig struct {
 
 type SecretsConfig struct {
 	Provider string `json:"provider"`
-	Vault    string `json:"vault"`
-	Prefix   string `json:"prefix"`
+	Vault    string `json:"vault"`  // For 1password provider
+	Prefix   string `json:"prefix"` // For 1password provider
+	Dir      string `json:"dir"`    // For file provider
 }
 
 type DaemonConfig struct {

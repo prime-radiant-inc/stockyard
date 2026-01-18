@@ -38,7 +38,11 @@ func run() error {
 
 	// Use fallback provider: try 1Password first, then file-based secrets
 	opProvider := secrets.NewOnePasswordProvider(cfg.Secrets.Vault, cfg.Secrets.Prefix)
-	fileProvider := secrets.NewFileProvider("/etc/stockyard")
+	secretsDir := cfg.Secrets.Dir
+	if secretsDir == "" {
+		secretsDir = "/etc/stockyard/secrets"
+	}
+	fileProvider := secrets.NewFileProvider(secretsDir)
 	secretsProvider := secrets.NewFallbackProvider(opProvider, fileProvider)
 
 	d, err := daemon.New(cfg, secretsProvider)
