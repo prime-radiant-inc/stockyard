@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/obra/stockyard/pkg/firecracker"
+	"github.com/obra/stockyard/pkg/network"
 	"github.com/obra/stockyard/pkg/tailscale"
 )
 
@@ -87,6 +88,18 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 	// Generate task ID
 	taskID := firecracker.GenerateVMID()
+
+	// Allocate static IP for the VM
+	var staticIPArgs string
+	var networkConfig *network.StaticNetworkConfig
+	if tm.daemon.IPPool() != nil {
+		if _, err := tm.daemon.IPPool().Allocate(taskID); err != nil {
+			log.Printf("Warning: could not allocate static IP: %v (falling back to DHCP)", err)
+		} else {
+			staticIPArgs = tm.daemon.IPPool().KernelIPArgs(taskID)
+			networkConfig = tm.daemon.IPPool().NetworkConfig(taskID)
+		}
+	}
 
 	// Create ZFS dataset for workspace
 	if err := tm.daemon.zfs.CreateDataset(ctx, taskID); err != nil {
@@ -168,6 +181,17 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	var vmCID uint32
 	var vmVsockPath string
 	if tm.fc != nil {
+		// Convert network config to MMDS format if available
+		var mmdsNetworkConfig *firecracker.MMDSNetworkConfig
+		if networkConfig != nil {
+			mmdsNetworkConfig = &firecracker.MMDSNetworkConfig{
+				IP:      networkConfig.IP,
+				Netmask: networkConfig.Netmask,
+				Gateway: networkConfig.Gateway,
+				DNS:     networkConfig.DNS,
+			}
+		}
+
 		vmCfg := &firecracker.VMConfig{
 			ID:                taskID,
 			Namespace:         "stockyard",
@@ -176,6 +200,8 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			CloudInitData:     cloudInitData,
 			TailscaleAuthKey:  tailscaleAuthKey,
 			SSHAuthorizedKeys: req.SSHAuthorizedKeys,
+			StaticIPArgs:      staticIPArgs,
+			NetworkMMDS:       mmdsNetworkConfig,
 			Metadata: map[string]string{
 				"task-id":   taskID,
 				"task-name": req.Name,
@@ -425,6 +451,11 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 		if af := tm.daemon.ActivityFeed(); af != nil {
 			af.VMStopped(taskID, task.Name)
 		}
+	}
+
+	// Release the static IP allocation
+	if tm.daemon.IPPool() != nil {
+		tm.daemon.IPPool().Release(taskID)
 	}
 
 	// Delete task from database
