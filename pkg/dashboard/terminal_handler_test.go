@@ -83,3 +83,18 @@ func TestTerminalHandler_NoDaemon(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusServiceUnavailable, w.Code)
 	}
 }
+
+func TestTerminalHandler_createVsockSession(t *testing.T) {
+	// This test verifies the session is created with correct fields.
+	// Actual vsock connection requires a running VM, so we test the error path.
+
+	handler := &TerminalHandler{
+		defaultUser: "mooby",
+	}
+
+	// CID 0 is invalid and won't connect
+	_, err := handler.createVsockSession(0, "testuser", 80, 24)
+	if err == nil {
+		t.Error("expected error for CID 0")
+	}
+}

@@ -12,6 +12,8 @@ import (
 	"github.com/creack/pty"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/mdlayher/vsock"
+	"github.com/obra/stockyard/pkg/shell"
 )
 
 // TerminalHandler handles WebSocket connections for terminal sessions.
@@ -147,6 +149,33 @@ func (h *TerminalHandler) createSSHSession(hostname, user string) (*TerminalSess
 		cmd:      cmd,
 		pty:      ptmx,
 	}, nil
+}
+
+// createVsockSession creates a new vsock connection to the VM.
+func (h *TerminalHandler) createVsockSession(cid uint32, user string, cols, rows int) (*VsockSession, error) {
+	if cid == 0 {
+		return nil, fmt.Errorf("invalid CID: 0")
+	}
+
+	conn, err := vsock.Dial(cid, shell.ShellPort, nil)
+	if err != nil {
+		return nil, fmt.Errorf("vsock dial CID %d: %w", cid, err)
+	}
+
+	session := &VsockSession{
+		ID:   uuid.New().String(),
+		CID:  cid,
+		User: user,
+		conn: conn,
+	}
+
+	// Send Open message with terminal info
+	if err := session.SendOpen("xterm-256color", cols, rows); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("send open: %w", err)
+	}
+
+	return session, nil
 }
 
 // handleSession manages bidirectional I/O between WebSocket and PTY.
