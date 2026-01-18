@@ -196,7 +196,11 @@ func (s *Server) handleAPIVM(w http.ResponseWriter, r *http.Request) {
 
 	case r.Method == "POST" && len(parts) >= 3 && parts[1] == "snapshots" && parts[len(parts)-1] == "restore":
 		// /api/vm/{id}/snapshots/{name}/restore
-		// TODO: Implement restore
+		snapshotName := parts[2]
+		if err := s.daemon.RestoreSnapshot(ctx, id, snapshotName); err != nil {
+			http.Error(w, "Failed to restore snapshot: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("HX-Refresh", "true")
 		w.WriteHeader(http.StatusOK)
 
