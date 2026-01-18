@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 
 	"github.com/obra/stockyard/pkg/client"
@@ -137,13 +138,9 @@ func (rc *ResourceCollector) isVMRunning(vmDir string) bool {
 		return false
 	}
 
-	// Check if process exists
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	// On Unix, FindProcess always succeeds; we need to send signal 0
-	err = process.Signal(nil)
+	// Check if process exists by sending signal 0
+	// On Unix, this returns nil if process exists and we have permission to signal it
+	err = syscall.Kill(pid, 0)
 	return err == nil
 }
 

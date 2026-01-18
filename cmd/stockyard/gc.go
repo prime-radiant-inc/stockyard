@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/obra/stockyard/pkg/client"
 	"github.com/obra/stockyard/pkg/config"
@@ -286,11 +287,9 @@ func (gc *GarbageCollector) isVMRunning(vmDir string) bool {
 		return false
 	}
 
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	err = process.Signal(nil)
+	// Check if process exists by sending signal 0
+	// On Unix, this returns nil if process exists and we have permission to signal it
+	err = syscall.Kill(pid, 0)
 	return err == nil
 }
 
