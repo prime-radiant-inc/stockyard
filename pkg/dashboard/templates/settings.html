@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Stockyard</title>
+    <script src="/static/js/htmx.min.js"></script>
+    <script defer src="/static/js/alpine.min.js"></script>
+    <script src="/static/js/tailwind.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-4">
+            <a href="/" class="font-semibold text-lg hover:text-blue-600">Stockyard</a>
+            <span class="text-gray-400">/</span>
+            <span class="text-gray-600">Settings</span>
+        </div>
+        <div class="flex items-center gap-4">
+            {{if .UserAvatar}}
+            <img src="{{.UserAvatar}}" alt="{{.User}}" class="w-8 h-8 rounded-full">
+            {{else}}
+            <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-bold uppercase">
+                {{if .User}}{{slice .User 0 1}}{{else}}?{{end}}
+            </div>
+            {{end}}
+            <span class="text-sm text-gray-600 hidden sm:inline">{{.User}}</span>
+        </div>
+    </header>
+
+    <!-- Main content -->
+    <main class="flex-1 overflow-auto p-6">
+        <div class="max-w-2xl mx-auto">
+            <div class="bg-white rounded-lg shadow border border-gray-200">
+                <div class="p-4 border-b border-gray-200">
+                    <h1 class="text-xl font-semibold text-gray-900">Settings</h1>
+                </div>
+
+                <div class="p-6 space-y-6">
+                    <!-- Instance Info -->
+                    <div>
+                        <h2 class="text-sm font-medium text-gray-900 mb-3">Instance Information</h2>
+                        <dl class="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <dt class="text-gray-500">Instance ID</dt>
+                                <dd class="font-mono text-gray-900">{{.InstanceID}}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-gray-500">Version</dt>
+                                <dd class="font-mono text-gray-900">{{.Version}}</dd>
+                            </div>
+                        </dl>
+                    </div>
+
+                    <hr class="border-gray-200">
+
+                    <!-- ZFS Config -->
+                    <div>
+                        <h2 class="text-sm font-medium text-gray-900 mb-3">Storage (ZFS)</h2>
+                        <dl class="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <dt class="text-gray-500">Pool</dt>
+                                <dd class="font-mono text-gray-900">{{.ZFSPool}}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-gray-500">VMs Path</dt>
+                                <dd class="font-mono text-gray-900">{{.ZFSVMsPath}}</dd>
+                            </div>
+                        </dl>
+                    </div>
+
+                    <hr class="border-gray-200">
+
+                    <!-- Network Config -->
+                    <div>
+                        <h2 class="text-sm font-medium text-gray-900 mb-3">Network</h2>
+                        <dl class="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <dt class="text-gray-500">Bridge</dt>
+                                <dd class="font-mono text-gray-900">{{.BridgeName}}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-gray-500">VM Subnet</dt>
+                                <dd class="font-mono text-gray-900">{{.VMSubnet}}</dd>
+                            </div>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
