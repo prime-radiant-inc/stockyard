@@ -86,16 +86,23 @@ TS_AUTH_KEY=$(echo "$TS_AUTH_KEY_RAW" | strip_json_quotes)
 echo "Raw auth key response length: ${#TS_AUTH_KEY_RAW}"
 if [ -n "$TS_AUTH_KEY" ]; then
     echo "Found Tailscale auth key (${#TS_AUTH_KEY} chars), waiting for tailscaled..."
-    # Wait for tailscaled to be ready (up to 30 seconds)
-    for i in {1..30}; do
+    # Wait for tailscaled to be ready (up to 60 seconds)
+    for i in {1..60}; do
         if tailscale status &>/dev/null; then
-            echo "tailscaled is ready"
+            echo "tailscaled is ready after ${i}s"
             break
         fi
         sleep 1
     done
+    # Try connecting even if tailscale status fails - the socket might exist
     echo "Connecting to Tailscale..."
-    tailscale up --authkey="$TS_AUTH_KEY" --hostname="$HOSTNAME" --accept-routes --ssh 2>&1 | tee -a "$LOG_FILE" &
+    if tailscale up --authkey="$TS_AUTH_KEY" --hostname="$HOSTNAME" --accept-routes --ssh 2>&1; then
+        echo "Tailscale up succeeded"
+    else
+        echo "Tailscale up failed, retrying in 5s..."
+        sleep 5
+        tailscale up --authkey="$TS_AUTH_KEY" --hostname="$HOSTNAME" --accept-routes --ssh 2>&1 | tee -a "$LOG_FILE" &
+    fi
 else
     echo "No Tailscale auth key found in MMDS"
 fi
