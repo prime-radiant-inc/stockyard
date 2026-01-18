@@ -3,20 +3,30 @@ package daemon
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
 
 type mockLogSink struct {
+	mu       sync.Mutex
 	received []struct {
 		taskID, stream, line string
 	}
 }
 
 func (m *mockLogSink) SendLog(taskID, stream, line string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.received = append(m.received, struct {
 		taskID, stream, line string
 	}{taskID, stream, line})
+}
+
+func (m *mockLogSink) Len() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.received)
 }
 
 func TestLogTailer_TailsLogFile(t *testing.T) {
@@ -38,7 +48,7 @@ func TestLogTailer_TailsLogFile(t *testing.T) {
 	// Wait for initial lines
 	time.Sleep(100 * time.Millisecond)
 
-	if len(sink.received) < 2 {
-		t.Errorf("expected at least 2 lines, got %d", len(sink.received))
+	if sink.Len() < 2 {
+		t.Errorf("expected at least 2 lines, got %d", sink.Len())
 	}
 }
