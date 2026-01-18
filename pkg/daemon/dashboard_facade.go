@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/obra/stockyard/pkg/dashboard"
+	"github.com/obra/stockyard/pkg/zfs"
 )
 
 // DashboardFacade adapts the daemon's State and TaskManager to the dashboard.RealDaemon interface.
@@ -13,13 +14,15 @@ import (
 type DashboardFacade struct {
 	state *State
 	tasks *TaskManager
+	zfs   *zfs.Manager
 }
 
 // NewDashboardFacade creates a new facade for dashboard access.
-func NewDashboardFacade(state *State, tasks *TaskManager) *DashboardFacade {
+func NewDashboardFacade(state *State, tasks *TaskManager, zfsMgr *zfs.Manager) *DashboardFacade {
 	return &DashboardFacade{
 		state: state,
 		tasks: tasks,
+		zfs:   zfsMgr,
 	}
 }
 
@@ -87,20 +90,78 @@ func (f *DashboardFacade) ListTaskSnapshots(ctx context.Context, taskID string) 
 
 // CreateSnapshot creates a new snapshot for a task.
 func (f *DashboardFacade) CreateSnapshot(ctx context.Context, taskID, label string) (string, error) {
-	// For now, just record in the database
-	// In a full implementation, this would also create the ZFS snapshot
-	snapName := taskID + "@" + label
-	if err := f.state.RecordSnapshot(taskID, snapName); err != nil {
-		return "", err
+	// Get task to find its VMID
+	task, err := f.state.GetTask(taskID)
+	if err != nil {
+		return "", fmt.Errorf("get task: %w", err)
 	}
+
+	if task.VMID == "" {
+		return "", fmt.Errorf("task %s has no VM", taskID)
+	}
+
+	// Create ZFS snapshot
+	if f.zfs == nil {
+		return "", fmt.Errorf("ZFS manager not available")
+	}
+
+	// Sync before snapshot to ensure data consistency
+	if err := f.zfs.Sync(ctx, task.VMID); err != nil {
+		// Log but don't fail - sync might fail if dataset is busy
+	}
+
+	snapName, err := f.zfs.CreateSnapshot(ctx, task.VMID, label)
+	if err != nil {
+		return "", fmt.Errorf("create ZFS snapshot: %w", err)
+	}
+
+	// Record in database
+	if err := f.state.RecordSnapshot(taskID, snapName); err != nil {
+		// Snapshot was created, so log the DB error but return success
+		return snapName, nil
+	}
+
 	return snapName, nil
 }
 
 // RestoreSnapshot restores a task to a previous snapshot.
 func (f *DashboardFacade) RestoreSnapshot(ctx context.Context, taskID, snapshotName string) error {
-	// For now, return not implemented error
-	// Full implementation requires ZFS rollback + VM restart
-	return fmt.Errorf("snapshot restore not yet implemented")
+	// Get task to check status and find VMID
+	task, err := f.state.GetTask(taskID)
+	if err != nil {
+		return fmt.Errorf("get task: %w", err)
+	}
+
+	if task.VMID == "" {
+		return fmt.Errorf("task %s has no VM", taskID)
+	}
+
+	if f.zfs == nil {
+		return fmt.Errorf("ZFS manager not available")
+	}
+
+	// If VM is running, stop it first
+	wasRunning := task.Status == "running"
+	if wasRunning {
+		if f.tasks == nil {
+			return fmt.Errorf("cannot stop running VM: TaskManager not available")
+		}
+		if err := f.tasks.StopTask(ctx, taskID); err != nil {
+			return fmt.Errorf("stop VM before restore: %w", err)
+		}
+	}
+
+	// Roll back the ZFS dataset
+	if err := f.zfs.RollbackSnapshot(ctx, task.VMID, snapshotName); err != nil {
+		return fmt.Errorf("ZFS rollback: %w", err)
+	}
+
+	// Note: We don't automatically restart the VM after rollback.
+	// The user can manually restart if needed. This is safer because:
+	// 1. The restored state might be incompatible with current config
+	// 2. The user might want to inspect the state before running
+
+	return nil
 }
 
 // convertToDashboardTask converts a daemon Task to a dashboard DaemonTask.

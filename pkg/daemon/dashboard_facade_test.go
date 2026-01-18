@@ -46,7 +46,7 @@ func TestDashboardFacade_ListTasks(t *testing.T) {
 		t.Fatalf("failed to create task2: %v", err)
 	}
 
-	facade := NewDashboardFacade(state, nil)
+	facade := NewDashboardFacade(state, nil, nil)
 
 	// List all tasks
 	tasks, err := facade.ListTasks(context.Background(), "")
@@ -91,7 +91,7 @@ func TestDashboardFacade_GetTask(t *testing.T) {
 		t.Fatalf("failed to create task: %v", err)
 	}
 
-	facade := NewDashboardFacade(state, nil)
+	facade := NewDashboardFacade(state, nil, nil)
 
 	// Test found case
 	result, err := facade.GetTask(context.Background(), "task-123")
@@ -138,7 +138,7 @@ func TestDashboardFacade_ListTaskSnapshots(t *testing.T) {
 	state.RecordSnapshot("task-1", "task-1@snap1")
 	state.RecordSnapshot("task-1", "task-1@snap2")
 
-	facade := NewDashboardFacade(state, nil)
+	facade := NewDashboardFacade(state, nil, nil)
 
 	snaps, err := facade.ListTaskSnapshots(context.Background(), "task-1")
 	if err != nil {
@@ -149,7 +149,7 @@ func TestDashboardFacade_ListTaskSnapshots(t *testing.T) {
 	}
 }
 
-func TestDashboardFacade_CreateSnapshot(t *testing.T) {
+func TestDashboardFacade_CreateSnapshot_NoVMID(t *testing.T) {
 	state, err := NewStateInMemory()
 	if err != nil {
 		t.Fatalf("failed to create state: %v", err)
@@ -163,39 +163,115 @@ func TestDashboardFacade_CreateSnapshot(t *testing.T) {
 		Command:   "claude",
 		Status:    "running",
 		CreatedAt: time.Now(),
+		// No VMID set
 	}
 	if err := state.CreateTask(task); err != nil {
 		t.Fatalf("failed to create task: %v", err)
 	}
 
-	facade := NewDashboardFacade(state, nil)
+	facade := NewDashboardFacade(state, nil, nil)
 
-	snapName, err := facade.CreateSnapshot(context.Background(), "task-1", "my-label")
-	if err != nil {
-		t.Fatalf("CreateSnapshot failed: %v", err)
-	}
-	if snapName != "task-1@my-label" {
-		t.Errorf("expected task-1@my-label, got %s", snapName)
-	}
-
-	// Verify it was recorded
-	snaps, _ := state.ListTaskSnapshots("task-1")
-	if len(snaps) != 1 {
-		t.Errorf("expected 1 snapshot recorded, got %d", len(snaps))
+	_, err = facade.CreateSnapshot(context.Background(), "task-1", "my-label")
+	if err == nil {
+		t.Error("expected error when task has no VMID")
 	}
 }
 
-func TestDashboardFacade_RestoreSnapshot_NotImplemented(t *testing.T) {
+func TestDashboardFacade_CreateSnapshot_NoZFS(t *testing.T) {
 	state, err := NewStateInMemory()
 	if err != nil {
 		t.Fatalf("failed to create state: %v", err)
 	}
 	defer state.Close()
 
-	facade := NewDashboardFacade(state, nil)
+	task := &Task{
+		ID:        "task-1",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "claude",
+		Status:    "running",
+		VMID:      "vm-abc123",
+		CreatedAt: time.Now(),
+	}
+	if err := state.CreateTask(task); err != nil {
+		t.Fatalf("failed to create task: %v", err)
+	}
 
-	err = facade.RestoreSnapshot(context.Background(), "task-1", "task-1@snap1")
+	facade := NewDashboardFacade(state, nil, nil)
+
+	_, err = facade.CreateSnapshot(context.Background(), "task-1", "my-label")
 	if err == nil {
-		t.Error("expected error for unimplemented restore")
+		t.Error("expected error when ZFS manager not available")
+	}
+}
+
+func TestDashboardFacade_RestoreSnapshot_TaskNotFound(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("failed to create state: %v", err)
+	}
+	defer state.Close()
+
+	facade := NewDashboardFacade(state, nil, nil)
+
+	err = facade.RestoreSnapshot(context.Background(), "nonexistent", "snap1")
+	if err == nil {
+		t.Error("expected error for nonexistent task")
+	}
+}
+
+func TestDashboardFacade_RestoreSnapshot_NoVMID(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("failed to create state: %v", err)
+	}
+	defer state.Close()
+
+	task := &Task{
+		ID:        "task-1",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "claude",
+		Status:    "stopped",
+		CreatedAt: time.Now(),
+		// No VMID set
+	}
+	if err := state.CreateTask(task); err != nil {
+		t.Fatalf("failed to create task: %v", err)
+	}
+
+	facade := NewDashboardFacade(state, nil, nil)
+
+	err = facade.RestoreSnapshot(context.Background(), "task-1", "snap1")
+	if err == nil {
+		t.Error("expected error when task has no VMID")
+	}
+}
+
+func TestDashboardFacade_RestoreSnapshot_NoZFS(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("failed to create state: %v", err)
+	}
+	defer state.Close()
+
+	task := &Task{
+		ID:        "task-1",
+		Repo:      "github.com/test/repo",
+		Ref:       "main",
+		Command:   "claude",
+		Status:    "stopped",
+		VMID:      "vm-abc123",
+		CreatedAt: time.Now(),
+	}
+	if err := state.CreateTask(task); err != nil {
+		t.Fatalf("failed to create task: %v", err)
+	}
+
+	facade := NewDashboardFacade(state, nil, nil)
+
+	err = facade.RestoreSnapshot(context.Background(), "task-1", "snap1")
+	if err == nil {
+		t.Error("expected error when ZFS manager not available")
 	}
 }
