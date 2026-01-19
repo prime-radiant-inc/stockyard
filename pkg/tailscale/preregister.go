@@ -75,18 +75,24 @@ func (p *PreRegistrar) PreRegister(ctx context.Context, hostname string) (*PreRe
 		return nil, fmt.Errorf("wait for socket: %w", err)
 	}
 
-	// Run tailscale up
+	// Write auth key to temp file (avoids exposing in process arguments)
+	authKeyPath := filepath.Join(nodeDir, "authkey")
+	if err := os.WriteFile(authKeyPath, []byte(p.authKey), 0600); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("write auth key file: %w", err)
+	}
+
+	// Run tailscale up with auth key from file
 	up := exec.CommandContext(ctx,
 		"tailscale",
 		"--socket="+socketPath,
 		"up",
+		"--authkey=file:"+authKeyPath,
 		"--hostname="+hostname,
 		"--accept-routes",
 		"--ssh",
 		"--timeout=30s",
 	)
-	// Pass auth key via environment variable to avoid exposing it in process arguments
-	up.Env = append(os.Environ(), "TS_AUTHKEY="+p.authKey)
 
 	if output, err := up.CombinedOutput(); err != nil {
 		cleanup()
