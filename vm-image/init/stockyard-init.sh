@@ -89,6 +89,10 @@ if [ -n "$HOSTNAME" ]; then
     # Use hostname command (works without dbus) and persist to /etc/hostname
     hostname "$HOSTNAME"
     echo "$HOSTNAME" > /etc/hostname
+    # Add hostname to /etc/hosts so sudo and other tools can resolve it
+    if ! grep -q "$HOSTNAME" /etc/hosts 2>/dev/null; then
+        echo "127.0.1.1   $HOSTNAME" >> /etc/hosts
+    fi
 fi
 
 # Get SSH authorized keys from meta-data
