@@ -86,7 +86,9 @@ HOSTNAME_RAW=$(curl -sf "${MMDS_URL}/meta-data/local-hostname" 2>/dev/null || ec
 HOSTNAME=$(echo "$HOSTNAME_RAW" | strip_json_quotes)
 if [ -n "$HOSTNAME" ]; then
     log_timing "Setting hostname to: $HOSTNAME"
-    hostnamectl set-hostname "$HOSTNAME"
+    # Use hostname command (works without dbus) and persist to /etc/hostname
+    hostname "$HOSTNAME"
+    echo "$HOSTNAME" > /etc/hostname
 fi
 
 # Get SSH authorized keys from meta-data
@@ -117,18 +119,29 @@ if [ -n "$TS_STATE_B64" ] && [ "$TS_STATE_B64" != "null" ]; then
     log_timing "Found pre-registered Tailscale state"
 
     # Decode and write state before starting tailscaled
-    mkdir -p /var/lib/tailscale
+    mkdir -p /var/lib/tailscale /run/tailscale
     echo "$TS_STATE_B64" | base64 -d > /var/lib/tailscale/tailscaled.state
     chmod 600 /var/lib/tailscale/tailscaled.state
 
-    # Start tailscaled (will use existing state)
+    # Start tailscaled directly (systemctl --no-block delays until multi-user.target)
+    # We run it directly to get Tailscale up as fast as possible
     log_timing "Starting tailscaled with pre-registered state..."
-    systemctl start tailscaled.service 2>&1 || log_timing "WARNING: tailscaled start failed"
+    TS_SOCKET="/run/tailscale/tailscaled.sock"
+
+    # Source environment file for FLAGS
+    . /etc/default/tailscaled 2>/dev/null || true
+
+    # Start tailscaled in background
+    /usr/sbin/tailscaled --state=/var/lib/tailscale/tailscaled.state \
+        --socket="$TS_SOCKET" --port="${PORT:-41641}" $FLAGS &>/dev/null &
+    TAILSCALED_PID=$!
+    log_timing "tailscaled started (PID: $TAILSCALED_PID)"
 
     # Wait for reconnection (should be fast with existing state)
     reconnect_start=$(date +%s.%N)
     for i in {1..50}; do
-        if tailscale status &>/dev/null; then
+        # First check if socket exists (tailscale CLI hangs without it)
+        if [ -S "$TS_SOCKET" ] && timeout 1 tailscale status &>/dev/null; then
             elapsed=$(echo "$(date +%s.%N) - $reconnect_start" | bc)
             TS_IP=$(tailscale ip -4 2>/dev/null || echo "unknown")
             log_timing "Tailscale reconnected in ${elapsed}s: $TS_IP"
@@ -136,6 +149,10 @@ if [ -n "$TS_STATE_B64" ] && [ "$TS_STATE_B64" != "null" ]; then
         fi
         sleep 0.1
     done
+    # Log if we timed out waiting for Tailscale
+    if [ $i -eq 50 ]; then
+        log_timing "Tailscale reconnection timeout (continuing anyway)"
+    fi
 else
     # Fall back to auth key registration
     TS_AUTH_KEY_RAW=$(curl -sf "${MMDS_URL}/meta-data/tailscale-auth-key" 2>/dev/null || echo "")
@@ -158,7 +175,7 @@ else
             log_timing "TUN not available, using userspace networking"
         fi
 
-        systemctl start tailscaled.service 2>&1 || log_timing "WARNING: tailscaled start failed"
+        systemctl start --no-block tailscaled.service 2>&1 || log_timing "WARNING: tailscaled start failed"
 
         # Wait for socket
         tailscaled_ready=false

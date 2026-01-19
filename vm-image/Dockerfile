@@ -259,6 +259,33 @@ EOF
 RUN systemctl disable systemd-resolved 2>/dev/null || true
 
 # ============================================================================
+# Section 7b: Disable unnecessary services for fast boot
+# ============================================================================
+# These services are unnecessary for ephemeral Firecracker VMs and add boot latency.
+# See docs/vm-image-services.md for rationale on each.
+
+# Timers - scheduled tasks not needed for ephemeral VMs
+RUN systemctl disable apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true \
+    && systemctl disable dpkg-db-backup.timer 2>/dev/null || true \
+    && systemctl disable e2scrub_all.timer 2>/dev/null || true \
+    && systemctl disable motd-news.timer 2>/dev/null || true \
+    && systemctl disable fstrim.timer 2>/dev/null || true
+
+# Services - not needed for VM operation
+RUN systemctl disable e2scrub_reap.service 2>/dev/null || true \
+    && systemctl disable unattended-upgrades.service 2>/dev/null || true \
+    && systemctl disable networkd-dispatcher.service 2>/dev/null || true \
+    && systemctl disable systemd-pstore.service 2>/dev/null || true \
+    && systemctl disable systemd-timesyncd.service 2>/dev/null || true
+
+# Getty services - we have vsock shell for console access
+RUN systemctl disable getty@tty1.service 2>/dev/null || true \
+    && systemctl disable console-getty.service 2>/dev/null || true
+
+# Mask services that might get pulled in by dependencies
+RUN systemctl mask systemd-tmpfiles-clean.timer 2>/dev/null || true
+
+# ============================================================================
 # Section 8: MicroVM Kernel
 # ============================================================================
 
