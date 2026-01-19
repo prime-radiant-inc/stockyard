@@ -1,10 +1,12 @@
 [Unit]
 Description=Stockyard VM Initialization
-# Only wait for network - tailscaled with userspace networking takes too long
-# to signal ready via sd_notify. We'll wait for it in the script instead.
-# network-online.target now has 10s timeout (see Dockerfile drop-in)
-After=network-online.target
-Wants=network-online.target
+# Disable default dependencies so we can start as early as possible.
+# Kernel configures static IP via boot args before systemd even starts.
+DefaultDependencies=no
+# Only wait for basic filesystem and network interface to exist
+After=local-fs.target systemd-networkd.service
+# Block sysinit.target until we're done - ensures we run early
+Before=sysinit.target
 
 [Service]
 Type=oneshot
@@ -14,4 +16,5 @@ StandardOutput=journal+console
 StandardError=journal+console
 
 [Install]
-WantedBy=multi-user.target
+# Pull in via sysinit.target for early execution
+WantedBy=sysinit.target

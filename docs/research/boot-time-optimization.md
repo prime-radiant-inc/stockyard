@@ -394,7 +394,175 @@ The actual DHCP packet exchange is fast (<100ms). The delay is primarily:
 
 ## Phase 2 Implementation (Completed 2025-01-19)
 
-Phase 2 implemented both static IP assignment and Tailscale pre-registration, achieving the <2s target.
+Phase 2 implemented both static IP assignment and Tailscale pre-registration.
+
+**Note:** Initial measurements showed 1.65s init script runtime, but this is misleading. The total time from kernel start to init-complete is ~6.2s. The 1.65s is just the stockyard-init.sh script duration, not the full boot.
+
+## Phase 3 Audit (2025-01-19)
+
+Fresh audit with clean build revealed the actual boot timeline and remaining bottlenecks.
+
+### Actual Boot Timeline (from kernel timestamps)
+
+```
+0.00s   Kernel starts
+0.89s   /sbin/init runs (systemd starts)
+1.29s   systemd-journald active
+~1.5s   network.target reached (kernel IP already configured)
+~4.5s   sysinit.target reached, many services started
+~4.9s   stockyard-init.service starts
+~6.2s   stockyard-init.service completes
+~6.5s   multi-user.target reached
+```
+
+### Time Breakdown
+
+| Phase | Duration | Cumulative | Notes |
+|-------|----------|------------|-------|
+| Kernel boot | 0.89s | 0.89s | Linux 6.1.155, minimal config |
+| Early systemd | 0.4s | 1.29s | Journal, basic mounts |
+| systemd services | 3.2s | ~4.5s | **BOTTLENECK** - many services |
+| stockyard-init.sh | 1.7s | ~6.2s | MMDS + Tailscale |
+
+### stockyard-init.sh Breakdown
+
+```
+[+0.00s] Init started
+[+0.03s] Network check (kernel IP: instant)
+[+0.04s] DNS configured
+[+0.08s] MMDS reachable
+[+0.10s] Hostname set
+[+0.12s] SSH keys installed
+[+0.13s] Tailscale state found
+[+0.14s] tailscaled starting
+[+1.54s] Tailscale reconnected (1.3s for reconnect)
+[+1.74s] Init complete
+```
+
+**Key finding:** Tailscale "reconnect" with pre-registered state takes ~1.3s, which is not significantly faster than fresh registration (~1.5s). The pre-registration benefit is reliability (guaranteed to work), not speed.
+
+### systemd Service Analysis
+
+Services running before stockyard-init starts:
+
+```
+systemd-journald.service          - Journal (required)
+systemd-udevd.service             - Device manager
+systemd-networkd.service          - Network config
+systemd-tmpfiles-setup.service    - Temp files
+ldconfig.service                  - Dynamic linker cache
+dbus.service                      - Message bus
+systemd-logind.service            - Login management
+polkit.service                    - Authorization
+unattended-upgrades.service       - Apt upgrades
+e2scrub_reap.service              - Filesystem check
+systemd-hostnamed.service         - Hostname
+console-getty.service             - Console login
+getty@tty1.service                - TTY login
+stockyard-shell.service           - vsock shell
+```
+
+Timers started (add overhead):
+```
+apt-daily.timer
+apt-daily-upgrade.timer
+dpkg-db-backup.timer
+e2scrub_all.timer
+motd-news.timer
+systemd-tmpfiles-clean.timer
+```
+
+### Changes Made This Session
+
+1. **Disabled DHCP** (`DHCP=no` in network config)
+   - Kernel provides static IP via boot args
+   - Eliminates DHCP negotiation entirely
+   - Added explicit DNS servers to network config
+
+2. **Service dependency optimization** (limited benefit)
+   - `DefaultDependencies=no`
+   - `After=local-fs.target systemd-networkd.service`
+   - `WantedBy=sysinit.target`
+   - Result: ~0.3s improvement at best
+
+### Tailscale Pre-Registration Reality Check
+
+| Method | Time | Notes |
+|--------|------|-------|
+| Fresh registration (auth key) | ~1.5s | Control plane round-trip |
+| Pre-registered reconnect | ~1.3s | Still needs control plane |
+| **Savings** | **~0.2s** | Not significant |
+
+The pre-registration's real benefit is **reliability** - the node is already registered, so there's no risk of auth key issues or rate limiting. Speed benefit is minimal because Tailscale still needs to:
+1. Start tailscaled daemon
+2. Load state file
+3. Connect to control plane
+4. Verify credentials
+5. Establish DERP connections
+
+### Remaining Optimization Opportunities
+
+#### High Impact (potential ~2-3s savings)
+
+1. **Disable unnecessary systemd services:**
+   - `unattended-upgrades.service` - Not needed in ephemeral VMs
+   - `apt-daily.timer`, `apt-daily-upgrade.timer` - Ditto
+   - `e2scrub_*.service` - Filesystem checks not needed
+   - `polkit.service` - May not be needed
+   - `motd-news.timer` - Definitely not needed
+   - `console-getty.service`, `getty@tty1.service` - No console login needed
+
+2. **Disable ldconfig.service:**
+   - Takes significant time rebuilding linker cache
+   - Not needed if libraries don't change at runtime
+
+3. **Simplify systemd target:**
+   - Create custom minimal target
+   - Only pull in essential services
+
+#### Medium Impact (potential ~0.5-1s savings)
+
+4. **Background Tailscale:**
+   - Already partially implemented (background connection)
+   - Could fully background and not wait for reconnect
+   - Trade-off: SSH not available for ~1.5s after "ready"
+
+5. **Parallel MMDS fetches:**
+   - Currently sequential: hostname, SSH keys, Tailscale state
+   - Could parallelize with background subshells
+
+#### Low Impact / High Effort
+
+6. **Replace systemd with busybox init:**
+   - Potential ~3s savings
+   - Significant maintenance burden
+   - Loss of systemd features (journal, service management)
+
+7. **Custom minimal kernel:**
+   - Current AWS kernel is already optimized
+   - Diminishing returns
+
+### Target After Optimization
+
+If we disable unnecessary services:
+
+| Phase | Current | Target | Savings |
+|-------|---------|--------|---------|
+| Kernel boot | 0.89s | 0.89s | - |
+| systemd startup | 3.6s | ~1.5s | ~2s |
+| stockyard-init | 1.7s | 1.7s | - |
+| **Total** | **~6.2s** | **~4.1s** | **~2s** |
+
+If we also background Tailscale:
+
+| Phase | Current | Target | Savings |
+|-------|---------|--------|---------|
+| Kernel boot | 0.89s | 0.89s | - |
+| systemd startup | 3.6s | ~1.5s | ~2s |
+| stockyard-init | 1.7s | ~0.4s | ~1.3s |
+| **Total** | **~6.2s** | **~2.8s** | **~3.4s** |
+
+(Note: With backgrounded Tailscale, SSH available ~1.3s after init complete)
 
 ### Static IP via Kernel Boot Args
 

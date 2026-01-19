@@ -221,8 +221,8 @@ RUN systemctl enable stockyard-init.service 2>/dev/null || true
 RUN systemctl mask cloud-init.service cloud-init-local.service \
     cloud-config.service cloud-final.service 2>/dev/null || true
 
-# Configure network for DHCP with MMDS route
-# IP is obtained via DHCP from stockyard daemon's dnsmasq
+# Network config for eth0 - kernel provides static IP via boot args
+# DHCP is disabled since we always use kernel IP (ip=...:eth0:off)
 # MMDS route is added for Firecracker metadata access
 RUN mkdir -p /etc/systemd/network \
     && cat > /etc/systemd/network/10-eth0.network <<'EOF'
@@ -230,14 +230,13 @@ RUN mkdir -p /etc/systemd/network \
 Name=eth0
 
 [Network]
-DHCP=yes
+# Static IP is configured by kernel boot args, no DHCP needed
+DHCP=no
 DNS=8.8.8.8
-
-[DHCP]
-UseDNS=false
-UseRoutes=true
+DNS=8.8.4.4
 
 [Route]
+# MMDS metadata service
 Destination=169.254.169.254/32
 Scope=link
 EOF
