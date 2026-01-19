@@ -3,7 +3,6 @@ package daemon
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"os"
 	"sync"
 	"syscall"
@@ -93,6 +92,8 @@ func (r *MetricsFIFOReader) readLoop() {
 		}
 
 		scanner := bufio.NewScanner(file)
+		// Firecracker metrics JSON can exceed the default 64KB buffer
+		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 		for scanner.Scan() {
 			select {
 			case <-r.stop:
@@ -103,7 +104,7 @@ func (r *MetricsFIFOReader) readLoop() {
 
 			var metrics firecracker.FirecrackerMetrics
 			if err := json.Unmarshal(scanner.Bytes(), &metrics); err != nil {
-				fmt.Printf("Warning: failed to parse metrics: %v\n", err)
+				// Log parse errors but continue - metrics are best-effort
 				continue
 			}
 			r.callback(&metrics)
