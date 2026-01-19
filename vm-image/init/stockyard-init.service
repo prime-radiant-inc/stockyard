@@ -3,10 +3,12 @@ Description=Stockyard VM Initialization
 # Disable default dependencies so we can start as early as possible.
 # Kernel configures static IP via boot args before systemd even starts.
 DefaultDependencies=no
-# Only wait for basic filesystem and network interface to exist
-After=local-fs.target systemd-networkd.service
-# Block sysinit.target until we're done - ensures we run early
-Before=sysinit.target
+# Start as early as possible - just need root fs mounted and basic system
+# Kernel already has network from ip= boot arg (configured at ~0.85s)
+After=systemd-journald.socket
+Wants=systemd-journald.socket
+# Block local-fs.target to run before most other services
+Before=local-fs.target sysinit.target
 
 [Service]
 Type=oneshot
