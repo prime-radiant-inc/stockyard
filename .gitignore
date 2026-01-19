@@ -1,4 +1,22 @@
 work/
 bin/
 /stockyard
+/stockyardd
 .worktrees/
+
+# VM image build artifacts
+vm-image/output/
+vm-image/scripts/stockyard-snapshot/stockyard-snapshot
+vm-image/scripts/stockyard-shell/stockyard-shell
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+
+# Local settings
+.claude/settings.local.json
