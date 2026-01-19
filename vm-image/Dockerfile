@@ -258,6 +258,9 @@ EOF
 # resolv.conf is set up by stockyard-init.sh at boot time
 RUN systemctl disable systemd-resolved 2>/dev/null || true
 
+# Ensure /etc/hosts has localhost entries (systemd-resolved normally manages this)
+COPY init/hosts /etc/hosts
+
 # ============================================================================
 # Section 7b: Disable unnecessary services for fast boot
 # ============================================================================
