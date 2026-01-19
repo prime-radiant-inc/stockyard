@@ -2,6 +2,7 @@
 package firecracker
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 )
@@ -75,5 +76,66 @@ func TestBuildMMDSDataWithNetworkConfig(t *testing.T) {
 	}
 	if netCfg["gateway"] != "10.0.100.1" {
 		t.Errorf("expected gateway 10.0.100.1, got %v", netCfg["gateway"])
+	}
+}
+
+func TestBuildMMDSDataWithTailscaleState(t *testing.T) {
+	// Sample Tailscale state (simulating pre-registered state)
+	tailscaleState := []byte(`{"Version":1,"PublicKey":"abc123"}`)
+
+	metadata := MMDSMetadata{
+		InstanceID:     "i-test",
+		Hostname:       "test-vm",
+		TailscaleState: tailscaleState,
+	}
+
+	data := BuildMMDSData(metadata)
+
+	// Verify tailscale-state is present and base64-encoded
+	latest, ok := data["latest"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected latest in MMDS")
+	}
+	metaData, ok := latest["meta-data"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected meta-data in MMDS")
+	}
+
+	encodedState, ok := metaData["tailscale-state"].(string)
+	if !ok {
+		t.Fatal("expected tailscale-state in meta-data")
+	}
+
+	// Verify it's properly base64-encoded
+	expectedEncoded := base64.StdEncoding.EncodeToString(tailscaleState)
+	if encodedState != expectedEncoded {
+		t.Errorf("expected encoded state %q, got %q", expectedEncoded, encodedState)
+	}
+
+	// Verify we can decode it back
+	decoded, err := base64.StdEncoding.DecodeString(encodedState)
+	if err != nil {
+		t.Fatalf("failed to decode base64 state: %v", err)
+	}
+	if string(decoded) != string(tailscaleState) {
+		t.Errorf("decoded state mismatch: expected %q, got %q", tailscaleState, decoded)
+	}
+}
+
+func TestBuildMMDSDataWithoutTailscaleState(t *testing.T) {
+	metadata := MMDSMetadata{
+		InstanceID: "i-test",
+		Hostname:   "test-vm",
+		// No TailscaleState
+	}
+
+	data := BuildMMDSData(metadata)
+
+	// Verify tailscale-state is NOT present when not provided
+	latest := data["latest"].(map[string]interface{})
+	metaData := latest["meta-data"].(map[string]interface{})
+
+	if _, ok := metaData["tailscale-state"]; ok {
+		t.Error("tailscale-state should not be present when TailscaleState is empty")
 	}
 }

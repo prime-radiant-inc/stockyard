@@ -56,6 +56,7 @@ type VMConfig struct {
 	Metadata          map[string]string  // Labels for the VM
 	StaticIPArgs      string             // Kernel IP args (e.g., "ip=10.0.100.2::10.0.100.1:...")
 	NetworkMMDS       *MMDSNetworkConfig // Network config for MMDS (optional)
+	TailscaleState    []byte             // Pre-registered Tailscale state (optional)
 }
 
 // Validate checks that the VMConfig has all required fields.

@@ -187,6 +187,7 @@ type MMDSMetadata struct {
 	SSHAuthorizedKeys []string
 	UserData          string
 	NetworkConfig     *MMDSNetworkConfig // Static IP configuration (optional)
+	TailscaleState    []byte             // Pre-registered Tailscale state (optional)
 }
 
 // BuildMMDSData constructs the MMDS data structure for cloud-init.
@@ -208,6 +209,10 @@ func BuildMMDSData(meta MMDSMetadata) map[string]interface{} {
 			"gateway": meta.NetworkConfig.Gateway,
 			"dns":     meta.NetworkConfig.DNS,
 		}
+	}
+	if len(meta.TailscaleState) > 0 {
+		// Base64 encode for safe JSON transport
+		metaData["tailscale-state"] = base64.StdEncoding.EncodeToString(meta.TailscaleState)
 	}
 	return map[string]interface{}{
 		"latest": map[string]interface{}{
