@@ -80,12 +80,13 @@ func (p *PreRegistrar) PreRegister(ctx context.Context, hostname string) (*PreRe
 		"tailscale",
 		"--socket="+socketPath,
 		"up",
-		"--authkey="+p.authKey,
 		"--hostname="+hostname,
 		"--accept-routes",
 		"--ssh",
 		"--timeout=30s",
 	)
+	// Pass auth key via environment variable to avoid exposing it in process arguments
+	up.Env = append(os.Environ(), "TS_AUTHKEY="+p.authKey)
 
 	if output, err := up.CombinedOutput(); err != nil {
 		cleanup()
