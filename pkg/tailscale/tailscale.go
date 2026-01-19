@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os/exec"
@@ -98,6 +99,17 @@ func WaitForNode(ctx context.Context, hostname string, timeout int) error {
 func RemoveNode(ctx context.Context, hostname string) error {
 	// This would use the Tailscale admin API
 	// Placeholder for now
+	return nil
+}
+
+// RemoveDevice attempts to remove a device from the tailnet.
+// This is best-effort - if it fails, ephemeral keys will expire the device.
+// Note: Proper removal would require Tailscale API access, which we don't have.
+// For now, we rely on using ephemeral auth keys that auto-expire.
+func RemoveDevice(ctx context.Context, hostname string) error {
+	// With ephemeral keys, devices are automatically removed when they
+	// disconnect and the key expires. No action needed here.
+	log.Printf("Tailscale device %s will be cleaned up by ephemeral key expiration", hostname)
 	return nil
 }
 

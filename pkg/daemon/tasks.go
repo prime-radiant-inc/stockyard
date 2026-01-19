@@ -504,6 +504,14 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 		}
 	}
 
+	// Log Tailscale device cleanup (relies on ephemeral key expiration)
+	if task.TailscaleHostname != "" {
+		if err := tailscale.RemoveDevice(ctx, task.TailscaleHostname); err != nil {
+			log.Printf("Warning: Tailscale cleanup for %s: %v", task.TailscaleHostname, err)
+			// Don't fail - ephemeral keys handle cleanup
+		}
+	}
+
 	// Release the static IP allocation
 	if tm.daemon.IPPool() != nil {
 		tm.daemon.IPPool().Release(taskID)
