@@ -85,6 +85,14 @@ mkdir -p "${MOUNT_POINT}/tmp"
 chmod 1777 "${MOUNT_POINT}/tmp"
 chmod 755 "${MOUNT_POINT}/run"
 
+# Fix /etc/hosts - Docker manages this as a bind mount so export gives empty file
+# We need localhost to resolve for tools like Claude Code OAuth
+cat > "${MOUNT_POINT}/etc/hosts" <<'HOSTS'
+127.0.0.1   localhost
+::1         localhost ip6-localhost ip6-loopback
+HOSTS
+echo "Fixed /etc/hosts (Docker export leaves it empty)"
+
 # Unmount
 sync
 umount "${MOUNT_POINT}"

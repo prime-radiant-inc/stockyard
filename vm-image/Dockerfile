@@ -258,8 +258,9 @@ EOF
 # resolv.conf is set up by stockyard-init.sh at boot time
 RUN systemctl disable systemd-resolved 2>/dev/null || true
 
-# Ensure /etc/hosts has localhost entries (systemd-resolved normally manages this)
-COPY init/hosts /etc/hosts
+# NOTE: /etc/hosts is handled by convert-to-rootfs.sh, not here.
+# Docker manages /etc/hosts as a bind mount, so COPY would be overwritten
+# by an empty file during `docker export`.
 
 # ============================================================================
 # Section 7b: Disable unnecessary services for fast boot

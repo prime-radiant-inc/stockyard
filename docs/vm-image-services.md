@@ -88,6 +88,18 @@ Measured boot times (kernel start to stockyard-init complete):
 | Optimized (current) | ~1.5-2s (without Tailscale) |
 | Optimized (current) | ~2-3s (with working Tailscale) |
 
+## Docker Export Gotchas
+
+When building VM images, we use `docker export` to extract the container filesystem. Some files are managed specially by Docker and need post-processing in `convert-to-rootfs.sh`:
+
+| File | Issue | Fix |
+|------|-------|-----|
+| `/etc/hosts` | Docker bind-mounts this at runtime; export gives empty file | Written by convert-to-rootfs.sh |
+| `/etc/hostname` | Same as hosts | Set by stockyard-init.sh at boot |
+| `/etc/resolv.conf` | Same as hosts | Set by stockyard-init.sh at boot |
+
+If you add configuration that touches these files in the Dockerfile, it won't work. Handle them in either `convert-to-rootfs.sh` (static content) or `stockyard-init.sh` (dynamic content).
+
 ## Making Changes
 
 To disable additional services, add to `vm-image/Dockerfile` Section 7b:
