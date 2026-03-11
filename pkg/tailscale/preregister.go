@@ -51,9 +51,7 @@ func (p *PreRegistrar) PreRegister(ctx context.Context, hostname string) (*PreRe
 		"--tun=userspace-networking",
 		"--statedir="+nodeDir,
 	)
-	tailscaled.Env = append(os.Environ(),
-		"TS_NO_LOGS_NO_SUPPORT=true",
-	)
+	tailscaled.Env = os.Environ()
 
 	if err := tailscaled.Start(); err != nil {
 		os.RemoveAll(nodeDir)

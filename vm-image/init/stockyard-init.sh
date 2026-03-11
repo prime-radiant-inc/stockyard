@@ -167,19 +167,24 @@ else
 
         TAILSCALE_SOCKET="/run/tailscale/tailscaled.sock"
 
-        # Start tailscaled (DNS is already configured)
+        # Start tailscaled directly (not via systemd — service is disabled to prevent
+        # cloud-init race conditions, so we launch the process ourselves)
         log_timing "Starting tailscaled..."
         mkdir -p /run/tailscale /var/lib/tailscale
 
-        # Dynamically choose TUN mode based on kernel support
+        # Build flags based on kernel support
+        TS_FLAGS=""
         if [ -c /dev/net/tun ]; then
             log_timing "TUN device available, using native networking"
-            sed -i 's/--tun=userspace-networking//' /etc/default/tailscaled 2>/dev/null || true
         else
             log_timing "TUN not available, using userspace networking"
+            TS_FLAGS="--tun=userspace-networking"
         fi
 
-        systemctl start --no-block tailscaled.service 2>&1 || log_timing "WARNING: tailscaled start failed"
+        /usr/sbin/tailscaled --state=/var/lib/tailscale/tailscaled.state \
+            --socket="$TAILSCALE_SOCKET" --port=41641 $TS_FLAGS &>/dev/null &
+        TAILSCALED_PID=$!
+        log_timing "tailscaled started (PID: $TAILSCALED_PID)"
 
         # Wait for socket
         tailscaled_ready=false

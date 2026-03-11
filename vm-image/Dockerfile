@@ -112,12 +112,12 @@ RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2
 # Azure CLI
 RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
-# Google Cloud CLI
-RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee /etc/apt/sources.list.d/google-cloud-sdk.list \
-    && apt-get update \
-    && apt-get install -y google-cloud-cli \
-    && rm -rf /var/lib/apt/lists/*
+# Google Cloud CLI (standalone archive — apt repo has stale package versions)
+RUN curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz | tar -xzf - -C /usr/local \
+    && /usr/local/google-cloud-sdk/install.sh --quiet --path-update=false \
+    && ln -s /usr/local/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud \
+    && ln -s /usr/local/google-cloud-sdk/bin/gsutil /usr/local/bin/gsutil \
+    && ln -s /usr/local/google-cloud-sdk/bin/bq /usr/local/bin/bq
 
 # Tailscale (for secure networking)
 RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg > /dev/null \
@@ -131,9 +131,8 @@ RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | tee 
 # This prevents tailscaled from hanging while trying to resolve control.tailscale.com
 RUN systemctl disable tailscaled.service 2>/dev/null || true
 
-# Configure tailscaled to use userspace networking (required for Firecracker's old kernel)
-# The 4.14.x kernel doesn't support TUN properly, so we force userspace networking mode
-RUN sed -i 's/^FLAGS=""/FLAGS="--tun=userspace-networking"/' /etc/default/tailscaled
+# Note: Our custom Firecracker kernel includes CONFIG_TUN and CONFIG_NF_TABLES,
+# so tailscaled uses native TUN mode (no userspace networking needed)
 
 # ============================================================================
 # Section 4: Coding Agents
