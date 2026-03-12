@@ -85,8 +85,8 @@ RUN curl -fsSL https://go.dev/dl/go1.22.10.linux-amd64.tar.gz | tar -C /usr/loca
     && ln -s /usr/local/go/bin/go /usr/local/bin/go \
     && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
-# Rust (system-wide for root, user install happens later)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+# Rust (minimal system-wide install for symlinks; full user install below)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal \
     && ln -s /root/.cargo/bin/rustc /usr/local/bin/rustc \
     && ln -s /root/.cargo/bin/cargo /usr/local/bin/cargo \
     && ln -s /root/.cargo/bin/rustup /usr/local/bin/rustup
@@ -138,8 +138,8 @@ RUN systemctl disable tailscaled.service 2>/dev/null || true
 # Section 4: Coding Agents
 # ============================================================================
 
-# Claude Code (Anthropic's CLI for Claude)
-RUN npm install -g @anthropic-ai/claude-code
+# Claude Code (native install — auto-updates in background)
+RUN curl -fsSL https://claude.ai/install.sh | bash
 
 # OpenAI Codex CLI
 RUN npm install -g @openai/codex
@@ -167,8 +167,9 @@ RUN useradd -m -s /bin/bash -G sudo ${VM_USER} \
     && echo "${VM_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/${VM_USER} \
     && chmod 0440 /etc/sudoers.d/${VM_USER}
 
-# Set up Rust for VM user
-RUN su - ${VM_USER} -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+# Set up Rust for VM user (default profile minus docs to save ~500MB)
+RUN su - ${VM_USER} -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y" \
+    && su - ${VM_USER} -c "rustup component remove rust-docs 2>/dev/null || true"
 
 # Create workspace directory
 RUN mkdir -p /workspace && chown ${VM_USER}:${VM_USER} /workspace
@@ -303,6 +304,7 @@ RUN curl -fsSL https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${KERNEL_VERSI
     | tar -xJf - -C /tmp
 COPY kernel.config /tmp/linux-${KERNEL_VERSION}/.config
 RUN cd /tmp/linux-${KERNEL_VERSION} \
+    && make olddefconfig \
     && make -j$(nproc) vmlinux \
     && cp vmlinux /boot/vmlinuz \
     && rm -rf /tmp/linux-${KERNEL_VERSION}
