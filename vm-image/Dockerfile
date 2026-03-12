@@ -289,18 +289,23 @@ RUN systemctl disable getty@tty1.service 2>/dev/null || true \
 RUN systemctl mask systemd-tmpfiles-clean.timer 2>/dev/null || true
 
 # ============================================================================
-# Section 8: MicroVM Kernel
+# Section 8: MicroVM Kernel (built from source)
 # ============================================================================
+# Custom kernel with CONFIG_TUN=y and CONFIG_NF_TABLES=y for native Tailscale
+# networking. The stock Firecracker kernel lacks these, forcing slow userspace mode.
+# Kernel is extracted by convert-to-rootfs.sh for host-side use as vmlinux.bin.
 
-# Download the official Firecracker 6.1 kernel from AWS CI bucket
-# The old 4.14 quickstart kernel had issues with tailscaled and modern Go programs
-# Kernel 6.1 is the latest LTS with proper virtio support for Firecracker
-# Note: This kernel is also extracted by convert-to-rootfs.sh for host-side use
 ARG KERNEL_VERSION=6.1.155
-ARG KERNEL_SHA256=e41c7048bd2475e7e788153823fcb9166a7e0b78c4c443bd6446d015fa735f53
-RUN curl -fsSL -o /boot/vmlinuz \
-    https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.14/x86_64/vmlinux-${KERNEL_VERSION} \
-    && echo "${KERNEL_SHA256}  /boot/vmlinuz" | sha256sum -c -
+RUN apt-get update && apt-get install -y \
+    libncurses-dev flex bison libssl-dev libelf-dev bc \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${KERNEL_VERSION}.tar.xz \
+    | tar -xJf - -C /tmp
+COPY kernel.config /tmp/linux-${KERNEL_VERSION}/.config
+RUN cd /tmp/linux-${KERNEL_VERSION} \
+    && make -j$(nproc) vmlinux \
+    && cp vmlinux /boot/vmlinuz \
+    && rm -rf /tmp/linux-${KERNEL_VERSION}
 
 # ============================================================================
 # Section 9: Finalize
