@@ -138,12 +138,6 @@ RUN systemctl disable tailscaled.service 2>/dev/null || true
 # Section 4: Coding Agents
 # ============================================================================
 
-# Claude Code (native install — auto-updates in background)
-RUN curl -fsSL https://claude.ai/install.sh | bash
-
-# OpenAI Codex CLI
-RUN npm install -g @openai/codex
-
 # ============================================================================
 # Section 4b: Linters and Formatters
 # ============================================================================
@@ -170,6 +164,10 @@ RUN useradd -m -s /bin/bash -G sudo ${VM_USER} \
 # Set up Rust for VM user (default profile minus docs to save ~500MB)
 RUN su - ${VM_USER} -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y" \
     && su - ${VM_USER} -c "rustup component remove rust-docs 2>/dev/null || true"
+
+# Coding agents (installed after user creation since Claude Code uses ~/.local/bin/)
+RUN su - ${VM_USER} -c "curl -fsSL https://claude.ai/install.sh | bash"
+RUN npm install -g @openai/codex
 
 # Create workspace directory
 RUN mkdir -p /workspace && chown ${VM_USER}:${VM_USER} /workspace
@@ -318,7 +316,7 @@ ENV VM_USER=${VM_USER}
 
 # Set environment variables
 ENV GOPATH=/home/${VM_USER}/go
-ENV PATH="/home/${VM_USER}/.cargo/bin:/usr/local/go/bin:${PATH}"
+ENV PATH="/home/${VM_USER}/.local/bin:/home/${VM_USER}/.cargo/bin:/usr/local/go/bin:${PATH}"
 
 # Default working directory
 WORKDIR /home/${VM_USER}
