@@ -69,8 +69,27 @@ func (qm *QueueManager) InitQueues(taskID string) error {
 	return nil
 }
 
+// validateQueueName checks that a queue name is safe and reasonable.
+func validateQueueName(name string) error {
+	if name == "" {
+		return fmt.Errorf("queue name is required")
+	}
+	if len(name) > 64 {
+		return fmt.Errorf("queue name too long (max 64)")
+	}
+	for _, c := range name {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+			return fmt.Errorf("queue name contains invalid character: %c", c)
+		}
+	}
+	return nil
+}
+
 // CreateQueue creates a custom (non-protected) queue for a task.
 func (qm *QueueManager) CreateQueue(taskID, name, mode string) error {
+	if err := validateQueueName(name); err != nil {
+		return err
+	}
 	if mode != "serial" && mode != "concurrent" {
 		return fmt.Errorf("invalid queue mode %q: must be serial or concurrent", mode)
 	}
@@ -122,6 +141,7 @@ func (qm *QueueManager) QueueCommand(taskID, queueName string, command []string,
 		}
 	}
 
+	now := time.Now()
 	cmd := &Command{
 		ID:            commandID,
 		TaskID:        taskID,
@@ -131,7 +151,10 @@ func (qm *QueueManager) QueueCommand(taskID, queueName string, command []string,
 		Status:        initialStatus,
 		StopOnFailure: stopOnFailure,
 		OutputPath:    outputPath,
-		CreatedAt:     time.Now(),
+		CreatedAt:     now,
+	}
+	if startImmediately {
+		cmd.StartedAt = &now
 	}
 
 	if err := qm.state.CreateCommand(cmd); err != nil {
@@ -189,9 +212,12 @@ func (qm *QueueManager) FlushQueue(taskID, queueName string) error {
 	return qm.state.FlushQueueCommands(taskID, queueName)
 }
 
-// DestroyQueue removes a non-protected queue.
+// DestroyQueue removes a non-protected queue and all its commands.
 // Returns an error if the queue is protected.
 func (qm *QueueManager) DestroyQueue(taskID, queueName string) error {
+	if err := qm.state.DeleteCommandsByQueue(taskID, queueName); err != nil {
+		return fmt.Errorf("delete queue commands: %w", err)
+	}
 	return qm.state.DestroyQueue(taskID, queueName)
 }
 
@@ -220,11 +246,14 @@ func (qm *QueueManager) CleanupTask(taskID string) error {
 func (qm *QueueManager) executeCommand(taskID, commandID string) {
 	cmd, err := qm.state.GetCommand(commandID)
 	if err != nil {
+		// Command was already marked "running" — mark it failed so it doesn't stick.
+		qm.state.UpdateCommandExit(commandID, 1)
 		return
 	}
 
 	task, err := qm.state.GetTask(taskID)
 	if err != nil {
+		qm.state.UpdateCommandExit(commandID, 1)
 		return
 	}
 
@@ -232,7 +261,10 @@ func (qm *QueueManager) executeCommand(taskID, commandID string) {
 	// triggerNext) under the mutex to prevent scheduling races.
 
 	// Run the command; if vsock is unavailable it will return exit code 1
-	exitCode, _ := qm.runVsockCommand(task, cmd)
+	exitCode, execErr := qm.runVsockCommand(task, cmd)
+	if execErr != nil {
+		fmt.Printf("Command %s execution error: %v\n", commandID, execErr)
+	}
 
 	// Persist exit code and terminal status (completed / failed)
 	qm.state.UpdateCommandExit(commandID, exitCode)

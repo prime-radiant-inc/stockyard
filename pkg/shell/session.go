@@ -73,16 +73,19 @@ func NewSession(username, term string, cols, rows int, command []string, env map
 
 		// Build a clean environment instead of inheriting root's env.
 		// This prevents LD_PRELOAD and other dangerous variables from leaking.
-		cmdEnv := []string{
-			"PATH=/usr/local/bin:/usr/bin:/bin",
-			"TERM=" + term,
-			"HOME=" + u.HomeDir,
-			"USER=" + username,
-			"LOGNAME=" + username,
-		}
+		// Caller-provided env is applied first so that mandatory values
+		// (PATH, HOME, etc.) cannot be overridden.
+		var cmdEnv []string
 		for k, v := range env {
 			cmdEnv = append(cmdEnv, k+"="+v)
 		}
+		cmdEnv = append(cmdEnv,
+			"PATH=/usr/local/bin:/usr/bin:/bin",
+			"TERM="+term,
+			"HOME="+u.HomeDir,
+			"USER="+username,
+			"LOGNAME="+username,
+		)
 		cmd.Env = cmdEnv
 	} else {
 		// Not dropping privileges — use system env with overlay

@@ -2,10 +2,10 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -60,8 +60,8 @@ func (s *grpcServer) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) 
 func (s *grpcServer) GetTask(ctx context.Context, req *pb.GetTaskRequest) (*pb.GetTaskResponse, error) {
 	task, err := s.daemon.state.GetTask(req.TaskId)
 	if err != nil {
-		if strings.Contains(err.Error(), "task not found") {
-			return nil, status.Error(codes.NotFound, "task not found")
+		if errors.Is(err, ErrTaskNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Errorf(codes.Internal, "failed to get task: %v", err)
 	}
@@ -91,8 +91,8 @@ func (s *grpcServer) StopTask(ctx context.Context, req *pb.StopTaskRequest) (*pb
 	}
 
 	if err := s.daemon.tasks.StopTask(ctx, req.TaskId); err != nil {
-		if strings.Contains(err.Error(), "task not found") {
-			return nil, status.Error(codes.NotFound, "task not found")
+		if errors.Is(err, ErrTaskNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Errorf(codes.Internal, "failed to stop task: %v", err)
 	}
@@ -105,10 +105,10 @@ func (s *grpcServer) RestartTask(ctx context.Context, req *pb.RestartTaskRequest
 	}
 
 	if err := s.daemon.tasks.RestartTask(ctx, req.TaskId); err != nil {
-		if strings.Contains(err.Error(), "task not found") {
-			return nil, status.Error(codes.NotFound, "task not found")
+		if errors.Is(err, ErrTaskNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
 		}
-		if strings.Contains(err.Error(), "not stopped") {
+		if errors.Is(err, ErrTaskNotStopped) {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
 		return nil, status.Errorf(codes.Internal, "failed to restart task: %v", err)
@@ -122,8 +122,8 @@ func (s *grpcServer) DestroyTask(ctx context.Context, req *pb.DestroyTaskRequest
 	}
 
 	if err := s.daemon.tasks.DestroyTask(ctx, req.TaskId); err != nil {
-		if strings.Contains(err.Error(), "task not found") {
-			return nil, status.Error(codes.NotFound, "task not found")
+		if errors.Is(err, ErrTaskNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Errorf(codes.Internal, "failed to destroy task: %v", err)
 	}
@@ -237,7 +237,7 @@ func (s *grpcServer) FlushQueue(ctx context.Context, req *pb.FlushQueueRequest) 
 
 func (s *grpcServer) DestroyQueue(ctx context.Context, req *pb.DestroyQueueRequest) (*pb.DestroyQueueResponse, error) {
 	if err := s.daemon.queueManager.DestroyQueue(req.TaskId, req.QueueName); err != nil {
-		if strings.Contains(err.Error(), "protected") {
+		if errors.Is(err, ErrQueueProtected) {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
 		return nil, status.Errorf(codes.Internal, "failed to destroy queue: %v", err)
@@ -248,6 +248,9 @@ func (s *grpcServer) DestroyQueue(ctx context.Context, req *pb.DestroyQueueReque
 func (s *grpcServer) QueueCommand(ctx context.Context, req *pb.QueueCommandRequest) (*pb.QueueCommandResponse, error) {
 	if s.daemon.queueManager == nil {
 		return nil, status.Error(codes.Unavailable, "queue manager not initialized")
+	}
+	if len(req.Command) == 0 || req.Command[0] == "" {
+		return nil, status.Error(codes.InvalidArgument, "command is required and must not be empty")
 	}
 	queueName := req.QueueName
 	if queueName == "" {
@@ -263,8 +266,8 @@ func (s *grpcServer) QueueCommand(ctx context.Context, req *pb.QueueCommandReque
 func (s *grpcServer) GetCommandStatus(ctx context.Context, req *pb.GetCommandStatusRequest) (*pb.GetCommandStatusResponse, error) {
 	cmd, err := s.daemon.queueManager.GetCommandStatus(req.CommandId)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, status.Error(codes.NotFound, "command not found")
+		if errors.Is(err, ErrCommandNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Errorf(codes.Internal, "failed to get command status: %v", err)
 	}
@@ -310,7 +313,11 @@ func (s *grpcServer) StreamCommandOutput(req *pb.StreamCommandOutputRequest, str
 			if err != nil || cmd.Status == "completed" || cmd.Status == "failed" {
 				return nil
 			}
-			time.Sleep(100 * time.Millisecond)
+			select {
+			case <-stream.Context().Done():
+				return stream.Context().Err()
+			case <-time.After(100 * time.Millisecond):
+			}
 			continue
 		}
 		if err != nil {

@@ -323,7 +323,7 @@ func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
 	}
 
 	if task.Status != "stopped" && task.Status != "failed" {
-		return fmt.Errorf("task %s is not stopped (status: %s)", taskID, task.Status)
+		return fmt.Errorf("%w: %s (status: %s)", ErrTaskNotStopped, taskID, task.Status)
 	}
 
 	// Update status to starting

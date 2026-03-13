@@ -22,22 +22,12 @@ var (
 )
 
 var runCmd = &cobra.Command{
-	Use:   "run [flags] -- <command> [args...]",
-	Short: "Run a coding agent in a new VM",
-	Long: `Run a coding agent in a new Firecracker micro-VM.
+	Use:   "run [flags]",
+	Short: "Create a new VM task",
+	Long: `Create a new Firecracker micro-VM task.
 
-Examples:
-  stockyard run -- claude-code --dangerously-skip-permissions -p "implement OAuth"`,
+Use 'stockyard exec' to run commands in the VM after creation.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Find command after --
-		var command []string
-		for i, arg := range os.Args {
-			if arg == "--" && i+1 < len(os.Args) {
-				command = os.Args[i+1:]
-				break
-			}
-		}
-
 		c, err := getClient()
 		if err != nil {
 			return err
@@ -55,12 +45,6 @@ Examples:
 
 		// Read SSH public keys from ~/.ssh/
 		sshKeys := readSSHPublicKeys()
-
-		// Deprecated: command is no longer passed at task creation time.
-		// Use QueueCommand after creating the task instead.
-		if len(command) > 0 {
-			fmt.Fprintf(os.Stderr, "Warning: inline command via -- is deprecated; use 'stockyard queue-command' after task creation\n")
-		}
 
 		req := &pb.CreateTaskRequest{
 			Name:              runName,
