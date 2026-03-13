@@ -9,8 +9,6 @@ import (
 type Task struct {
 	ID            string
 	Name          string
-	RepoURL       string
-	GitRef        string
 	Status        string
 	Owner         string
 	TailscaleHost string
@@ -28,8 +26,6 @@ type Snapshot struct {
 
 // CreateTaskRequest contains the parameters for creating a new task.
 type CreateTaskRequest struct {
-	Repo        string
-	Ref         string
 	Name        string
 	Command     []string
 	CPUs        int32

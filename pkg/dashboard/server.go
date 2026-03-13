@@ -93,16 +93,6 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Group tasks by RepoURL
-	groupedByRepo := make(map[string][]Task)
-	for _, task := range tasks {
-		repo := task.RepoURL
-		if repo == "" {
-			repo = "(none)"
-		}
-		groupedByRepo[repo] = append(groupedByRepo[repo], task)
-	}
-
 	// Group tasks by Owner
 	groupedByOwner := make(map[string][]Task)
 	for _, task := range tasks {
@@ -129,8 +119,6 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		"UserAvatar":     GetUserAvatar(r.Context()),
 		"ActiveNav":      "fleet",
 		"Tasks":          tasks,
-		"GroupedTasks":   groupedByRepo, // Keep for backward compatibility
-		"GroupedByRepo":  groupedByRepo,
 		"GroupedByOwner": groupedByOwner,
 		"ActivityCount":  s.activityFeed.Count(),
 		"AlertCount":     s.alertChecker.GetAlertCount(),
@@ -296,8 +284,6 @@ func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Repo        string            `json:"repo"`
-		Ref         string            `json:"ref"`
 		Name        string            `json:"name"`
 		Command     []string          `json:"command"`
 		CPUs        int32             `json:"cpus"`
@@ -311,15 +297,7 @@ func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Repo == "" {
-		http.Error(w, "repo is required", http.StatusBadRequest)
-		return
-	}
-
 	// Defaults
-	if req.Ref == "" {
-		req.Ref = "main"
-	}
 	if req.CPUs == 0 {
 		req.CPUs = 2
 	}
@@ -328,8 +306,6 @@ func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	task, err := s.daemon.CreateTask(r.Context(), CreateTaskRequest{
-		Repo:        req.Repo,
-		Ref:         req.Ref,
 		Name:        req.Name,
 		Command:     req.Command,
 		CPUs:        req.CPUs,

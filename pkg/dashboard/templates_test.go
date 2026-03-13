@@ -39,8 +39,8 @@ func TestTemplates_FleetWithTasks(t *testing.T) {
 	}
 
 	tasks := []map[string]interface{}{
-		{"ID": "vm-1", "Name": "test", "Status": "running", "RepoURL": "github.com/test/repo"},
-		{"ID": "vm-2", "Name": "test2", "Status": "stopped", "RepoURL": "github.com/test/repo"},
+		{"ID": "vm-1", "Name": "test", "Status": "running"},
+		{"ID": "vm-2", "Name": "test2", "Status": "stopped"},
 	}
 
 	var buf bytes.Buffer
@@ -49,12 +49,6 @@ func TestTemplates_FleetWithTasks(t *testing.T) {
 		"User":      "jesse",
 		"ActiveNav": "fleet",
 		"Tasks":     tasks,
-		"GroupedTasks": map[string][]map[string]interface{}{
-			"github.com/test/repo": tasks,
-		},
-		"GroupedByRepo": map[string][]map[string]interface{}{
-			"github.com/test/repo": tasks,
-		},
 		"GroupedByOwner": map[string][]map[string]interface{}{
 			"(unknown)": tasks,
 		},
@@ -68,9 +62,6 @@ func TestTemplates_FleetWithTasks(t *testing.T) {
 	html := buf.String()
 	if !strings.Contains(html, "vm-1") {
 		t.Error("expected vm-1 in output")
-	}
-	if !strings.Contains(html, "github.com/test/repo") {
-		t.Error("expected repo name in output")
 	}
 }
 
@@ -89,7 +80,6 @@ func TestTemplates_VMDetail(t *testing.T) {
 			"ID":            "vm-123",
 			"Name":          "test-vm",
 			"Status":        "running",
-			"RepoURL":       "github.com/test/repo",
 			"TailscaleHost": "vm-123.tail.net",
 		},
 		"Snapshots": []map[string]interface{}{

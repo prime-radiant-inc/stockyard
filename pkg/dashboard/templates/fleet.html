@@ -25,8 +25,6 @@
           creating: false,
           createError: '',
           newVM: {
-              repo: '',
-              ref: 'main',
               name: '',
               command: '',
               cpus: 2,
@@ -46,8 +44,6 @@
               try {
                   // Convert command string to array and env array to object
                   const payload = {
-                      repo: this.newVM.repo,
-                      ref: this.newVM.ref,
                       name: this.newVM.name,
                       command: this.newVM.command ? this.newVM.command.split(/\s+/).filter(s => s) : [],
                       cpus: this.newVM.cpus,
@@ -65,7 +61,7 @@
                       throw new Error(text);
                   }
                   this.showCreateModal = false;
-                  this.newVM = {repo: '', ref: 'main', name: '', command: '', cpus: 2, memory_mb: 4096, env: [], no_tailscale: false};
+                  this.newVM = {name: '', command: '', cpus: 2, memory_mb: 4096, env: [], no_tailscale: false};
                   location.reload();
               } catch (e) {
                   this.createError = e.message;
@@ -258,11 +254,6 @@
                             class="pb-2 px-1 text-sm font-medium">
                         All VMs
                     </button>
-                    <button @click="viewTab = 'repo'"
-                            :class="viewTab === 'repo' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'"
-                            class="pb-2 px-1 text-sm font-medium">
-                        By Repo
-                    </button>
                     <button @click="viewTab = 'owner'"
                             :class="viewTab === 'owner' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'"
                             class="pb-2 px-1 text-sm font-medium">
@@ -290,7 +281,6 @@
                                 <tr>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repo</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
@@ -317,7 +307,6 @@
                                         </div>
                                     </td>
                                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{{.Name}}</td>
-                                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{{if .RepoURL}}{{.RepoURL}}{{else}}(none){{end}}</td>
                                     <td class="px-4 py-2 whitespace-nowrap">
                                         {{if eq .Status "running"}}
                                         <span class="inline-flex items-center gap-1 text-green-700"
@@ -363,100 +352,6 @@
                             </tbody>
                         </table>
                     </div>
-                </div>
-
-                <!-- By Repo view (grouped) -->
-                <div x-show="viewTab === 'repo'" x-cloak class="space-y-4">
-                    {{range $repo, $tasks := .GroupedByRepo}}
-                    <div class="bg-white rounded-lg shadow border border-gray-200" x-data="{ open: true }">
-                        <button @click="open = !open" class="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50 rounded-t-lg">
-                            <div class="flex items-center gap-2">
-                                <svg class="w-4 h-4 transition-transform" :class="{ 'rotate-90': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                                </svg>
-                                <span class="font-medium text-gray-900">{{$repo}}</span>
-                                <span class="text-sm text-gray-500">({{len $tasks}} VMs)</span>
-                            </div>
-                        </button>
-                        <div x-show="open" x-cloak class="border-t border-gray-200">
-                            <table class="min-w-full divide-y divide-gray-200">
-                                <thead class="bg-gray-50">
-                                    <tr>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="bg-white divide-y divide-gray-200">
-                                    {{range $tasks}}
-                                    <tr class="hover:bg-gray-50 cursor-pointer transition-colors"
-                                        :class="{
-                                            'bg-blue-50 hover:bg-blue-100': selectedVM === '{{.ID}}',
-                                            'bg-red-50 border-l-2 border-red-500': alerts['{{.ID}}']?.length > 0 && selectedVM !== '{{.ID}}'
-                                        }"
-                                        @click="selectedVM = '{{.ID}}'; htmx.ajax('GET', '/preview/vm/{{.ID}}', '#vm-preview-content')"
-                                        @dblclick="window.location.href = '/vm/{{.ID}}'">
-                                        <td class="px-4 py-2 whitespace-nowrap">
-                                            <div class="flex items-center gap-2">
-                                                <template x-if="alerts['{{.ID}}']?.length > 0">
-                                                    <span class="text-red-500" title="Has alerts">
-                                                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-                                                        </svg>
-                                                    </span>
-                                                </template>
-                                                <a href="/vm/{{.ID}}" class="text-blue-600 hover:text-blue-800 hover:underline" @click.stop>{{.ID}}</a>
-                                            </div>
-                                        </td>
-                                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{{.Name}}</td>
-                                        <td class="px-4 py-2 whitespace-nowrap">
-                                            {{if eq .Status "running"}}
-                                            <span class="inline-flex items-center gap-1 text-green-700"
-                                                  :class="statusUpdates['{{.ID}}'] === 'stopped' ? 'text-gray-500' : 'text-green-700'">
-                                                <span class="w-2 h-2 rounded-full"
-                                                      :class="statusUpdates['{{.ID}}'] === 'stopped' ? 'bg-gray-400' : 'bg-green-500'"></span>
-                                                <span x-text="statusUpdates['{{.ID}}'] || 'running'">running</span>
-                                            </span>
-                                            {{else if eq .Status "stopped"}}
-                                            <span class="inline-flex items-center gap-1 text-gray-500">
-                                                <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
-                                                stopped
-                                            </span>
-                                            {{else if eq .Status "failed"}}
-                                            <span class="inline-flex items-center gap-1 text-red-700">
-                                                <span class="w-2 h-2 bg-red-500 rounded-full"></span>
-                                                failed
-                                            </span>
-                                            {{else}}
-                                            <span class="text-gray-500">{{.Status}}</span>
-                                            {{end}}
-                                        </td>
-                                        <td class="px-4 py-2 whitespace-nowrap text-sm" x-data="{ actionsOpen: false }" @click.stop>
-                                            <div class="relative">
-                                                <button @click="actionsOpen = !actionsOpen" @click.outside="actionsOpen = false" class="text-gray-500 hover:text-gray-700">
-                                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
-                                                    </svg>
-                                                </button>
-                                                <div x-show="actionsOpen" x-cloak class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
-                                                    <div class="py-1">
-                                                        <button @click="copySSH('{{.TailscaleHost}}')" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Copy SSH Command</button>
-                                                        {{if eq .Status "running"}}
-                                                        <button hx-post="/api/vm/{{.ID}}/stop" hx-swap="none" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Stop</button>
-                                                        {{end}}
-                                                        <button hx-delete="/api/vm/{{.ID}}" hx-swap="none" hx-confirm="Are you sure you want to destroy this VM?" class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Destroy</button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    {{end}}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    {{end}}
                 </div>
 
                 <!-- By Owner view (grouped) -->
@@ -561,7 +456,6 @@
                                 <tr>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repo</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
@@ -588,7 +482,6 @@
                                         </div>
                                     </td>
                                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{{.Name}}</td>
-                                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{{if .RepoURL}}{{.RepoURL}}{{else}}(none){{end}}</td>
                                     <td class="px-4 py-2 whitespace-nowrap">
                                         <span class="inline-flex items-center gap-1 text-green-700"
                                               :class="statusUpdates['{{.ID}}'] === 'stopped' ? 'text-gray-500' : 'text-green-700'">
@@ -679,20 +572,6 @@
 
             <form @submit.prevent="createVM()">
                 <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Repository URL *</label>
-                        <input type="text" x-model="newVM.repo" required
-                               placeholder="github.com/owner/repo"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Git Ref</label>
-                        <input type="text" x-model="newVM.ref"
-                               placeholder="main"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                    </div>
-
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Name (optional)</label>
                         <input type="text" x-model="newVM.name"

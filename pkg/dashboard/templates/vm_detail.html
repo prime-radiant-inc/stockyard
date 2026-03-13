@@ -489,16 +489,6 @@
                                 <dd class="text-sm text-gray-900">{{.Task.ID}}</dd>
                             </div>
                             <div class="flex justify-between sm:flex-col sm:gap-1">
-                                <dt class="text-sm font-medium text-gray-500">Repository</dt>
-                                <dd class="text-sm text-gray-900">{{.Task.RepoURL}}</dd>
-                            </div>
-                            {{if .Task.GitRef}}
-                            <div class="flex justify-between sm:flex-col sm:gap-1">
-                                <dt class="text-sm font-medium text-gray-500">Git Ref</dt>
-                                <dd class="text-sm text-gray-900">{{.Task.GitRef}}</dd>
-                            </div>
-                            {{end}}
-                            <div class="flex justify-between sm:flex-col sm:gap-1">
                                 <dt class="text-sm font-medium text-gray-500">Tailscale Host</dt>
                                 <dd class="text-sm text-gray-900">{{.Task.TailscaleHost}}</dd>
                             </div>

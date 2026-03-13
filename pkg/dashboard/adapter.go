@@ -32,8 +32,6 @@ type RealDaemon interface {
 type DaemonTask struct {
 	ID                string
 	Name              string
-	Repo              string
-	Ref               string
 	Command           string
 	Status            string
 	VMID              string
@@ -51,8 +49,6 @@ type DaemonSnapshot struct {
 
 // DaemonCreateTaskRequest mirrors daemon.CreateTaskRequest to avoid import cycles.
 type DaemonCreateTaskRequest struct {
-	Repo        string
-	Ref         string
 	Name        string
 	Command     []string
 	CPUs        int32
@@ -98,8 +94,6 @@ func (a *DaemonAdapter) GetTask(ctx context.Context, id string) (*Task, error) {
 
 func (a *DaemonAdapter) CreateTask(ctx context.Context, req CreateTaskRequest) (*Task, error) {
 	daemonReq := &DaemonCreateTaskRequest{
-		Repo:        req.Repo,
-		Ref:         req.Ref,
 		Name:        req.Name,
 		Command:     req.Command,
 		CPUs:        req.CPUs,
@@ -165,8 +159,6 @@ func convertTask(dt *DaemonTask) Task {
 	return Task{
 		ID:            dt.ID,
 		Name:          dt.Name,
-		RepoURL:       dt.Repo,
-		GitRef:        dt.Ref,
 		Status:        dt.Status,
 		Owner:         dt.Owner,
 		TailscaleHost: dt.TailscaleHostname,

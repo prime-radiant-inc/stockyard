@@ -13,7 +13,6 @@ type ActivityEvent struct {
 	Type      string    `json:"type"` // vm_started, vm_stopped, vm_failed, snapshot_created
 	TaskID    string    `json:"task_id"`
 	TaskName  string    `json:"task_name"`
-	RepoURL   string    `json:"repo_url"`
 	Owner     string    `json:"owner"`
 	Message   string    `json:"message"`
 	Timestamp time.Time `json:"timestamp"`
@@ -101,12 +100,11 @@ func (af *ActivityFeed) Count() int {
 // Helper methods for common events
 
 // VMStarted records a VM started event.
-func (af *ActivityFeed) VMStarted(taskID, taskName, repoURL, owner string) {
+func (af *ActivityFeed) VMStarted(taskID, taskName, owner string) {
 	af.RecordEvent(ActivityEvent{
 		Type:     "vm_started",
 		TaskID:   taskID,
 		TaskName: taskName,
-		RepoURL:  repoURL,
 		Owner:    owner,
 		Message:  "VM started",
 	})

@@ -68,11 +68,9 @@ func (m *MockDaemon) CreateTask(ctx context.Context, req CreateTaskRequest) (*Ta
 		return nil, m.err
 	}
 	task := Task{
-		ID:      "new-task-id",
-		Name:    req.Name,
-		RepoURL: req.Repo,
-		GitRef:  req.Ref,
-		Status:  "running",
+		ID:     "new-task-id",
+		Name:   req.Name,
+		Status: "running",
 	}
 	m.tasks = append(m.tasks, task)
 	return &task, nil
@@ -120,8 +118,8 @@ func (m *MockDaemon) GetVsockPath(ctx context.Context, taskID string) (string, e
 func TestServer_FleetPage(t *testing.T) {
 	mock := &MockDaemon{
 		tasks: []Task{
-			{ID: "task-1", Name: "test-vm", Status: "running", RepoURL: "github.com/test/repo"},
-			{ID: "task-2", Name: "test-vm-2", Status: "stopped", RepoURL: "github.com/test/repo"},
+			{ID: "task-1", Name: "test-vm", Status: "running"},
+			{ID: "task-2", Name: "test-vm-2", Status: "stopped"},
 		},
 	}
 	srv := NewServer(mock, "")
@@ -160,7 +158,7 @@ func TestServer_FleetPage_NotFound(t *testing.T) {
 func TestServer_VMDetailPage(t *testing.T) {
 	mock := &MockDaemon{
 		tasks: []Task{
-			{ID: "task-123", Name: "test-vm", Status: "running", RepoURL: "github.com/test/repo", TailscaleHost: "vm-123.tail.net"},
+			{ID: "task-123", Name: "test-vm", Status: "running", TailscaleHost: "vm-123.tail.net"},
 		},
 	}
 	srv := NewServer(mock, "")
@@ -200,7 +198,7 @@ func TestServer_VMDetailPage_NotFound(t *testing.T) {
 func TestServer_VMPreview(t *testing.T) {
 	mock := &MockDaemon{
 		tasks: []Task{
-			{ID: "task-123", Name: "test-vm", Status: "running", RepoURL: "github.com/test/repo", TailscaleHost: "vm-123.tail.net"},
+			{ID: "task-123", Name: "test-vm", Status: "running", TailscaleHost: "vm-123.tail.net"},
 		},
 	}
 	srv := NewServer(mock, "")
@@ -429,7 +427,7 @@ func TestServer_CreateVM(t *testing.T) {
 	mock := &MockDaemon{}
 	srv := NewServer(mock, "")
 
-	body := `{"repo": "github.com/test/repo", "ref": "main", "cpus": 2, "memory_mb": 4096}`
+	body := `{"cpus": 2, "memory_mb": 4096}`
 	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -449,19 +447,19 @@ func TestServer_CreateVM(t *testing.T) {
 	}
 }
 
-func TestServer_CreateVM_MissingRepo(t *testing.T) {
+func TestServer_CreateVM_EmptyBody(t *testing.T) {
 	mock := &MockDaemon{}
 	srv := NewServer(mock, "")
 
-	body := `{"ref": "main"}`
+	body := `{}`
 	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
 	srv.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -501,7 +499,7 @@ func TestServer_CreateVM_DaemonError(t *testing.T) {
 	}
 	srv := NewServer(mock, "")
 
-	body := `{"repo": "github.com/test/repo"}`
+	body := `{"name": "test-vm"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -517,8 +515,8 @@ func TestServer_CreateVM_Defaults(t *testing.T) {
 	mock := &MockDaemon{}
 	srv := NewServer(mock, "")
 
-	// Send minimal request - should use defaults for ref, cpus, memory
-	body := `{"repo": "github.com/test/repo"}`
+	// Send minimal request - should use defaults for cpus, memory
+	body := `{"name": "test-vm"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -538,7 +536,7 @@ func TestServer_CreateVM_Defaults(t *testing.T) {
 func TestServer_CreateVM_NoDaemon(t *testing.T) {
 	srv := NewServer(nil, "") // nil daemon
 
-	body := `{"repo": "github.com/test/repo"}`
+	body := `{"name": "test-vm"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -554,7 +552,7 @@ func TestServer_CreateVM_WithEnv(t *testing.T) {
 	mock := &MockDaemon{}
 	srv := NewServer(mock, "")
 
-	body := `{"repo": "github.com/test/repo", "env": {"KEY1": "value1", "KEY2": "value2"}}`
+	body := `{"name": "test-vm", "env": {"KEY1": "value1", "KEY2": "value2"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -581,8 +579,6 @@ func TestServer_FleetPage_WithAdapter(t *testing.T) {
 			{
 				ID:                "task-1",
 				Name:              "test-vm",
-				Repo:              "github.com/test/repo",
-				Ref:               "main",
 				Status:            "running",
 				TailscaleHostname: "stockyard-task-1",
 				CreatedAt:         time.Now(),

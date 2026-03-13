@@ -51,8 +51,6 @@ func (m *MockRealDaemon) CreateTask(ctx context.Context, req *DaemonCreateTaskRe
 	task := &DaemonTask{
 		ID:        "new-task-id",
 		Name:      req.Name,
-		Repo:      req.Repo,
-		Ref:       req.Ref,
 		Status:    "running",
 		CreatedAt: time.Now(),
 	}
@@ -108,8 +106,6 @@ func TestDaemonAdapter_ListTasks(t *testing.T) {
 			{
 				ID:                "task-1",
 				Name:              "test-vm",
-				Repo:              "github.com/test/repo",
-				Ref:               "main",
 				Status:            "running",
 				Owner:             "jesse@example.com",
 				TailscaleHostname: "stockyard-task-1",
@@ -117,7 +113,6 @@ func TestDaemonAdapter_ListTasks(t *testing.T) {
 			},
 			{
 				ID:     "task-2",
-				Repo:   "github.com/test/other",
 				Status: "stopped",
 				Owner:  "other@example.com",
 			},
@@ -137,9 +132,6 @@ func TestDaemonAdapter_ListTasks(t *testing.T) {
 	if tasks[0].ID != "task-1" {
 		t.Errorf("expected task-1, got %s", tasks[0].ID)
 	}
-	if tasks[0].RepoURL != "github.com/test/repo" {
-		t.Errorf("expected github.com/test/repo, got %s", tasks[0].RepoURL)
-	}
 	if tasks[0].TailscaleHost != "stockyard-task-1" {
 		t.Errorf("expected stockyard-task-1, got %s", tasks[0].TailscaleHost)
 	}
@@ -158,8 +150,6 @@ func TestDaemonAdapter_GetTask(t *testing.T) {
 			{
 				ID:        "task-1",
 				Name:      "test-vm",
-				Repo:      "github.com/test/repo",
-				Ref:       "main",
 				Status:    "running",
 				Owner:     "jesse@example.com",
 				CreatedAt: now,
@@ -199,8 +189,6 @@ func TestDaemonAdapter_CreateTask(t *testing.T) {
 	adapter := NewDaemonAdapter(mock)
 
 	req := CreateTaskRequest{
-		Repo:     "github.com/test/repo",
-		Ref:      "develop",
 		Name:     "my-new-task",
 		CPUs:     4,
 		MemoryMB: 2048,
@@ -221,12 +209,6 @@ func TestDaemonAdapter_CreateTask(t *testing.T) {
 	if task.Name != "my-new-task" {
 		t.Errorf("expected my-new-task, got %s", task.Name)
 	}
-	if task.RepoURL != "github.com/test/repo" {
-		t.Errorf("expected github.com/test/repo, got %s", task.RepoURL)
-	}
-	if task.GitRef != "develop" {
-		t.Errorf("expected develop, got %s", task.GitRef)
-	}
 	if task.Status != "running" {
 		t.Errorf("expected running, got %s", task.Status)
 	}
@@ -236,12 +218,6 @@ func TestDaemonAdapter_CreateTask(t *testing.T) {
 		t.Fatalf("expected 1 created task, got %d", len(mock.createdTasks))
 	}
 	createdReq := mock.createdTasks[0]
-	if createdReq.Repo != "github.com/test/repo" {
-		t.Errorf("expected repo github.com/test/repo, got %s", createdReq.Repo)
-	}
-	if createdReq.Ref != "develop" {
-		t.Errorf("expected ref develop, got %s", createdReq.Ref)
-	}
 	if createdReq.Name != "my-new-task" {
 		t.Errorf("expected name my-new-task, got %s", createdReq.Name)
 	}

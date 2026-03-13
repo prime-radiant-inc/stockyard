@@ -2,7 +2,6 @@
     <div class="flex items-center justify-between">
         <div>
             <h2 class="text-lg font-bold text-gray-900">{{.Task.ID}}</h2>
-            <p class="text-sm text-gray-500">{{.Task.RepoURL}}</p>
         </div>
         {{if eq .Task.Status "running"}}
         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -149,12 +148,6 @@
             <div class="flex justify-between">
                 <dt class="text-gray-500">Name</dt>
                 <dd class="text-gray-900 font-medium">{{.Task.Name}}</dd>
-            </div>
-            {{end}}
-            {{if .Task.GitRef}}
-            <div class="flex justify-between">
-                <dt class="text-gray-500">Git Ref</dt>
-                <dd class="text-gray-900 font-mono text-xs">{{.Task.GitRef}}</dd>
             </div>
             {{end}}
             <div class="flex justify-between">
