@@ -34,8 +34,6 @@ var destroyCmd = &cobra.Command{
 
 		if !destroyForce {
 			fmt.Printf("About to destroy task %s:\n", taskID)
-			fmt.Printf("  Repo: %s\n", task.Repo)
-			fmt.Printf("  Ref:  %s\n", task.Ref)
 			fmt.Printf("\nThis will delete the VM and all workspace data.\n")
 			fmt.Printf("Run with --force to confirm.\n")
 			return nil

@@ -13,8 +13,6 @@ import (
 )
 
 var (
-	runRepo             string
-	runRef              string
 	runName             string
 	runCPUs             int32
 	runMemory           string
@@ -29,13 +27,8 @@ var runCmd = &cobra.Command{
 	Long: `Run a coding agent in a new Firecracker micro-VM.
 
 Examples:
-  stockyard run --repo github.com/org/repo --ref feature-auth \
-    -- claude-code --dangerously-skip-permissions -p "implement OAuth"`,
+  stockyard run -- claude-code --dangerously-skip-permissions -p "implement OAuth"`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if runRepo == "" {
-			return fmt.Errorf("--repo is required")
-		}
-
 		// Find command after --
 		var command []string
 		for i, arg := range os.Args {
@@ -64,17 +57,10 @@ Examples:
 			}
 		}
 
-		ref := runRef
-		if ref == "" {
-			ref = "main"
-		}
-
 		// Read SSH public keys from ~/.ssh/
 		sshKeys := readSSHPublicKeys()
 
 		req := &pb.CreateTaskRequest{
-			Repo:              runRepo,
-			Ref:               ref,
 			Name:              runName,
 			Command:           command,
 			Env:               env,
@@ -85,7 +71,7 @@ Examples:
 			SshAuthorizedKeys: sshKeys,
 		}
 
-		fmt.Printf("Creating task for %s@%s...\n", runRepo, ref)
+		fmt.Printf("Creating task...\n")
 
 		resp, err := c.CreateTask(context.Background(), req)
 		if err != nil {
@@ -141,8 +127,6 @@ func readSSHPublicKeys() []string {
 }
 
 func init() {
-	runCmd.Flags().StringVar(&runRepo, "repo", "", "Git repository URL (required)")
-	runCmd.Flags().StringVar(&runRef, "ref", "main", "Git branch, tag, or commit")
 	runCmd.Flags().StringVar(&runName, "name", "", "Human-readable task name")
 	runCmd.Flags().Int32Var(&runCPUs, "cpus", 2, "Number of CPU cores")
 	runCmd.Flags().StringVar(&runMemory, "memory", "4G", "Memory allocation")

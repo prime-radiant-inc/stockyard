@@ -31,7 +31,6 @@ type Resource struct {
 type TaskInfo struct {
 	ID        string
 	Status    string
-	Repo      string
 	CreatedAt time.Time
 	IP        string
 	MAC       string
@@ -159,7 +158,6 @@ func (rc *ResourceCollector) collectFromDaemon() error {
 		info := &TaskInfo{
 			ID:        t.Id,
 			Status:    t.Status,
-			Repo:      t.Repo,
 			CreatedAt: createdAt,
 		}
 
@@ -367,7 +365,7 @@ func (rc *ResourceCollector) print() {
 	if len(rc.taskInfo) > 0 {
 		fmt.Printf("\nTasks (from daemon):\n")
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  ID\tSTATUS\tIP\tUPTIME\tREPO")
+		fmt.Fprintln(w, "  ID\tSTATUS\tIP\tUPTIME")
 		for _, info := range rc.taskInfo {
 			uptime := "-"
 			if !info.CreatedAt.IsZero() {
@@ -377,7 +375,7 @@ func (rc *ResourceCollector) print() {
 			if ip == "" {
 				ip = "-"
 			}
-			fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n", info.ID, info.Status, ip, uptime, info.Repo)
+			fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n", info.ID, info.Status, ip, uptime)
 
 			switch info.Status {
 			case "running":
