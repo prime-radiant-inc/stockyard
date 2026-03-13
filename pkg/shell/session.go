@@ -33,14 +33,6 @@ func NewSession(username, term string, cols, rows int, command []string, env map
 
 	cmd := exec.Command(command[0], command[1:]...)
 
-	// Build environment: start with system env, overlay with provided env
-	cmdEnv := os.Environ()
-	cmdEnv = append(cmdEnv, "TERM="+term)
-	for k, v := range env {
-		cmdEnv = append(cmdEnv, k+"="+v)
-	}
-	cmd.Env = cmdEnv
-
 	// Drop privileges if running as root and username is specified
 	if username != "" && os.Getuid() == 0 {
 		u, err := user.Lookup(username)
@@ -55,13 +47,51 @@ func NewSession(username, term string, cols, rows int, command []string, env map
 		if err != nil {
 			return nil, fmt.Errorf("parse gid: %w", err)
 		}
+
+		// Resolve supplementary groups so the child doesn't inherit root's groups
+		gids, err := u.GroupIds()
+		if err != nil {
+			return nil, fmt.Errorf("lookup groups for %q: %w", username, err)
+		}
+		var groups []uint32
+		for _, gidStr := range gids {
+			g, err := strconv.ParseUint(gidStr, 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("parse supplementary gid: %w", err)
+			}
+			groups = append(groups, uint32(g))
+		}
+
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Credential: &syscall.Credential{
-				Uid: uint32(uid),
-				Gid: uint32(gid),
+				Uid:    uint32(uid),
+				Gid:    uint32(gid),
+				Groups: groups,
 			},
 		}
 		cmd.Dir = u.HomeDir
+
+		// Build a clean environment instead of inheriting root's env.
+		// This prevents LD_PRELOAD and other dangerous variables from leaking.
+		cmdEnv := []string{
+			"PATH=/usr/local/bin:/usr/bin:/bin",
+			"TERM=" + term,
+			"HOME=" + u.HomeDir,
+			"USER=" + username,
+			"LOGNAME=" + username,
+		}
+		for k, v := range env {
+			cmdEnv = append(cmdEnv, k+"="+v)
+		}
+		cmd.Env = cmdEnv
+	} else {
+		// Not dropping privileges — use system env with overlay
+		cmdEnv := os.Environ()
+		cmdEnv = append(cmdEnv, "TERM="+term)
+		for k, v := range env {
+			cmdEnv = append(cmdEnv, k+"="+v)
+		}
+		cmd.Env = cmdEnv
 	}
 
 	// Start with PTY
