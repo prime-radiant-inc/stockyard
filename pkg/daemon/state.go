@@ -16,8 +16,6 @@ import (
 type Task struct {
 	ID                string
 	Name              string
-	Repo              string
-	Ref               string
 	Command           string
 	Status            string
 	VMID              string
@@ -107,8 +105,6 @@ func (s *State) migrate() error {
 	CREATE TABLE IF NOT EXISTS tasks (
 		id TEXT PRIMARY KEY,
 		name TEXT,
-		repo TEXT NOT NULL,
-		ref TEXT NOT NULL,
 		command TEXT NOT NULL,
 		status TEXT NOT NULL,
 		vmid TEXT,
@@ -142,10 +138,12 @@ func (s *State) migrate() error {
 		`ALTER TABLE tasks ADD COLUMN cid INTEGER DEFAULT 0`,
 		`ALTER TABLE tasks ADD COLUMN owner TEXT DEFAULT ''`,
 		`ALTER TABLE tasks ADD COLUMN vsock_path TEXT DEFAULT ''`,
+		`ALTER TABLE tasks DROP COLUMN repo`,
+		`ALTER TABLE tasks DROP COLUMN ref`,
 	}
 
 	for _, migration := range migrations {
-		// Ignore errors from ALTER TABLE - column may already exist
+		// Ignore errors from ALTER TABLE - column may already exist or not exist
 		s.db.Exec(migration)
 	}
 
@@ -167,14 +165,12 @@ func (s *State) SetStatusChangeCallback(cb StatusChangeCallback) {
 // CreateTask creates a new task in the database.
 func (s *State) CreateTask(task *Task) error {
 	query := `
-	INSERT INTO tasks (id, name, repo, ref, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO tasks (id, name, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := s.db.Exec(query,
 		task.ID,
 		task.Name,
-		task.Repo,
-		task.Ref,
 		task.Command,
 		task.Status,
 		task.VMID,
@@ -194,7 +190,7 @@ func (s *State) CreateTask(task *Task) error {
 // GetTask retrieves a task by ID.
 func (s *State) GetTask(id string) (*Task, error) {
 	query := `
-	SELECT id, name, repo, ref, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at
+	SELECT id, name, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at
 	FROM tasks
 	WHERE id = ?
 	`
@@ -212,8 +208,6 @@ func (s *State) GetTask(id string) (*Task, error) {
 	err := row.Scan(
 		&task.ID,
 		&name,
-		&task.Repo,
-		&task.Ref,
 		&task.Command,
 		&task.Status,
 		&vmid,
@@ -264,13 +258,13 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 
 	if status == "" {
 		query = `
-		SELECT id, name, repo, ref, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at
+		SELECT id, name, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at
 		FROM tasks
 		ORDER BY created_at DESC
 		`
 	} else {
 		query = `
-		SELECT id, name, repo, ref, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at
+		SELECT id, name, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at
 		FROM tasks
 		WHERE status = ?
 		ORDER BY created_at DESC
@@ -298,8 +292,6 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 		err := rows.Scan(
 			&task.ID,
 			&name,
-			&task.Repo,
-			&task.Ref,
 			&task.Command,
 			&task.Status,
 			&vmid,
@@ -424,7 +416,7 @@ func (s *State) UpdateTaskVMID(id, vmid string) error {
 // GetTaskByCID retrieves a running task by its Firecracker CID.
 func (s *State) GetTaskByCID(cid uint32) (*Task, error) {
 	query := `
-	SELECT id, name, repo, ref, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at
+	SELECT id, name, command, status, vmid, cid, vsock_path, owner, tailscale_hostname, created_at, stopped_at
 	FROM tasks
 	WHERE cid = ? AND status = 'running'
 	`
@@ -442,8 +434,6 @@ func (s *State) GetTaskByCID(cid uint32) (*Task, error) {
 	err := row.Scan(
 		&task.ID,
 		&name,
-		&task.Repo,
-		&task.Ref,
 		&task.Command,
 		&task.Status,
 		&vmid,

@@ -58,8 +58,6 @@ func NewTaskManager(d *Daemon, fcConfig *FirecrackerConfig) *TaskManager {
 
 // CreateTaskRequest contains the parameters for creating a new task.
 type CreateTaskRequest struct {
-	Repo             string
-	Ref              string
 	Name             string
 	Command          []string
 	Env              map[string]string
@@ -72,14 +70,7 @@ type CreateTaskRequest struct {
 
 // CreateTask creates a new VM-based task with the given parameters.
 func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (*Task, error) {
-	if req.Repo == "" {
-		return nil, fmt.Errorf("repo is required")
-	}
-
 	// Apply defaults
-	if req.Ref == "" {
-		req.Ref = "main"
-	}
 	if req.CPUs <= 0 {
 		req.CPUs = 2
 	}
@@ -250,8 +241,6 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			Metadata: map[string]string{
 				"task-id":   taskID,
 				"task-name": req.Name,
-				"repo":      req.Repo,
-				"ref":       req.Ref,
 			},
 		}
 
@@ -279,8 +268,6 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	task := &Task{
 		ID:                taskID,
 		Name:              req.Name,
-		Repo:              req.Repo,
-		Ref:               req.Ref,
 		Command:           commandStr,
 		Status:            "running",
 		VMID:              vmID,
@@ -304,7 +291,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 	// Record activity event for VM started
 	if af := tm.daemon.ActivityFeed(); af != nil {
-		af.VMStarted(taskID, req.Name, req.Repo, "")
+		af.VMStarted(taskID, req.Name, "")
 	}
 
 	// Start log tailing if dashboard is enabled
@@ -394,7 +381,7 @@ func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
 
 	// Record activity event for VM started
 	if af := tm.daemon.ActivityFeed(); af != nil {
-		af.VMStarted(taskID, task.Name, task.Repo, "")
+		af.VMStarted(taskID, task.Name, "")
 	}
 
 	return nil

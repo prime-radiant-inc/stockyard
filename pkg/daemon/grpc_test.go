@@ -187,7 +187,7 @@ func TestGRPCServer_CreateTask_NoTaskManager(t *testing.T) {
 	s := newTestGRPCServer(t, false)
 
 	_, err := s.CreateTask(context.Background(), &pb.CreateTaskRequest{
-		Repo: "github.com/test/repo",
+		Name: "test-task",
 	})
 
 	if err == nil {

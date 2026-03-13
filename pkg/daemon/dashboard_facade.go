@@ -60,8 +60,6 @@ func (f *DashboardFacade) CreateTask(ctx context.Context, req *dashboard.DaemonC
 	}
 
 	daemonReq := &CreateTaskRequest{
-		Repo:        req.Repo,
-		Ref:         req.Ref,
 		Name:        req.Name,
 		Command:     req.Command,
 		CPUs:        req.CPUs,
@@ -239,8 +237,6 @@ func convertToDashboardTask(t *Task) *dashboard.DaemonTask {
 	return &dashboard.DaemonTask{
 		ID:                t.ID,
 		Name:              t.Name,
-		Repo:              t.Repo,
-		Ref:               t.Ref,
 		Command:           t.Command,
 		Status:            t.Status,
 		VMID:              t.VMID,

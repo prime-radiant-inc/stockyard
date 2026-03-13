@@ -15,8 +15,6 @@ func TestState_CreateAndGetTask(t *testing.T) {
 	task := &Task{
 		ID:                "task-123",
 		Name:              "test-task",
-		Repo:              "github.com/test/repo",
-		Ref:               "main",
 		Command:           "claude-code",
 		Status:            "running",
 		TailscaleHostname: "stockyard-task-123",
@@ -38,12 +36,6 @@ func TestState_CreateAndGetTask(t *testing.T) {
 	}
 	if got.Name != task.Name {
 		t.Errorf("Name mismatch: got %q, want %q", got.Name, task.Name)
-	}
-	if got.Repo != task.Repo {
-		t.Errorf("Repo mismatch: got %q, want %q", got.Repo, task.Repo)
-	}
-	if got.Ref != task.Ref {
-		t.Errorf("Ref mismatch: got %q, want %q", got.Ref, task.Ref)
 	}
 	if got.Command != task.Command {
 		t.Errorf("Command mismatch: got %q, want %q", got.Command, task.Command)
@@ -76,8 +68,8 @@ func TestState_ListTasks(t *testing.T) {
 	}
 	defer state.Close()
 
-	state.CreateTask(&Task{ID: "task-1", Repo: "repo1", Ref: "main", Command: "cmd", Status: "running", CreatedAt: time.Now()})
-	state.CreateTask(&Task{ID: "task-2", Repo: "repo2", Ref: "main", Command: "cmd", Status: "stopped", CreatedAt: time.Now()})
+	state.CreateTask(&Task{ID: "task-1", Command: "cmd", Status: "running", CreatedAt: time.Now()})
+	state.CreateTask(&Task{ID: "task-2", Command: "cmd", Status: "stopped", CreatedAt: time.Now()})
 
 	tasks, err := state.ListTasks("")
 	if err != nil {
@@ -119,8 +111,6 @@ func TestState_UpdateTaskStatus(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-update",
-		Repo:      "repo",
-		Ref:       "main",
 		Command:   "cmd",
 		Status:    "running",
 		CreatedAt: time.Now(),
@@ -166,8 +156,6 @@ func TestState_DeleteTask(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-delete",
-		Repo:      "repo",
-		Ref:       "main",
 		Command:   "cmd",
 		Status:    "running",
 		CreatedAt: time.Now(),
@@ -213,8 +201,6 @@ func TestState_UpdateTaskVMID(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-vmid",
-		Repo:      "repo",
-		Ref:       "main",
 		Command:   "cmd",
 		Status:    "running",
 		CreatedAt: time.Now(),
@@ -320,7 +306,7 @@ func TestState_StatusChangeCallback(t *testing.T) {
 	})
 
 	// Create a task
-	task := &Task{ID: "test-callback", Status: "pending", Repo: "test", Ref: "main", Command: "cmd", CreatedAt: time.Now()}
+	task := &Task{ID: "test-callback", Status: "pending", Command: "cmd", CreatedAt: time.Now()}
 	if err := state.CreateTask(task); err != nil {
 		t.Fatalf("CreateTask: %v", err)
 	}
@@ -353,8 +339,6 @@ func TestState_GetTaskByCID(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-123",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "test",
 		Status:    "running",
 		CID:       100,
@@ -399,8 +383,6 @@ func TestState_GetTaskByCID_NotRunning(t *testing.T) {
 	// Create a stopped task with a CID
 	task := &Task{
 		ID:        "task-stopped",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "test",
 		Status:    "stopped",
 		CID:       150,
@@ -426,8 +408,6 @@ func TestState_UpdateTaskCID(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-123",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "test",
 		Status:    "running",
 		CID:       0,
@@ -472,8 +452,6 @@ func TestState_CID_PreservedInGetTask(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-cid-get",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "test",
 		Status:    "running",
 		CID:       300,
@@ -501,8 +479,6 @@ func TestState_CID_PreservedInListTasks(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-cid-list",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "test",
 		Status:    "running",
 		CID:       400,
@@ -533,8 +509,6 @@ func TestState_Owner_PreservedInGetTask(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-123",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "test",
 		Status:    "running",
 		Owner:     "jesse@example.com",
@@ -562,8 +536,6 @@ func TestState_Owner_PreservedInListTasks(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-owner-list",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "test",
 		Status:    "running",
 		Owner:     "bob@example.com",
@@ -594,8 +566,6 @@ func TestState_Owner_PreservedInGetTaskByCID(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-owner-cid",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "test",
 		Status:    "running",
 		CID:       500,
@@ -624,8 +594,6 @@ func TestState_Owner_EmptyByDefault(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-no-owner",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "test",
 		Status:    "running",
 		CreatedAt: time.Now(),

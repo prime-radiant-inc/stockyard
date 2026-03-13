@@ -24,16 +24,12 @@ func TestDashboardFacade_ListTasks(t *testing.T) {
 	task1 := &Task{
 		ID:        "task-1",
 		Name:      "test-vm",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "claude",
 		Status:    "running",
 		CreatedAt: time.Now(),
 	}
 	task2 := &Task{
 		ID:        "task-2",
-		Repo:      "github.com/test/other",
-		Ref:       "develop",
 		Command:   "bash",
 		Status:    "stopped",
 		CreatedAt: time.Now(),
@@ -80,8 +76,6 @@ func TestDashboardFacade_GetTask(t *testing.T) {
 	task := &Task{
 		ID:                "task-123",
 		Name:              "my-vm",
-		Repo:              "github.com/test/repo",
-		Ref:               "feature",
 		Command:           "claude",
 		Status:            "running",
 		TailscaleHostname: "stockyard-task-123",
@@ -125,8 +119,6 @@ func TestDashboardFacade_ListTaskSnapshots(t *testing.T) {
 	// Create task and snapshots
 	task := &Task{
 		ID:        "task-1",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "claude",
 		Status:    "running",
 		CreatedAt: time.Now(),
@@ -158,8 +150,6 @@ func TestDashboardFacade_CreateSnapshot_NoVMID(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-1",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "claude",
 		Status:    "running",
 		CreatedAt: time.Now(),
@@ -186,8 +176,6 @@ func TestDashboardFacade_CreateSnapshot_NoZFS(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-1",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "claude",
 		Status:    "running",
 		VMID:      "vm-abc123",
@@ -229,8 +217,6 @@ func TestDashboardFacade_RestoreSnapshot_NoVMID(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-1",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "claude",
 		Status:    "stopped",
 		CreatedAt: time.Now(),
@@ -257,8 +243,6 @@ func TestDashboardFacade_RestoreSnapshot_NoZFS(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-1",
-		Repo:      "github.com/test/repo",
-		Ref:       "main",
 		Command:   "claude",
 		Status:    "stopped",
 		VMID:      "vm-abc123",

@@ -32,8 +32,6 @@ func (s *grpcServer) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) 
 	}
 
 	task, err := s.daemon.tasks.CreateTask(ctx, &CreateTaskRequest{
-		Repo:              req.Repo,
-		Ref:               req.Ref,
 		Name:              req.Name,
 		Command:           req.Command,
 		Env:               req.Env,
@@ -182,8 +180,6 @@ func taskToProto(t *Task) *pb.Task {
 	pt := &pb.Task{
 		Id:                t.ID,
 		Name:              t.Name,
-		Repo:              t.Repo,
-		Ref:               t.Ref,
 		Status:            t.Status,
 		TailscaleHostname: t.TailscaleHostname,
 		CreatedAt:         t.CreatedAt.Format(time.RFC3339),

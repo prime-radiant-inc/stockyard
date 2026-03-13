@@ -70,55 +70,14 @@ func TestNewTaskManager(t *testing.T) {
 	}
 }
 
-func TestTaskManager_CreateTaskRequest_Validation(t *testing.T) {
-	cfg := &config.Config{
-		ZFS: config.ZFSConfig{
-			Pool:     "tank",
-			BasePath: "stockyard/workspaces",
-		},
-	}
-	state, err := NewStateInMemory()
-	if err != nil {
-		t.Fatalf("failed to create state: %v", err)
-	}
-	defer state.Close()
-
-	secretsProvider := &secrets.MockProvider{
-		Secrets: map[string]string{},
-	}
-
-	d := &Daemon{
-		cfg:     cfg,
-		secrets: secretsProvider,
-		state:   state,
-	}
-
-	tm := NewTaskManager(d, nil)
-
-	// Test missing repo
-	_, err = tm.CreateTask(context.Background(), &CreateTaskRequest{
-		Repo: "",
-		Ref:  "main",
-	})
-	if err == nil {
-		t.Error("expected error for missing repo, got nil")
-	}
-}
-
 func TestCreateTaskRequest_Defaults(t *testing.T) {
-	req := &CreateTaskRequest{
-		Repo: "github.com/test/repo",
+	req := &CreateTaskRequest{}
+	// Defaults are zero-valued and applied during CreateTask
+	if req.CPUs != 0 {
+		t.Errorf("expected default CPUs to be 0, got %d", req.CPUs)
 	}
-
-	// Defaults should be applied when processing
-	if req.Ref == "" {
-		// This is expected - defaults are applied during CreateTask
-	}
-	if req.CPUs == 0 {
-		// This is expected - defaults are applied during CreateTask
-	}
-	if req.MemoryMB == 0 {
-		// This is expected - defaults are applied during CreateTask
+	if req.MemoryMB != 0 {
+		t.Errorf("expected default MemoryMB to be 0, got %d", req.MemoryMB)
 	}
 }
 
@@ -151,8 +110,6 @@ func TestTaskManager_FailTask(t *testing.T) {
 	task := &Task{
 		ID:     "test-fail-task",
 		Name:   "Test Task",
-		Repo:   "github.com/test/repo",
-		Ref:    "main",
 		Status: "running",
 	}
 	if err := state.CreateTask(task); err != nil {
