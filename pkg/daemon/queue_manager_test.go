@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/obra/stockyard/pkg/config"
 )
 
 // newTestQueueManager creates a QueueManager backed by an in-memory State.
@@ -13,7 +15,9 @@ func newTestQueueManager(t *testing.T) (*QueueManager, *State) {
 	if err != nil {
 		t.Fatalf("NewStateInMemory: %v", err)
 	}
-	qm := NewQueueManager(state, t.TempDir())
+	cfg := config.DefaultConfig()
+	cfg.Daemon.DataDir = t.TempDir()
+	qm := NewQueueManager(state, cfg)
 	return qm, state
 }
 

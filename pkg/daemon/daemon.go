@@ -102,7 +102,7 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 		}
 	}
 	d.tasks = NewTaskManager(d, fcConfig)
-	d.queueManager = NewQueueManager(state, cfg.Daemon.DataDir)
+	d.queueManager = NewQueueManager(state, cfg)
 
 	// Initialize DHCP server
 	dhcpConfig := network.DHCPConfig{

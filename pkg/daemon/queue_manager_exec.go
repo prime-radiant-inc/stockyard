@@ -58,14 +58,9 @@ func (qm *QueueManager) runVsockCommand(task *Task, cmd *Command) (int, error) {
 		return 1, fmt.Errorf("vsock CONNECT failed: %s", strings.TrimSpace(line))
 	}
 
-	// Send MsgOpen. Use the task owner as the username; fall back to "mooby".
-	user := task.Owner
-	if user == "" {
-		user = "mooby"
-	}
-
+	// Send MsgOpen. Use the configured VM user for privilege dropping inside the guest.
 	openMsg := &shell.OpenMessage{
-		User:    user,
+		User:    qm.cfg.VM.User,
 		Term:    "dumb",
 		Cols:    220,
 		Rows:    50,

@@ -8,19 +8,21 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/obra/stockyard/pkg/config"
 )
 
 // QueueManager manages command queues and coordinates execution.
 // It wraps the State layer and adds scheduling logic.
 type QueueManager struct {
-	state   *State
-	dataDir string
-	mu      sync.Mutex
+	state *State
+	cfg   *config.Config
+	mu    sync.Mutex
 }
 
 // NewQueueManager creates a new QueueManager.
-func NewQueueManager(state *State, dataDir string) *QueueManager {
-	return &QueueManager{state: state, dataDir: dataDir}
+func NewQueueManager(state *State, cfg *config.Config) *QueueManager {
+	return &QueueManager{state: state, cfg: cfg}
 }
 
 // generateCommandID creates a unique command ID using random bytes.
@@ -32,7 +34,7 @@ func generateCommandID() string {
 
 // outputPath returns the path for a command's output log file.
 func (qm *QueueManager) outputPath(taskID, commandID string) string {
-	return filepath.Join(qm.dataDir, "tasks", taskID, "commands", commandID, "output.log")
+	return filepath.Join(qm.cfg.Daemon.DataDir, "tasks", taskID, "commands", commandID, "output.log")
 }
 
 // InitQueues creates the built-in queues (default + admin) for a task.
@@ -196,7 +198,7 @@ func (qm *QueueManager) DestroyQueue(taskID, queueName string) error {
 // CleanupTask removes all queues, commands, and output files for a task.
 func (qm *QueueManager) CleanupTask(taskID string) error {
 	// Remove output files directory
-	taskDir := filepath.Join(qm.dataDir, "tasks", taskID)
+	taskDir := filepath.Join(qm.cfg.Daemon.DataDir, "tasks", taskID)
 	if err := os.RemoveAll(taskDir); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove task dir: %w", err)
 	}
