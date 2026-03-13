@@ -7,11 +7,24 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+// testSocketPath returns a Unix socket path short enough for macOS (104-byte limit).
+// t.TempDir() paths on macOS are too long for Unix sockets.
+func testSocketPath(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "fc-test-")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return filepath.Join(dir, "test.sock")
+}
 
 func TestNewAPIClient(t *testing.T) {
 	client := NewAPIClient("/tmp/test.sock")
@@ -24,8 +37,7 @@ func TestNewAPIClient(t *testing.T) {
 }
 
 func TestAPIClient_put(t *testing.T) {
-	// Create a test Unix socket server
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	socketPath := testSocketPath(t)
 
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
@@ -62,8 +74,11 @@ func TestAPIClient_put(t *testing.T) {
 }
 
 func TestAPIClient_SetBootSource(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
-	listener, _ := net.Listen("unix", socketPath)
+	socketPath := testSocketPath(t)
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
 	defer listener.Close()
 
 	var receivedPath string
@@ -80,7 +95,7 @@ func TestAPIClient_SetBootSource(t *testing.T) {
 	defer server.Close()
 
 	client := NewAPIClient(socketPath)
-	err := client.SetBootSource(context.Background(), "/path/to/kernel", "console=ttyS0")
+	err = client.SetBootSource(context.Background(), "/path/to/kernel", "console=ttyS0")
 	if err != nil {
 		t.Fatalf("SetBootSource failed: %v", err)
 	}
@@ -97,8 +112,11 @@ func TestAPIClient_SetBootSource(t *testing.T) {
 }
 
 func TestAPIClient_SetDrive(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
-	listener, _ := net.Listen("unix", socketPath)
+	socketPath := testSocketPath(t)
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
 	defer listener.Close()
 
 	var receivedPath string
@@ -115,7 +133,7 @@ func TestAPIClient_SetDrive(t *testing.T) {
 	defer server.Close()
 
 	client := NewAPIClient(socketPath)
-	err := client.SetDrive(context.Background(), "rootfs", "/path/to/rootfs.ext4", true, false)
+	err = client.SetDrive(context.Background(), "rootfs", "/path/to/rootfs.ext4", true, false)
 	if err != nil {
 		t.Fatalf("SetDrive failed: %v", err)
 	}
@@ -138,8 +156,11 @@ func TestAPIClient_SetDrive(t *testing.T) {
 }
 
 func TestAPIClient_SetNetworkInterface(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
-	listener, _ := net.Listen("unix", socketPath)
+	socketPath := testSocketPath(t)
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
 	defer listener.Close()
 
 	var receivedPath string
@@ -156,7 +177,7 @@ func TestAPIClient_SetNetworkInterface(t *testing.T) {
 	defer server.Close()
 
 	client := NewAPIClient(socketPath)
-	err := client.SetNetworkInterface(context.Background(), "eth0", "02:FC:00:00:00:01", "tap-abc123")
+	err = client.SetNetworkInterface(context.Background(), "eth0", "02:FC:00:00:00:01", "tap-abc123")
 	if err != nil {
 		t.Fatalf("SetNetworkInterface failed: %v", err)
 	}
@@ -176,8 +197,11 @@ func TestAPIClient_SetNetworkInterface(t *testing.T) {
 }
 
 func TestAPIClient_SetMachineConfig(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
-	listener, _ := net.Listen("unix", socketPath)
+	socketPath := testSocketPath(t)
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
 	defer listener.Close()
 
 	var receivedPath string
@@ -194,7 +218,7 @@ func TestAPIClient_SetMachineConfig(t *testing.T) {
 	defer server.Close()
 
 	client := NewAPIClient(socketPath)
-	err := client.SetMachineConfig(context.Background(), 2, 1024)
+	err = client.SetMachineConfig(context.Background(), 2, 1024)
 	if err != nil {
 		t.Fatalf("SetMachineConfig failed: %v", err)
 	}
@@ -211,8 +235,11 @@ func TestAPIClient_SetMachineConfig(t *testing.T) {
 }
 
 func TestAPIClient_SetMMDSConfig(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
-	listener, _ := net.Listen("unix", socketPath)
+	socketPath := testSocketPath(t)
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
 	defer listener.Close()
 
 	var receivedPath string
@@ -229,7 +256,7 @@ func TestAPIClient_SetMMDSConfig(t *testing.T) {
 	defer server.Close()
 
 	client := NewAPIClient(socketPath)
-	err := client.SetMMDSConfig(context.Background(), []string{"eth0"})
+	err = client.SetMMDSConfig(context.Background(), []string{"eth0"})
 	if err != nil {
 		t.Fatalf("SetMMDSConfig failed: %v", err)
 	}
@@ -247,8 +274,11 @@ func TestAPIClient_SetMMDSConfig(t *testing.T) {
 }
 
 func TestAPIClient_SetMMDSData(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
-	listener, _ := net.Listen("unix", socketPath)
+	socketPath := testSocketPath(t)
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
 	defer listener.Close()
 
 	var receivedPath string
@@ -274,7 +304,7 @@ func TestAPIClient_SetMMDSData(t *testing.T) {
 			"user-data": "#cloud-config\nhostname: test\n",
 		},
 	}
-	err := client.SetMMDSData(context.Background(), data)
+	err = client.SetMMDSData(context.Background(), data)
 	if err != nil {
 		t.Fatalf("SetMMDSData failed: %v", err)
 	}
@@ -290,8 +320,11 @@ func TestAPIClient_SetMMDSData(t *testing.T) {
 }
 
 func TestAPIClient_StartInstance(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
-	listener, _ := net.Listen("unix", socketPath)
+	socketPath := testSocketPath(t)
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
 	defer listener.Close()
 
 	var receivedPath string
@@ -308,7 +341,7 @@ func TestAPIClient_StartInstance(t *testing.T) {
 	defer server.Close()
 
 	client := NewAPIClient(socketPath)
-	err := client.StartInstance(context.Background())
+	err = client.StartInstance(context.Background())
 	if err != nil {
 		t.Fatalf("StartInstance failed: %v", err)
 	}
@@ -322,8 +355,11 @@ func TestAPIClient_StartInstance(t *testing.T) {
 }
 
 func TestAPIClient_SendCtrlAltDel(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
-	listener, _ := net.Listen("unix", socketPath)
+	socketPath := testSocketPath(t)
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
 	defer listener.Close()
 
 	var receivedBody map[string]interface{}
@@ -338,7 +374,7 @@ func TestAPIClient_SendCtrlAltDel(t *testing.T) {
 	defer server.Close()
 
 	client := NewAPIClient(socketPath)
-	err := client.SendCtrlAltDel(context.Background())
+	err = client.SendCtrlAltDel(context.Background())
 	if err != nil {
 		t.Fatalf("SendCtrlAltDel failed: %v", err)
 	}
@@ -349,7 +385,7 @@ func TestAPIClient_SendCtrlAltDel(t *testing.T) {
 }
 
 func TestAPIClient_WaitForSocket(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "delayed.sock")
+	socketPath := testSocketPath(t)
 
 	// Start listener after delay
 	go func() {
@@ -370,7 +406,7 @@ func TestAPIClient_WaitForSocket(t *testing.T) {
 }
 
 func TestAPIClient_WaitForSocket_Timeout(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "never.sock")
+	socketPath := testSocketPath(t)
 	client := NewAPIClient(socketPath)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
@@ -383,7 +419,7 @@ func TestAPIClient_WaitForSocket_Timeout(t *testing.T) {
 }
 
 func TestAPIClient_GetMetrics(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	socketPath := testSocketPath(t)
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
@@ -430,7 +466,7 @@ func TestAPIClient_GetMetrics(t *testing.T) {
 }
 
 func TestAPIClient_GetMachineConfig(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	socketPath := testSocketPath(t)
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
@@ -468,8 +504,11 @@ func TestAPIClient_GetMachineConfig(t *testing.T) {
 }
 
 func TestAPIClient_SetMetrics(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
-	listener, _ := net.Listen("unix", socketPath)
+	socketPath := testSocketPath(t)
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
 	defer listener.Close()
 
 	var receivedPath string
@@ -486,7 +525,7 @@ func TestAPIClient_SetMetrics(t *testing.T) {
 	defer server.Close()
 
 	client := NewAPIClient(socketPath)
-	err := client.SetMetrics(context.Background(), "/tmp/metrics.fifo")
+	err = client.SetMetrics(context.Background(), "/tmp/metrics.fifo")
 	if err != nil {
 		t.Fatalf("SetMetrics failed: %v", err)
 	}
@@ -521,7 +560,7 @@ func TestAPIClient_SetVsock(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	socketPath := testSocketPath(t)
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)

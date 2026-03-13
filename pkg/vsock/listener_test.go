@@ -11,7 +11,13 @@ import (
 )
 
 func TestSnapshotServer_UnixFallback(t *testing.T) {
-	tmpDir := t.TempDir()
+	// Use /tmp for short socket paths — macOS has a 104-byte limit and
+	// t.TempDir() paths are too long.
+	tmpDir, err := os.MkdirTemp("/tmp", "vsock-test-")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(tmpDir) })
 	sockPath := filepath.Join(tmpDir, "test.sock")
 
 	// Track snapshot requests
