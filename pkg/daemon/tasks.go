@@ -289,6 +289,11 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		return nil, fmt.Errorf("failed to record task: %w", err)
 	}
 
+	// Initialize built-in command queues
+	if err := tm.daemon.queueManager.InitQueues(taskID); err != nil {
+		log.Printf("Warning: failed to initialize queues for task %s: %v", taskID, err)
+	}
+
 	// Record activity event for VM started
 	if af := tm.daemon.ActivityFeed(); af != nil {
 		af.VMStarted(taskID, req.Name, "")
@@ -502,6 +507,13 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 	// Release the static IP allocation
 	if tm.daemon.IPPool() != nil {
 		tm.daemon.IPPool().Release(taskID)
+	}
+
+	// Clean up command queues and output files
+	if tm.daemon.queueManager != nil {
+		if err := tm.daemon.queueManager.CleanupTask(taskID); err != nil {
+			fmt.Printf("Warning: failed to cleanup queues for %s: %v\n", taskID, err)
+		}
 	}
 
 	// Delete task from database
