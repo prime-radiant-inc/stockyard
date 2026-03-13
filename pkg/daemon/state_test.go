@@ -610,3 +610,236 @@ func TestState_Owner_EmptyByDefault(t *testing.T) {
 		t.Errorf("expected empty owner, got %q", found.Owner)
 	}
 }
+
+func TestCreateAndGetQueue(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	q := &Queue{
+		TaskID:    "task-1",
+		Name:      "default",
+		Mode:      "serial",
+		Protected: true,
+		Status:    "active",
+		CreatedAt: time.Now(),
+	}
+	if err := state.CreateQueue(q); err != nil {
+		t.Fatalf("CreateQueue: %v", err)
+	}
+
+	got, err := state.GetQueue("task-1", "default")
+	if err != nil {
+		t.Fatalf("GetQueue: %v", err)
+	}
+	if got.Mode != "serial" {
+		t.Errorf("mode = %q, want %q", got.Mode, "serial")
+	}
+	if !got.Protected {
+		t.Error("expected protected = true")
+	}
+}
+
+func TestListQueues(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	state.CreateQueue(&Queue{TaskID: "task-1", Name: "default", Mode: "serial", Protected: true, Status: "active", CreatedAt: time.Now()})
+	state.CreateQueue(&Queue{TaskID: "task-1", Name: "admin", Mode: "concurrent", Protected: true, Status: "active", CreatedAt: time.Now()})
+
+	queues, err := state.ListQueues("task-1")
+	if err != nil {
+		t.Fatalf("ListQueues: %v", err)
+	}
+	if len(queues) != 2 {
+		t.Errorf("got %d queues, want 2", len(queues))
+	}
+}
+
+func TestDestroyProtectedQueue(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	state.CreateQueue(&Queue{TaskID: "task-1", Name: "default", Mode: "serial", Protected: true, Status: "active", CreatedAt: time.Now()})
+
+	err = state.DestroyQueue("task-1", "default")
+	if err == nil {
+		t.Error("expected error destroying protected queue")
+	}
+}
+
+func TestCreateAndGetCommand(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	cmd := &Command{
+		ID:            "cmd-1",
+		TaskID:        "task-1",
+		QueueName:     "default",
+		Command:       []string{"echo", "hello"},
+		Status:        "pending",
+		StopOnFailure: true,
+		CreatedAt:     time.Now(),
+	}
+	if err := state.CreateCommand(cmd); err != nil {
+		t.Fatalf("CreateCommand: %v", err)
+	}
+
+	got, err := state.GetCommand("cmd-1")
+	if err != nil {
+		t.Fatalf("GetCommand: %v", err)
+	}
+	if got.Status != "pending" {
+		t.Errorf("status = %q, want %q", got.Status, "pending")
+	}
+	if !got.StopOnFailure {
+		t.Error("expected stop_on_failure = true")
+	}
+	if len(got.Command) != 2 || got.Command[0] != "echo" {
+		t.Errorf("command = %v, want [echo hello]", got.Command)
+	}
+}
+
+func TestListCommandsByQueue(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	for i, name := range []string{"cmd-1", "cmd-2", "cmd-3"} {
+		state.CreateCommand(&Command{
+			ID: name, TaskID: "task-1", QueueName: "default",
+			Command: []string{"echo", name}, Status: "pending",
+			StopOnFailure: true, CreatedAt: time.Now().Add(time.Duration(i) * time.Second),
+		})
+	}
+
+	cmds, err := state.ListCommands("task-1", "default")
+	if err != nil {
+		t.Fatalf("ListCommands: %v", err)
+	}
+	if len(cmds) != 3 {
+		t.Errorf("got %d commands, want 3", len(cmds))
+	}
+}
+
+func TestUpdateCommandStatus(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	state.CreateCommand(&Command{
+		ID: "cmd-1", TaskID: "task-1", QueueName: "default",
+		Command: []string{"echo"}, Status: "pending",
+		StopOnFailure: true, CreatedAt: time.Now(),
+	})
+
+	if err := state.UpdateCommandStatus("cmd-1", "running"); err != nil {
+		t.Fatalf("UpdateCommandStatus: %v", err)
+	}
+
+	got, err := state.GetCommand("cmd-1")
+	if err != nil {
+		t.Fatalf("GetCommand: %v", err)
+	}
+	if got.Status != "running" {
+		t.Errorf("status = %q, want %q", got.Status, "running")
+	}
+	if got.StartedAt == nil {
+		t.Error("expected started_at to be set")
+	}
+}
+
+func TestUpdateCommandExitCode(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	state.CreateCommand(&Command{
+		ID: "cmd-1", TaskID: "task-1", QueueName: "default",
+		Command: []string{"echo"}, Status: "running",
+		StopOnFailure: true, CreatedAt: time.Now(),
+	})
+
+	exitCode := 1
+	if err := state.UpdateCommandExit("cmd-1", exitCode); err != nil {
+		t.Fatalf("UpdateCommandExit: %v", err)
+	}
+
+	got, err := state.GetCommand("cmd-1")
+	if err != nil {
+		t.Fatalf("GetCommand: %v", err)
+	}
+	if got.ExitCode == nil || *got.ExitCode != 1 {
+		t.Errorf("exit_code = %v, want 1", got.ExitCode)
+	}
+	if got.Status != "failed" {
+		t.Errorf("status = %q, want %q", got.Status, "failed")
+	}
+	if got.FinishedAt == nil {
+		t.Error("expected finished_at to be set")
+	}
+}
+
+func TestDeleteCommandsByTask(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	state.CreateCommand(&Command{ID: "cmd-1", TaskID: "task-1", QueueName: "default", Command: []string{"echo"}, Status: "pending", CreatedAt: time.Now()})
+	state.CreateCommand(&Command{ID: "cmd-2", TaskID: "task-1", QueueName: "default", Command: []string{"echo"}, Status: "pending", CreatedAt: time.Now()})
+
+	if err := state.DeleteCommandsByTask("task-1"); err != nil {
+		t.Fatalf("DeleteCommandsByTask: %v", err)
+	}
+
+	cmds, err := state.ListCommands("task-1", "default")
+	if err != nil {
+		t.Fatalf("ListCommands: %v", err)
+	}
+	if len(cmds) != 0 {
+		t.Errorf("got %d commands, want 0", len(cmds))
+	}
+}
+
+func TestFlushQueue(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	state.CreateCommand(&Command{ID: "cmd-1", TaskID: "task-1", QueueName: "default", Command: []string{"a"}, Status: "completed", CreatedAt: time.Now()})
+	state.CreateCommand(&Command{ID: "cmd-2", TaskID: "task-1", QueueName: "default", Command: []string{"b"}, Status: "pending", CreatedAt: time.Now()})
+	state.CreateCommand(&Command{ID: "cmd-3", TaskID: "task-1", QueueName: "default", Command: []string{"c"}, Status: "pending", CreatedAt: time.Now()})
+
+	if err := state.FlushQueueCommands("task-1", "default"); err != nil {
+		t.Fatalf("FlushQueueCommands: %v", err)
+	}
+
+	cmds, err := state.ListCommands("task-1", "default")
+	if err != nil {
+		t.Fatalf("ListCommands: %v", err)
+	}
+	if len(cmds) != 1 {
+		t.Errorf("got %d commands after flush, want 1 (completed one)", len(cmds))
+	}
+}
