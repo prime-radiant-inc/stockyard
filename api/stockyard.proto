@@ -20,16 +20,14 @@ service Stockyard {
 }
 
 message CreateTaskRequest {
-    string repo = 1;
-    string ref = 2;
-    string name = 3;
-    repeated string command = 4;
-    map<string, string> env = 5;
-    int32 cpus = 6;
-    string memory = 7;
-    bool no_tailscale = 8;
-    string tailscale_auth_key = 9;  // Optional: override 1Password lookup
-    repeated string ssh_authorized_keys = 10;  // SSH public keys for VM access
+    string name = 1;
+    repeated string command = 2;
+    map<string, string> env = 3;
+    int32 cpus = 4;
+    string memory = 5;
+    bool no_tailscale = 6;
+    string tailscale_auth_key = 7;  // Optional: override 1Password lookup
+    repeated string ssh_authorized_keys = 8;  // SSH public keys for VM access
 }
 
 message CreateTaskResponse {
@@ -109,12 +107,10 @@ message LogEntry {
 message Task {
     string id = 1;
     string name = 2;
-    string repo = 3;
-    string ref = 4;
-    string status = 5;
-    string tailscale_hostname = 6;
-    string created_at = 7;
-    string stopped_at = 8;
+    string status = 3;
+    string tailscale_hostname = 4;
+    string created_at = 5;
+    string stopped_at = 6;
 }
 
 message Snapshot {
