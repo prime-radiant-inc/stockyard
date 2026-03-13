@@ -115,9 +115,10 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 		return
 	}
 
-	// Validate required fields
-	if openMsg.User == "" {
-		sendError(conn, "user is required")
+	// Validate command is present
+	if len(openMsg.Command) == 0 {
+		log.Printf("No command specified in open message")
+		sendError(conn, "command is required")
 		return
 	}
 	if openMsg.Cols <= 0 {
@@ -130,11 +131,11 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 		openMsg.Term = "xterm"
 	}
 
-	log.Printf("Opening shell for user %q (term=%s, size=%dx%d)",
-		openMsg.User, openMsg.Term, openMsg.Cols, openMsg.Rows)
+	log.Printf("Executing command for user %q: %v (term=%s, size=%dx%d)",
+		openMsg.User, openMsg.Command, openMsg.Term, openMsg.Cols, openMsg.Rows)
 
-	// Create session
-	session, err := shell.NewSession(openMsg.User, openMsg.Term, openMsg.Cols, openMsg.Rows)
+	// Create session with the specified command
+	session, err := shell.NewSession(openMsg.User, openMsg.Term, openMsg.Cols, openMsg.Rows, openMsg.Command, openMsg.Env)
 	if err != nil {
 		log.Printf("Failed to create session: %v", err)
 		sendError(conn, fmt.Sprintf("failed to create session: %v", err))
