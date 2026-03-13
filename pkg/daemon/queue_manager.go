@@ -69,6 +69,9 @@ func (qm *QueueManager) InitQueues(taskID string) error {
 
 // CreateQueue creates a custom (non-protected) queue for a task.
 func (qm *QueueManager) CreateQueue(taskID, name, mode string) error {
+	if mode != "serial" && mode != "concurrent" {
+		return fmt.Errorf("invalid queue mode %q: must be serial or concurrent", mode)
+	}
 	q := &Queue{
 		TaskID:    taskID,
 		Name:      name,
@@ -93,8 +96,29 @@ func (qm *QueueManager) QueueCommand(taskID, queueName string, command []string,
 		return "", fmt.Errorf("get queue: %w", err)
 	}
 
+	// Reject commands on stopped queues
+	if queue.Status == "stopped" {
+		return "", fmt.Errorf("queue %q is stopped", queueName)
+	}
+
 	commandID := generateCommandID()
 	outputPath := qm.outputPath(taskID, commandID)
+
+	// Determine initial status: for serial queues that will start immediately,
+	// mark as "running" under the lock to prevent the race where another
+	// QueueCommand call sees no running command before the goroutine updates status.
+	startImmediately := false
+	initialStatus := "pending"
+	switch queue.Mode {
+	case "concurrent":
+		startImmediately = true
+		initialStatus = "running"
+	case "serial":
+		if !qm.isRunning(taskID, queueName) {
+			startImmediately = true
+			initialStatus = "running"
+		}
+	}
 
 	cmd := &Command{
 		ID:            commandID,
@@ -102,7 +126,7 @@ func (qm *QueueManager) QueueCommand(taskID, queueName string, command []string,
 		QueueName:     queueName,
 		Command:       command,
 		Env:           env,
-		Status:        "pending",
+		Status:        initialStatus,
 		StopOnFailure: stopOnFailure,
 		OutputPath:    outputPath,
 		CreatedAt:     time.Now(),
@@ -112,15 +136,8 @@ func (qm *QueueManager) QueueCommand(taskID, queueName string, command []string,
 		return "", fmt.Errorf("create command: %w", err)
 	}
 
-	// Decide whether to start immediately
-	switch queue.Mode {
-	case "concurrent":
+	if startImmediately {
 		go qm.executeCommand(taskID, commandID)
-	case "serial":
-		// Start only if nothing is currently running in this queue
-		if !qm.isRunning(taskID, queueName) {
-			go qm.executeCommand(taskID, commandID)
-		}
 	}
 
 	return commandID, nil
@@ -209,10 +226,8 @@ func (qm *QueueManager) executeCommand(taskID, commandID string) {
 		return
 	}
 
-	// Mark as running
-	if err := qm.state.UpdateCommandStatus(commandID, "running"); err != nil {
-		return
-	}
+	// Status was already set to "running" by the caller (QueueCommand or
+	// triggerNext) under the mutex to prevent scheduling races.
 
 	// Run the command; if vsock is unavailable it will return exit code 1
 	exitCode, _ := qm.runVsockCommand(task, cmd)
@@ -256,6 +271,10 @@ func (qm *QueueManager) triggerNext(taskID, queueName string) {
 
 	for _, c := range cmds {
 		if c.Status == "pending" {
+			// Mark as running under the lock to prevent scheduling races
+			if err := qm.state.UpdateCommandStatus(c.ID, "running"); err != nil {
+				return
+			}
 			go qm.executeCommand(taskID, c.ID)
 			return
 		}
