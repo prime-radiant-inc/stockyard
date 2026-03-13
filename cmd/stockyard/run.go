@@ -38,10 +38,6 @@ Examples:
 			}
 		}
 
-		if len(command) == 0 {
-			return fmt.Errorf("command is required after --")
-		}
-
 		c, err := getClient()
 		if err != nil {
 			return err
@@ -60,10 +56,15 @@ Examples:
 		// Read SSH public keys from ~/.ssh/
 		sshKeys := readSSHPublicKeys()
 
+		// Deprecated: command is no longer passed at task creation time.
+		// Use QueueCommand after creating the task instead.
+		if len(command) > 0 {
+			fmt.Fprintf(os.Stderr, "Warning: inline command via -- is deprecated; use 'stockyard queue-command' after task creation\n")
+		}
+
 		req := &pb.CreateTaskRequest{
 			Name:              runName,
-			Command:           command,
-			Env:               env,
+			VmEnv:             env,
 			Cpus:              runCPUs,
 			Memory:            runMemory,
 			NoTailscale:       runNoTailscale,

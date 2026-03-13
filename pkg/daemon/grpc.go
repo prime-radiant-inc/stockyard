@@ -33,8 +33,7 @@ func (s *grpcServer) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) 
 
 	task, err := s.daemon.tasks.CreateTask(ctx, &CreateTaskRequest{
 		Name:              req.Name,
-		Command:           req.Command,
-		Env:               req.Env,
+		Env:               req.VmEnv,
 		CPUs:              req.Cpus,
 		MemoryMB:          parseMemory(req.Memory),
 		NoTailscale:       req.NoTailscale,
