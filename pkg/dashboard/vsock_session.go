@@ -23,7 +23,7 @@ type VsockSession struct {
 }
 
 // SendOpen sends the Open message to start a shell session.
-func (s *VsockSession) SendOpen(term string, cols, rows int) error {
+func (s *VsockSession) SendOpen(term string, cols, rows int, command []string, env map[string]string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -32,10 +32,12 @@ func (s *VsockSession) SendOpen(term string, cols, rows int) error {
 	}
 
 	msg := shell.OpenMessage{
-		User: s.User,
-		Term: term,
-		Cols: cols,
-		Rows: rows,
+		User:    s.User,
+		Term:    term,
+		Cols:    cols,
+		Rows:    rows,
+		Command: command,
+		Env:     env,
 	}
 	payload, err := msg.Marshal()
 	if err != nil {

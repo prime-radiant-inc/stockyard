@@ -170,7 +170,7 @@ func (h *TerminalHandler) createVsockSession(vsockPath string, user string, cols
 	}
 
 	// Send Open message with terminal info
-	if err := session.SendOpen("xterm-256color", cols, rows); err != nil {
+	if err := session.SendOpen("xterm-256color", cols, rows, []string{"login", "-f", user}, nil); err != nil {
 		session.Close()
 		return nil, fmt.Errorf("send open: %w", err)
 	}

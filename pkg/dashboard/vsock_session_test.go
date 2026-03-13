@@ -56,7 +56,7 @@ func TestVsockSession_SendOpen(t *testing.T) {
 	}()
 
 	// Send open message
-	if err := session.SendOpen("xterm-256color", 80, 24); err != nil {
+	if err := session.SendOpen("xterm-256color", 80, 24, []string{"login", "-f", "mooby"}, nil); err != nil {
 		t.Fatalf("SendOpen failed: %v", err)
 	}
 
