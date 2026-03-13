@@ -3,6 +3,8 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -173,6 +175,169 @@ func (s *grpcServer) GetLogs(req *pb.GetLogsRequest, stream grpc.ServerStreaming
 	// This gRPC endpoint is not used by the stockyard CLI.
 	// It could be implemented for programmatic access if needed.
 	return status.Error(codes.Unimplemented, "use SSH via Tailscale for log access")
+}
+
+func (s *grpcServer) CreateQueue(ctx context.Context, req *pb.CreateQueueRequest) (*pb.CreateQueueResponse, error) {
+	if s.daemon.queueManager == nil {
+		return nil, status.Error(codes.Unavailable, "queue manager not initialized")
+	}
+	mode := req.Mode
+	if mode == "" {
+		mode = "serial"
+	}
+	if err := s.daemon.queueManager.CreateQueue(req.TaskId, req.QueueName, mode); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create queue: %v", err)
+	}
+	return &pb.CreateQueueResponse{}, nil
+}
+
+func (s *grpcServer) ListQueues(ctx context.Context, req *pb.ListQueuesRequest) (*pb.ListQueuesResponse, error) {
+	queues, err := s.daemon.queueManager.ListQueues(req.TaskId)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list queues: %v", err)
+	}
+	pbQueues := make([]*pb.QueueInfo, len(queues))
+	for i, q := range queues {
+		pbQueues[i] = &pb.QueueInfo{
+			Name:      q.Name,
+			Mode:      q.Mode,
+			Protected: q.Protected,
+			Status:    q.Status,
+		}
+	}
+	return &pb.ListQueuesResponse{Queues: pbQueues}, nil
+}
+
+func (s *grpcServer) GetQueueStatus(ctx context.Context, req *pb.GetQueueStatusRequest) (*pb.GetQueueStatusResponse, error) {
+	queue, commands, err := s.daemon.queueManager.GetQueueStatus(req.TaskId, req.QueueName)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get queue status: %v", err)
+	}
+	pbCommands := make([]*pb.CommandInfo, len(commands))
+	for i, c := range commands {
+		pbCommands[i] = commandToProto(c)
+	}
+	return &pb.GetQueueStatusResponse{
+		Queue: &pb.QueueInfo{
+			Name:      queue.Name,
+			Mode:      queue.Mode,
+			Protected: queue.Protected,
+			Status:    queue.Status,
+		},
+		Commands: pbCommands,
+	}, nil
+}
+
+func (s *grpcServer) FlushQueue(ctx context.Context, req *pb.FlushQueueRequest) (*pb.FlushQueueResponse, error) {
+	if err := s.daemon.queueManager.FlushQueue(req.TaskId, req.QueueName); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to flush queue: %v", err)
+	}
+	return &pb.FlushQueueResponse{}, nil
+}
+
+func (s *grpcServer) DestroyQueue(ctx context.Context, req *pb.DestroyQueueRequest) (*pb.DestroyQueueResponse, error) {
+	if err := s.daemon.queueManager.DestroyQueue(req.TaskId, req.QueueName); err != nil {
+		if strings.Contains(err.Error(), "protected") {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		return nil, status.Errorf(codes.Internal, "failed to destroy queue: %v", err)
+	}
+	return &pb.DestroyQueueResponse{}, nil
+}
+
+func (s *grpcServer) QueueCommand(ctx context.Context, req *pb.QueueCommandRequest) (*pb.QueueCommandResponse, error) {
+	if s.daemon.queueManager == nil {
+		return nil, status.Error(codes.Unavailable, "queue manager not initialized")
+	}
+	queueName := req.QueueName
+	if queueName == "" {
+		queueName = "default"
+	}
+	commandID, err := s.daemon.queueManager.QueueCommand(req.TaskId, queueName, req.Command, req.Env, req.StopOnFailure)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to queue command: %v", err)
+	}
+	return &pb.QueueCommandResponse{CommandId: commandID}, nil
+}
+
+func (s *grpcServer) GetCommandStatus(ctx context.Context, req *pb.GetCommandStatusRequest) (*pb.GetCommandStatusResponse, error) {
+	cmd, err := s.daemon.queueManager.GetCommandStatus(req.CommandId)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil, status.Error(codes.NotFound, "command not found")
+		}
+		return nil, status.Errorf(codes.Internal, "failed to get command status: %v", err)
+	}
+	return &pb.GetCommandStatusResponse{
+		Command: commandToProto(cmd),
+	}, nil
+}
+
+func (s *grpcServer) StreamCommandOutput(req *pb.StreamCommandOutputRequest, stream grpc.ServerStreamingServer[pb.CommandOutputChunk]) error {
+	cmd, err := s.daemon.queueManager.GetCommandStatus(req.CommandId)
+	if err != nil {
+		return status.Errorf(codes.NotFound, "command not found: %v", err)
+	}
+
+	if cmd.OutputPath == "" {
+		return status.Error(codes.NotFound, "no output available")
+	}
+
+	// Open output file
+	f, err := os.Open(cmd.OutputPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return status.Error(codes.NotFound, "output file not found")
+		}
+		return status.Errorf(codes.Internal, "failed to open output: %v", err)
+	}
+	defer f.Close()
+
+	buf := make([]byte, 4096)
+	for {
+		n, err := f.Read(buf)
+		if n > 0 {
+			if sendErr := stream.Send(&pb.CommandOutputChunk{Data: buf[:n]}); sendErr != nil {
+				return sendErr
+			}
+		}
+		if err == io.EOF {
+			if !req.Follow {
+				return nil
+			}
+			// Check if command is still running
+			cmd, err = s.daemon.queueManager.GetCommandStatus(req.CommandId)
+			if err != nil || cmd.Status == "completed" || cmd.Status == "failed" {
+				return nil
+			}
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		if err != nil {
+			return status.Errorf(codes.Internal, "read error: %v", err)
+		}
+	}
+}
+
+func commandToProto(c *Command) *pb.CommandInfo {
+	ci := &pb.CommandInfo{
+		Id:            c.ID,
+		QueueName:     c.QueueName,
+		Command:       c.Command,
+		Status:        c.Status,
+		StopOnFailure: c.StopOnFailure,
+		CreatedAt:     c.CreatedAt.Format(time.RFC3339),
+	}
+	if c.ExitCode != nil {
+		ci.ExitCode = int32(*c.ExitCode)
+	}
+	if c.StartedAt != nil {
+		ci.StartedAt = c.StartedAt.Format(time.RFC3339)
+	}
+	if c.FinishedAt != nil {
+		ci.FinishedAt = c.FinishedAt.Format(time.RFC3339)
+	}
+	return ci
 }
 
 func taskToProto(t *Task) *pb.Task {
