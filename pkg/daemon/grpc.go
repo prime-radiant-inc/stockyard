@@ -402,12 +402,26 @@ func (s *grpcServer) streamCommandForQueue(cmd *Command, follow bool, stream grp
 		return nil
 	}
 
-	f, err := os.Open(cmd.OutputPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
+	// Wait for the output file to appear. There's a race between the command
+	// status being set to "running" and the goroutine creating the file.
+	var f *os.File
+	for {
+		var err error
+		f, err = os.Open(cmd.OutputPath)
+		if err == nil {
+			break
 		}
-		return status.Errorf(codes.Internal, "failed to open output: %v", err)
+		if !os.IsNotExist(err) {
+			return status.Errorf(codes.Internal, "failed to open output: %v", err)
+		}
+		if !follow {
+			return nil // no file and not following — nothing to show
+		}
+		select {
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 	defer f.Close()
 
