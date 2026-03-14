@@ -231,7 +231,7 @@ func init() {
 	queueCmd.AddCommand(queueStatusCmd)
 	queueCmd.AddCommand(queueFlushCmd)
 	queueCmd.AddCommand(queueResumeCmd)
-	queueTailCmd.Flags().BoolVarP(&queueTailFollow, "follow", "f", false, "Follow output (stream until queue is idle or stopped)")
+	queueTailCmd.Flags().BoolVarP(&queueTailFollow, "follow", "f", false, "Follow output (stream until queue is stopped or destroyed)")
 	queueCmd.AddCommand(queueTailCmd)
 	queueCmd.AddCommand(queueDestroyCmd)
 	rootCmd.AddCommand(queueCmd)

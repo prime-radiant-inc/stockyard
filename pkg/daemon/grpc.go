@@ -193,6 +193,9 @@ func (s *grpcServer) CreateQueue(ctx context.Context, req *pb.CreateQueueRequest
 }
 
 func (s *grpcServer) ListQueues(ctx context.Context, req *pb.ListQueuesRequest) (*pb.ListQueuesResponse, error) {
+	if s.daemon.queueManager == nil {
+		return nil, status.Error(codes.Unavailable, "queue manager not initialized")
+	}
 	queues, err := s.daemon.queueManager.ListQueues(req.TaskId)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list queues: %v", err)
@@ -210,6 +213,9 @@ func (s *grpcServer) ListQueues(ctx context.Context, req *pb.ListQueuesRequest) 
 }
 
 func (s *grpcServer) GetQueueStatus(ctx context.Context, req *pb.GetQueueStatusRequest) (*pb.GetQueueStatusResponse, error) {
+	if s.daemon.queueManager == nil {
+		return nil, status.Error(codes.Unavailable, "queue manager not initialized")
+	}
 	queue, commands, err := s.daemon.queueManager.GetQueueStatus(req.TaskId, req.QueueName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get queue status: %v", err)
@@ -230,6 +236,9 @@ func (s *grpcServer) GetQueueStatus(ctx context.Context, req *pb.GetQueueStatusR
 }
 
 func (s *grpcServer) FlushQueue(ctx context.Context, req *pb.FlushQueueRequest) (*pb.FlushQueueResponse, error) {
+	if s.daemon.queueManager == nil {
+		return nil, status.Error(codes.Unavailable, "queue manager not initialized")
+	}
 	if err := s.daemon.queueManager.FlushQueue(req.TaskId, req.QueueName); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to flush queue: %v", err)
 	}
@@ -250,6 +259,9 @@ func (s *grpcServer) ResumeQueue(ctx context.Context, req *pb.ResumeQueueRequest
 }
 
 func (s *grpcServer) DestroyQueue(ctx context.Context, req *pb.DestroyQueueRequest) (*pb.DestroyQueueResponse, error) {
+	if s.daemon.queueManager == nil {
+		return nil, status.Error(codes.Unavailable, "queue manager not initialized")
+	}
 	if err := s.daemon.queueManager.DestroyQueue(req.TaskId, req.QueueName); err != nil {
 		if errors.Is(err, ErrQueueProtected) {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
@@ -341,6 +353,9 @@ func (s *grpcServer) StreamCommandOutput(req *pb.StreamCommandOutputRequest, str
 }
 
 func (s *grpcServer) StreamQueueOutput(req *pb.StreamQueueOutputRequest, stream grpc.ServerStreamingServer[pb.QueueOutputChunk]) error {
+	if s.daemon.queueManager == nil {
+		return status.Error(codes.Unavailable, "queue manager not initialized")
+	}
 	queueName := req.QueueName
 	if queueName == "" {
 		queueName = "default"
@@ -367,9 +382,7 @@ func (s *grpcServer) StreamQueueOutput(req *pb.StreamQueueOutputRequest, stream 
 			if err := s.streamCommandForQueue(cmd, req.Follow && isRunning, stream); err != nil {
 				return err
 			}
-			if !isRunning {
-				streamed[cmd.ID] = true
-			}
+			streamed[cmd.ID] = true
 		}
 
 		if !req.Follow {

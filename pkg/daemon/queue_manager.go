@@ -231,12 +231,12 @@ func (qm *QueueManager) ResumeQueue(taskID, queueName string) error {
 	// Kick off the next pending command if one exists.
 	cmds, err := qm.state.ListCommands(taskID, queueName)
 	if err != nil {
-		return nil // queue is active now, just no auto-start
+		return fmt.Errorf("list commands after resume: %w", err)
 	}
 	for _, c := range cmds {
 		if c.Status == "pending" {
 			if err := qm.state.UpdateCommandStatus(c.ID, "running"); err != nil {
-				return nil
+				return fmt.Errorf("update command status after resume: %w", err)
 			}
 			go qm.executeCommand(taskID, c.ID)
 			return nil

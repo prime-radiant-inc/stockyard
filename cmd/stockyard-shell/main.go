@@ -148,38 +148,38 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 	defer connCancel()
 
 	// Bridge I/O between vsock and PTY
-	var ioWg sync.WaitGroup
-	var ptyDone sync.WaitGroup // tracks only the PTY→vsock goroutine
+	var ptyDone sync.WaitGroup // tracks the PTY→vsock goroutine
 
 	// PTY -> vsock (stdout)
-	ioWg.Add(1)
 	ptyDone.Add(1)
 	go func() {
-		defer ioWg.Done()
 		defer ptyDone.Done()
 		defer connCancel()
 		buf := make([]byte, 4096)
 		for {
 			n, err := session.PTY().Read(buf)
+			// Always send data before checking error — io.Reader can
+			// return n > 0 alongside a non-nil error (e.g. EIO from
+			// a PTY whose slave process just exited). Dropping that
+			// final chunk is the root cause of output loss for fast
+			// commands.
+			if n > 0 {
+				if werr := shell.WriteMessage(conn, shell.MsgData, buf[:n]); werr != nil {
+					log.Printf("vsock write error: %v", werr)
+					return
+				}
+			}
 			if err != nil {
 				if err != io.EOF {
 					log.Printf("PTY read error: %v", err)
 				}
 				return
 			}
-			if n > 0 {
-				if err := shell.WriteMessage(conn, shell.MsgData, buf[:n]); err != nil {
-					log.Printf("vsock write error: %v", err)
-					return
-				}
-			}
 		}
 	}()
 
 	// vsock -> PTY (stdin) + handle control messages
-	ioWg.Add(1)
 	go func() {
-		defer ioWg.Done()
 		defer connCancel()
 		for {
 			select {
@@ -242,6 +242,8 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 		shell.WriteMessage(conn, shell.MsgExit, exitPayload)
 	}
 
+	// Cancel context so the vsock→PTY goroutine exits its read loop.
+	// It will terminate fully when defer conn.Close() fires on return.
 	connCancel()
 }
 

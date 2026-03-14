@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/obra/stockyard/pkg/shell"
 )
@@ -92,6 +93,20 @@ func (qm *QueueManager) runVsockCommand(task *Task, cmd *Command) (int, error) {
 		case shell.MsgExit:
 			var exitMsg shell.ExitMessage
 			exitMsg.Unmarshal(payload)
+			// Drain any MsgData still in the network buffer. The shell
+			// sends MsgData before MsgExit, but data may arrive after
+			// MsgExit due to buffering. Set a short deadline and read
+			// until EOF/error.
+			conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+			for {
+				drainType, drainPayload, drainErr := shell.ReadMessage(reader)
+				if drainErr != nil {
+					break
+				}
+				if drainType == shell.MsgData {
+					outFile.Write(drainPayload)
+				}
+			}
 			return exitMsg.Code, nil
 
 		case shell.MsgError:
