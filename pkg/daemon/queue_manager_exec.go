@@ -75,9 +75,10 @@ func (qm *QueueManager) runVsockCommand(task *Task, cmd *Command) (int, error) {
 		return 1, fmt.Errorf("write open: %w", err)
 	}
 
-	// Read messages until MsgExit or MsgError.
+	// Read messages from the buffered reader (not raw conn) to avoid
+	// losing bytes that bufio may have read ahead during the CONNECT handshake.
 	for {
-		msgType, payload, err := shell.ReadMessage(conn)
+		msgType, payload, err := shell.ReadMessage(reader)
 		if err != nil {
 			return 1, fmt.Errorf("read message: %w", err)
 		}
