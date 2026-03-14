@@ -376,15 +376,9 @@ func (s *grpcServer) StreamQueueOutput(req *pb.StreamQueueOutputRequest, stream 
 			return nil
 		}
 
-		// Check termination: queue stopped, or no pending/running commands left
-		allDone := true
-		for _, c := range commands {
-			if c.Status == "pending" || c.Status == "running" {
-				allDone = false
-				break
-			}
-		}
-		if allDone || queue.Status == "stopped" {
+		// Only exit follow when the queue is stopped (nothing more is coming).
+		// An active queue may receive new commands at any time.
+		if queue.Status == "stopped" {
 			return nil
 		}
 
