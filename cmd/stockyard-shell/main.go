@@ -225,15 +225,19 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 
 	log.Printf("Shell exited with code %d", exitCode)
 
+	// Wait for the PTY→vsock goroutine to drain remaining output before
+	// sending MsgExit. The PTY read will return EOF once the process is
+	// gone and the kernel buffer is empty. Without this, fast commands
+	// (like "echo hello") lose output because MsgExit arrives before MsgData.
+	ioWg.Wait()
+
 	// Send exit message (best effort)
 	exitMsg := shell.ExitMessage{Code: exitCode}
 	if exitPayload, err := exitMsg.Marshal(); err == nil {
 		shell.WriteMessage(conn, shell.MsgExit, exitPayload)
 	}
 
-	// Cancel to stop I/O goroutines
 	connCancel()
-	ioWg.Wait()
 }
 
 func sendError(conn net.Conn, message string) {
