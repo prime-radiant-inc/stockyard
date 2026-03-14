@@ -149,11 +149,14 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 
 	// Bridge I/O between vsock and PTY
 	var ioWg sync.WaitGroup
+	var ptyDone sync.WaitGroup // tracks only the PTY→vsock goroutine
 
 	// PTY -> vsock (stdout)
 	ioWg.Add(1)
+	ptyDone.Add(1)
 	go func() {
 		defer ioWg.Done()
+		defer ptyDone.Done()
 		defer connCancel()
 		buf := make([]byte, 4096)
 		for {
@@ -229,7 +232,9 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 	// sending MsgExit. The PTY read will return EOF once the process is
 	// gone and the kernel buffer is empty. Without this, fast commands
 	// (like "echo hello") lose output because MsgExit arrives before MsgData.
-	ioWg.Wait()
+	// We only wait for the PTY reader, not the vsock→PTY goroutine (which
+	// blocks on ReadMessage and won't exit until we cancel the context).
+	ptyDone.Wait()
 
 	// Send exit message (best effort)
 	exitMsg := shell.ExitMessage{Code: exitCode}
