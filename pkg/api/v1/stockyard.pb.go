@@ -1486,6 +1486,94 @@ func (*FlushQueueResponse) Descriptor() ([]byte, []int) {
 	return file_api_stockyard_proto_rawDescGZIP(), []int{29}
 }
 
+type ResumeQueueRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	QueueName     string                 `protobuf:"bytes,2,opt,name=queue_name,json=queueName,proto3" json:"queue_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResumeQueueRequest) Reset() {
+	*x = ResumeQueueRequest{}
+	mi := &file_api_stockyard_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResumeQueueRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResumeQueueRequest) ProtoMessage() {}
+
+func (x *ResumeQueueRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_stockyard_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResumeQueueRequest.ProtoReflect.Descriptor instead.
+func (*ResumeQueueRequest) Descriptor() ([]byte, []int) {
+	return file_api_stockyard_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *ResumeQueueRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *ResumeQueueRequest) GetQueueName() string {
+	if x != nil {
+		return x.QueueName
+	}
+	return ""
+}
+
+type ResumeQueueResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResumeQueueResponse) Reset() {
+	*x = ResumeQueueResponse{}
+	mi := &file_api_stockyard_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResumeQueueResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResumeQueueResponse) ProtoMessage() {}
+
+func (x *ResumeQueueResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_stockyard_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResumeQueueResponse.ProtoReflect.Descriptor instead.
+func (*ResumeQueueResponse) Descriptor() ([]byte, []int) {
+	return file_api_stockyard_proto_rawDescGZIP(), []int{31}
+}
+
 type DestroyQueueRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
@@ -1496,7 +1584,7 @@ type DestroyQueueRequest struct {
 
 func (x *DestroyQueueRequest) Reset() {
 	*x = DestroyQueueRequest{}
-	mi := &file_api_stockyard_proto_msgTypes[30]
+	mi := &file_api_stockyard_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1508,7 +1596,7 @@ func (x *DestroyQueueRequest) String() string {
 func (*DestroyQueueRequest) ProtoMessage() {}
 
 func (x *DestroyQueueRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[30]
+	mi := &file_api_stockyard_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1521,7 +1609,7 @@ func (x *DestroyQueueRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyQueueRequest.ProtoReflect.Descriptor instead.
 func (*DestroyQueueRequest) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{30}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *DestroyQueueRequest) GetTaskId() string {
@@ -1546,7 +1634,7 @@ type DestroyQueueResponse struct {
 
 func (x *DestroyQueueResponse) Reset() {
 	*x = DestroyQueueResponse{}
-	mi := &file_api_stockyard_proto_msgTypes[31]
+	mi := &file_api_stockyard_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1558,7 +1646,7 @@ func (x *DestroyQueueResponse) String() string {
 func (*DestroyQueueResponse) ProtoMessage() {}
 
 func (x *DestroyQueueResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[31]
+	mi := &file_api_stockyard_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1571,7 +1659,7 @@ func (x *DestroyQueueResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyQueueResponse.ProtoReflect.Descriptor instead.
 func (*DestroyQueueResponse) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{31}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{33}
 }
 
 // Command execution messages
@@ -1588,7 +1676,7 @@ type QueueCommandRequest struct {
 
 func (x *QueueCommandRequest) Reset() {
 	*x = QueueCommandRequest{}
-	mi := &file_api_stockyard_proto_msgTypes[32]
+	mi := &file_api_stockyard_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1600,7 +1688,7 @@ func (x *QueueCommandRequest) String() string {
 func (*QueueCommandRequest) ProtoMessage() {}
 
 func (x *QueueCommandRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[32]
+	mi := &file_api_stockyard_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1613,7 +1701,7 @@ func (x *QueueCommandRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueueCommandRequest.ProtoReflect.Descriptor instead.
 func (*QueueCommandRequest) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{32}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *QueueCommandRequest) GetTaskId() string {
@@ -1660,7 +1748,7 @@ type QueueCommandResponse struct {
 
 func (x *QueueCommandResponse) Reset() {
 	*x = QueueCommandResponse{}
-	mi := &file_api_stockyard_proto_msgTypes[33]
+	mi := &file_api_stockyard_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1672,7 +1760,7 @@ func (x *QueueCommandResponse) String() string {
 func (*QueueCommandResponse) ProtoMessage() {}
 
 func (x *QueueCommandResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[33]
+	mi := &file_api_stockyard_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1685,7 +1773,7 @@ func (x *QueueCommandResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueueCommandResponse.ProtoReflect.Descriptor instead.
 func (*QueueCommandResponse) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{33}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *QueueCommandResponse) GetCommandId() string {
@@ -1704,7 +1792,7 @@ type GetCommandStatusRequest struct {
 
 func (x *GetCommandStatusRequest) Reset() {
 	*x = GetCommandStatusRequest{}
-	mi := &file_api_stockyard_proto_msgTypes[34]
+	mi := &file_api_stockyard_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1716,7 +1804,7 @@ func (x *GetCommandStatusRequest) String() string {
 func (*GetCommandStatusRequest) ProtoMessage() {}
 
 func (x *GetCommandStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[34]
+	mi := &file_api_stockyard_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1729,7 +1817,7 @@ func (x *GetCommandStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCommandStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetCommandStatusRequest) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{34}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *GetCommandStatusRequest) GetCommandId() string {
@@ -1748,7 +1836,7 @@ type GetCommandStatusResponse struct {
 
 func (x *GetCommandStatusResponse) Reset() {
 	*x = GetCommandStatusResponse{}
-	mi := &file_api_stockyard_proto_msgTypes[35]
+	mi := &file_api_stockyard_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1760,7 +1848,7 @@ func (x *GetCommandStatusResponse) String() string {
 func (*GetCommandStatusResponse) ProtoMessage() {}
 
 func (x *GetCommandStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[35]
+	mi := &file_api_stockyard_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1773,7 +1861,7 @@ func (x *GetCommandStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCommandStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetCommandStatusResponse) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{35}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *GetCommandStatusResponse) GetCommand() *CommandInfo {
@@ -1793,7 +1881,7 @@ type StreamCommandOutputRequest struct {
 
 func (x *StreamCommandOutputRequest) Reset() {
 	*x = StreamCommandOutputRequest{}
-	mi := &file_api_stockyard_proto_msgTypes[36]
+	mi := &file_api_stockyard_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1805,7 +1893,7 @@ func (x *StreamCommandOutputRequest) String() string {
 func (*StreamCommandOutputRequest) ProtoMessage() {}
 
 func (x *StreamCommandOutputRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[36]
+	mi := &file_api_stockyard_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1818,7 +1906,7 @@ func (x *StreamCommandOutputRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamCommandOutputRequest.ProtoReflect.Descriptor instead.
 func (*StreamCommandOutputRequest) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{36}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *StreamCommandOutputRequest) GetCommandId() string {
@@ -1844,7 +1932,7 @@ type CommandOutputChunk struct {
 
 func (x *CommandOutputChunk) Reset() {
 	*x = CommandOutputChunk{}
-	mi := &file_api_stockyard_proto_msgTypes[37]
+	mi := &file_api_stockyard_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1856,7 +1944,7 @@ func (x *CommandOutputChunk) String() string {
 func (*CommandOutputChunk) ProtoMessage() {}
 
 func (x *CommandOutputChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[37]
+	mi := &file_api_stockyard_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1869,7 +1957,7 @@ func (x *CommandOutputChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandOutputChunk.ProtoReflect.Descriptor instead.
 func (*CommandOutputChunk) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{37}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *CommandOutputChunk) GetData() []byte {
@@ -1877,6 +1965,118 @@ func (x *CommandOutputChunk) GetData() []byte {
 		return x.Data
 	}
 	return nil
+}
+
+type StreamQueueOutputRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	QueueName     string                 `protobuf:"bytes,2,opt,name=queue_name,json=queueName,proto3" json:"queue_name,omitempty"`
+	Follow        bool                   `protobuf:"varint,3,opt,name=follow,proto3" json:"follow,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamQueueOutputRequest) Reset() {
+	*x = StreamQueueOutputRequest{}
+	mi := &file_api_stockyard_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamQueueOutputRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamQueueOutputRequest) ProtoMessage() {}
+
+func (x *StreamQueueOutputRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_stockyard_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamQueueOutputRequest.ProtoReflect.Descriptor instead.
+func (*StreamQueueOutputRequest) Descriptor() ([]byte, []int) {
+	return file_api_stockyard_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *StreamQueueOutputRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *StreamQueueOutputRequest) GetQueueName() string {
+	if x != nil {
+		return x.QueueName
+	}
+	return ""
+}
+
+func (x *StreamQueueOutputRequest) GetFollow() bool {
+	if x != nil {
+		return x.Follow
+	}
+	return false
+}
+
+type QueueOutputChunk struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	CommandId     string                 `protobuf:"bytes,2,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"` // set on first chunk of each command for client-side headers
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueueOutputChunk) Reset() {
+	*x = QueueOutputChunk{}
+	mi := &file_api_stockyard_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueueOutputChunk) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueueOutputChunk) ProtoMessage() {}
+
+func (x *QueueOutputChunk) ProtoReflect() protoreflect.Message {
+	mi := &file_api_stockyard_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueueOutputChunk.ProtoReflect.Descriptor instead.
+func (*QueueOutputChunk) Descriptor() ([]byte, []int) {
+	return file_api_stockyard_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *QueueOutputChunk) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *QueueOutputChunk) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
 }
 
 // Shared info types
@@ -1892,7 +2092,7 @@ type QueueInfo struct {
 
 func (x *QueueInfo) Reset() {
 	*x = QueueInfo{}
-	mi := &file_api_stockyard_proto_msgTypes[38]
+	mi := &file_api_stockyard_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1904,7 +2104,7 @@ func (x *QueueInfo) String() string {
 func (*QueueInfo) ProtoMessage() {}
 
 func (x *QueueInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[38]
+	mi := &file_api_stockyard_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1917,7 +2117,7 @@ func (x *QueueInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueueInfo.ProtoReflect.Descriptor instead.
 func (*QueueInfo) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{38}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *QueueInfo) GetName() string {
@@ -1965,7 +2165,7 @@ type CommandInfo struct {
 
 func (x *CommandInfo) Reset() {
 	*x = CommandInfo{}
-	mi := &file_api_stockyard_proto_msgTypes[39]
+	mi := &file_api_stockyard_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1977,7 +2177,7 @@ func (x *CommandInfo) String() string {
 func (*CommandInfo) ProtoMessage() {}
 
 func (x *CommandInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_api_stockyard_proto_msgTypes[39]
+	mi := &file_api_stockyard_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1990,7 +2190,7 @@ func (x *CommandInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandInfo.ProtoReflect.Descriptor instead.
 func (*CommandInfo) Descriptor() ([]byte, []int) {
-	return file_api_stockyard_proto_rawDescGZIP(), []int{39}
+	return file_api_stockyard_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *CommandInfo) GetId() string {
@@ -2148,7 +2348,12 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
 	"queue_name\x18\x02 \x01(\tR\tqueueName\"\x14\n" +
-	"\x12FlushQueueResponse\"M\n" +
+	"\x12FlushQueueResponse\"L\n" +
+	"\x12ResumeQueueRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
+	"\n" +
+	"queue_name\x18\x02 \x01(\tR\tqueueName\"\x15\n" +
+	"\x13ResumeQueueResponse\"M\n" +
 	"\x13DestroyQueueRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
@@ -2177,7 +2382,16 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x16\n" +
 	"\x06follow\x18\x02 \x01(\bR\x06follow\"(\n" +
 	"\x12CommandOutputChunk\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data\"i\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\"j\n" +
+	"\x18StreamQueueOutputRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
+	"\n" +
+	"queue_name\x18\x02 \x01(\tR\tqueueName\x12\x16\n" +
+	"\x06follow\x18\x03 \x01(\bR\x06follow\"E\n" +
+	"\x10QueueOutputChunk\x12\x12\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x02 \x01(\tR\tcommandId\"i\n" +
 	"\tQueueInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04mode\x18\x02 \x01(\tR\x04mode\x12\x1c\n" +
@@ -2196,7 +2410,7 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"\n" +
 	"started_at\x18\b \x01(\tR\tstartedAt\x12\x1f\n" +
 	"\vfinished_at\x18\t \x01(\tR\n" +
-	"finishedAt2\x88\f\n" +
+	"finishedAt2\xbb\r\n" +
 	"\tStockyard\x12O\n" +
 	"\n" +
 	"CreateTask\x12\x1f.stockyard.v1.CreateTaskRequest\x1a .stockyard.v1.CreateTaskResponse\x12F\n" +
@@ -2214,11 +2428,13 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"ListQueues\x12\x1f.stockyard.v1.ListQueuesRequest\x1a .stockyard.v1.ListQueuesResponse\x12[\n" +
 	"\x0eGetQueueStatus\x12#.stockyard.v1.GetQueueStatusRequest\x1a$.stockyard.v1.GetQueueStatusResponse\x12O\n" +
 	"\n" +
-	"FlushQueue\x12\x1f.stockyard.v1.FlushQueueRequest\x1a .stockyard.v1.FlushQueueResponse\x12U\n" +
+	"FlushQueue\x12\x1f.stockyard.v1.FlushQueueRequest\x1a .stockyard.v1.FlushQueueResponse\x12R\n" +
+	"\vResumeQueue\x12 .stockyard.v1.ResumeQueueRequest\x1a!.stockyard.v1.ResumeQueueResponse\x12U\n" +
 	"\fDestroyQueue\x12!.stockyard.v1.DestroyQueueRequest\x1a\".stockyard.v1.DestroyQueueResponse\x12U\n" +
 	"\fQueueCommand\x12!.stockyard.v1.QueueCommandRequest\x1a\".stockyard.v1.QueueCommandResponse\x12a\n" +
 	"\x10GetCommandStatus\x12%.stockyard.v1.GetCommandStatusRequest\x1a&.stockyard.v1.GetCommandStatusResponse\x12c\n" +
-	"\x13StreamCommandOutput\x12(.stockyard.v1.StreamCommandOutputRequest\x1a .stockyard.v1.CommandOutputChunk0\x01B&Z$github.com/obra/stockyard/pkg/api/v1b\x06proto3"
+	"\x13StreamCommandOutput\x12(.stockyard.v1.StreamCommandOutputRequest\x1a .stockyard.v1.CommandOutputChunk0\x01\x12]\n" +
+	"\x11StreamQueueOutput\x12&.stockyard.v1.StreamQueueOutputRequest\x1a\x1e.stockyard.v1.QueueOutputChunk0\x01B&Z$github.com/obra/stockyard/pkg/api/v1b\x06proto3"
 
 var (
 	file_api_stockyard_proto_rawDescOnce sync.Once
@@ -2232,7 +2448,7 @@ func file_api_stockyard_proto_rawDescGZIP() []byte {
 	return file_api_stockyard_proto_rawDescData
 }
 
-var file_api_stockyard_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
+var file_api_stockyard_proto_msgTypes = make([]protoimpl.MessageInfo, 46)
 var file_api_stockyard_proto_goTypes = []any{
 	(*CreateTaskRequest)(nil),          // 0: stockyard.v1.CreateTaskRequest
 	(*CreateTaskResponse)(nil),         // 1: stockyard.v1.CreateTaskResponse
@@ -2264,29 +2480,33 @@ var file_api_stockyard_proto_goTypes = []any{
 	(*GetQueueStatusResponse)(nil),     // 27: stockyard.v1.GetQueueStatusResponse
 	(*FlushQueueRequest)(nil),          // 28: stockyard.v1.FlushQueueRequest
 	(*FlushQueueResponse)(nil),         // 29: stockyard.v1.FlushQueueResponse
-	(*DestroyQueueRequest)(nil),        // 30: stockyard.v1.DestroyQueueRequest
-	(*DestroyQueueResponse)(nil),       // 31: stockyard.v1.DestroyQueueResponse
-	(*QueueCommandRequest)(nil),        // 32: stockyard.v1.QueueCommandRequest
-	(*QueueCommandResponse)(nil),       // 33: stockyard.v1.QueueCommandResponse
-	(*GetCommandStatusRequest)(nil),    // 34: stockyard.v1.GetCommandStatusRequest
-	(*GetCommandStatusResponse)(nil),   // 35: stockyard.v1.GetCommandStatusResponse
-	(*StreamCommandOutputRequest)(nil), // 36: stockyard.v1.StreamCommandOutputRequest
-	(*CommandOutputChunk)(nil),         // 37: stockyard.v1.CommandOutputChunk
-	(*QueueInfo)(nil),                  // 38: stockyard.v1.QueueInfo
-	(*CommandInfo)(nil),                // 39: stockyard.v1.CommandInfo
-	nil,                                // 40: stockyard.v1.CreateTaskRequest.VmEnvEntry
-	nil,                                // 41: stockyard.v1.QueueCommandRequest.EnvEntry
+	(*ResumeQueueRequest)(nil),         // 30: stockyard.v1.ResumeQueueRequest
+	(*ResumeQueueResponse)(nil),        // 31: stockyard.v1.ResumeQueueResponse
+	(*DestroyQueueRequest)(nil),        // 32: stockyard.v1.DestroyQueueRequest
+	(*DestroyQueueResponse)(nil),       // 33: stockyard.v1.DestroyQueueResponse
+	(*QueueCommandRequest)(nil),        // 34: stockyard.v1.QueueCommandRequest
+	(*QueueCommandResponse)(nil),       // 35: stockyard.v1.QueueCommandResponse
+	(*GetCommandStatusRequest)(nil),    // 36: stockyard.v1.GetCommandStatusRequest
+	(*GetCommandStatusResponse)(nil),   // 37: stockyard.v1.GetCommandStatusResponse
+	(*StreamCommandOutputRequest)(nil), // 38: stockyard.v1.StreamCommandOutputRequest
+	(*CommandOutputChunk)(nil),         // 39: stockyard.v1.CommandOutputChunk
+	(*StreamQueueOutputRequest)(nil),   // 40: stockyard.v1.StreamQueueOutputRequest
+	(*QueueOutputChunk)(nil),           // 41: stockyard.v1.QueueOutputChunk
+	(*QueueInfo)(nil),                  // 42: stockyard.v1.QueueInfo
+	(*CommandInfo)(nil),                // 43: stockyard.v1.CommandInfo
+	nil,                                // 44: stockyard.v1.CreateTaskRequest.VmEnvEntry
+	nil,                                // 45: stockyard.v1.QueueCommandRequest.EnvEntry
 }
 var file_api_stockyard_proto_depIdxs = []int32{
-	40, // 0: stockyard.v1.CreateTaskRequest.vm_env:type_name -> stockyard.v1.CreateTaskRequest.VmEnvEntry
+	44, // 0: stockyard.v1.CreateTaskRequest.vm_env:type_name -> stockyard.v1.CreateTaskRequest.VmEnvEntry
 	20, // 1: stockyard.v1.GetTaskResponse.task:type_name -> stockyard.v1.Task
 	20, // 2: stockyard.v1.ListTasksResponse.tasks:type_name -> stockyard.v1.Task
 	21, // 3: stockyard.v1.ListSnapshotsResponse.snapshots:type_name -> stockyard.v1.Snapshot
-	38, // 4: stockyard.v1.ListQueuesResponse.queues:type_name -> stockyard.v1.QueueInfo
-	38, // 5: stockyard.v1.GetQueueStatusResponse.queue:type_name -> stockyard.v1.QueueInfo
-	39, // 6: stockyard.v1.GetQueueStatusResponse.commands:type_name -> stockyard.v1.CommandInfo
-	41, // 7: stockyard.v1.QueueCommandRequest.env:type_name -> stockyard.v1.QueueCommandRequest.EnvEntry
-	39, // 8: stockyard.v1.GetCommandStatusResponse.command:type_name -> stockyard.v1.CommandInfo
+	42, // 4: stockyard.v1.ListQueuesResponse.queues:type_name -> stockyard.v1.QueueInfo
+	42, // 5: stockyard.v1.GetQueueStatusResponse.queue:type_name -> stockyard.v1.QueueInfo
+	43, // 6: stockyard.v1.GetQueueStatusResponse.commands:type_name -> stockyard.v1.CommandInfo
+	45, // 7: stockyard.v1.QueueCommandRequest.env:type_name -> stockyard.v1.QueueCommandRequest.EnvEntry
+	43, // 8: stockyard.v1.GetCommandStatusResponse.command:type_name -> stockyard.v1.CommandInfo
 	0,  // 9: stockyard.v1.Stockyard.CreateTask:input_type -> stockyard.v1.CreateTaskRequest
 	2,  // 10: stockyard.v1.Stockyard.GetTask:input_type -> stockyard.v1.GetTaskRequest
 	4,  // 11: stockyard.v1.Stockyard.ListTasks:input_type -> stockyard.v1.ListTasksRequest
@@ -2301,30 +2521,34 @@ var file_api_stockyard_proto_depIdxs = []int32{
 	24, // 20: stockyard.v1.Stockyard.ListQueues:input_type -> stockyard.v1.ListQueuesRequest
 	26, // 21: stockyard.v1.Stockyard.GetQueueStatus:input_type -> stockyard.v1.GetQueueStatusRequest
 	28, // 22: stockyard.v1.Stockyard.FlushQueue:input_type -> stockyard.v1.FlushQueueRequest
-	30, // 23: stockyard.v1.Stockyard.DestroyQueue:input_type -> stockyard.v1.DestroyQueueRequest
-	32, // 24: stockyard.v1.Stockyard.QueueCommand:input_type -> stockyard.v1.QueueCommandRequest
-	34, // 25: stockyard.v1.Stockyard.GetCommandStatus:input_type -> stockyard.v1.GetCommandStatusRequest
-	36, // 26: stockyard.v1.Stockyard.StreamCommandOutput:input_type -> stockyard.v1.StreamCommandOutputRequest
-	1,  // 27: stockyard.v1.Stockyard.CreateTask:output_type -> stockyard.v1.CreateTaskResponse
-	3,  // 28: stockyard.v1.Stockyard.GetTask:output_type -> stockyard.v1.GetTaskResponse
-	5,  // 29: stockyard.v1.Stockyard.ListTasks:output_type -> stockyard.v1.ListTasksResponse
-	7,  // 30: stockyard.v1.Stockyard.StopTask:output_type -> stockyard.v1.StopTaskResponse
-	9,  // 31: stockyard.v1.Stockyard.RestartTask:output_type -> stockyard.v1.RestartTaskResponse
-	11, // 32: stockyard.v1.Stockyard.DestroyTask:output_type -> stockyard.v1.DestroyTaskResponse
-	13, // 33: stockyard.v1.Stockyard.CreateSnapshot:output_type -> stockyard.v1.CreateSnapshotResponse
-	15, // 34: stockyard.v1.Stockyard.ListSnapshots:output_type -> stockyard.v1.ListSnapshotsResponse
-	17, // 35: stockyard.v1.Stockyard.RestoreSnapshot:output_type -> stockyard.v1.RestoreSnapshotResponse
-	19, // 36: stockyard.v1.Stockyard.GetLogs:output_type -> stockyard.v1.LogEntry
-	23, // 37: stockyard.v1.Stockyard.CreateQueue:output_type -> stockyard.v1.CreateQueueResponse
-	25, // 38: stockyard.v1.Stockyard.ListQueues:output_type -> stockyard.v1.ListQueuesResponse
-	27, // 39: stockyard.v1.Stockyard.GetQueueStatus:output_type -> stockyard.v1.GetQueueStatusResponse
-	29, // 40: stockyard.v1.Stockyard.FlushQueue:output_type -> stockyard.v1.FlushQueueResponse
-	31, // 41: stockyard.v1.Stockyard.DestroyQueue:output_type -> stockyard.v1.DestroyQueueResponse
-	33, // 42: stockyard.v1.Stockyard.QueueCommand:output_type -> stockyard.v1.QueueCommandResponse
-	35, // 43: stockyard.v1.Stockyard.GetCommandStatus:output_type -> stockyard.v1.GetCommandStatusResponse
-	37, // 44: stockyard.v1.Stockyard.StreamCommandOutput:output_type -> stockyard.v1.CommandOutputChunk
-	27, // [27:45] is the sub-list for method output_type
-	9,  // [9:27] is the sub-list for method input_type
+	30, // 23: stockyard.v1.Stockyard.ResumeQueue:input_type -> stockyard.v1.ResumeQueueRequest
+	32, // 24: stockyard.v1.Stockyard.DestroyQueue:input_type -> stockyard.v1.DestroyQueueRequest
+	34, // 25: stockyard.v1.Stockyard.QueueCommand:input_type -> stockyard.v1.QueueCommandRequest
+	36, // 26: stockyard.v1.Stockyard.GetCommandStatus:input_type -> stockyard.v1.GetCommandStatusRequest
+	38, // 27: stockyard.v1.Stockyard.StreamCommandOutput:input_type -> stockyard.v1.StreamCommandOutputRequest
+	40, // 28: stockyard.v1.Stockyard.StreamQueueOutput:input_type -> stockyard.v1.StreamQueueOutputRequest
+	1,  // 29: stockyard.v1.Stockyard.CreateTask:output_type -> stockyard.v1.CreateTaskResponse
+	3,  // 30: stockyard.v1.Stockyard.GetTask:output_type -> stockyard.v1.GetTaskResponse
+	5,  // 31: stockyard.v1.Stockyard.ListTasks:output_type -> stockyard.v1.ListTasksResponse
+	7,  // 32: stockyard.v1.Stockyard.StopTask:output_type -> stockyard.v1.StopTaskResponse
+	9,  // 33: stockyard.v1.Stockyard.RestartTask:output_type -> stockyard.v1.RestartTaskResponse
+	11, // 34: stockyard.v1.Stockyard.DestroyTask:output_type -> stockyard.v1.DestroyTaskResponse
+	13, // 35: stockyard.v1.Stockyard.CreateSnapshot:output_type -> stockyard.v1.CreateSnapshotResponse
+	15, // 36: stockyard.v1.Stockyard.ListSnapshots:output_type -> stockyard.v1.ListSnapshotsResponse
+	17, // 37: stockyard.v1.Stockyard.RestoreSnapshot:output_type -> stockyard.v1.RestoreSnapshotResponse
+	19, // 38: stockyard.v1.Stockyard.GetLogs:output_type -> stockyard.v1.LogEntry
+	23, // 39: stockyard.v1.Stockyard.CreateQueue:output_type -> stockyard.v1.CreateQueueResponse
+	25, // 40: stockyard.v1.Stockyard.ListQueues:output_type -> stockyard.v1.ListQueuesResponse
+	27, // 41: stockyard.v1.Stockyard.GetQueueStatus:output_type -> stockyard.v1.GetQueueStatusResponse
+	29, // 42: stockyard.v1.Stockyard.FlushQueue:output_type -> stockyard.v1.FlushQueueResponse
+	31, // 43: stockyard.v1.Stockyard.ResumeQueue:output_type -> stockyard.v1.ResumeQueueResponse
+	33, // 44: stockyard.v1.Stockyard.DestroyQueue:output_type -> stockyard.v1.DestroyQueueResponse
+	35, // 45: stockyard.v1.Stockyard.QueueCommand:output_type -> stockyard.v1.QueueCommandResponse
+	37, // 46: stockyard.v1.Stockyard.GetCommandStatus:output_type -> stockyard.v1.GetCommandStatusResponse
+	39, // 47: stockyard.v1.Stockyard.StreamCommandOutput:output_type -> stockyard.v1.CommandOutputChunk
+	41, // 48: stockyard.v1.Stockyard.StreamQueueOutput:output_type -> stockyard.v1.QueueOutputChunk
+	29, // [29:49] is the sub-list for method output_type
+	9,  // [9:29] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
 	9,  // [9:9] is the sub-list for extension extendee
 	0,  // [0:9] is the sub-list for field type_name
@@ -2341,7 +2565,7 @@ func file_api_stockyard_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_stockyard_proto_rawDesc), len(file_api_stockyard_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   42,
+			NumMessages:   46,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

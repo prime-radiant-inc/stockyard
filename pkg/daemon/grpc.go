@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -235,6 +236,19 @@ func (s *grpcServer) FlushQueue(ctx context.Context, req *pb.FlushQueueRequest) 
 	return &pb.FlushQueueResponse{}, nil
 }
 
+func (s *grpcServer) ResumeQueue(ctx context.Context, req *pb.ResumeQueueRequest) (*pb.ResumeQueueResponse, error) {
+	if s.daemon.queueManager == nil {
+		return nil, status.Error(codes.Unavailable, "queue manager not initialized")
+	}
+	if err := s.daemon.queueManager.ResumeQueue(req.TaskId, req.QueueName); err != nil {
+		if errors.Is(err, ErrQueueNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Errorf(codes.FailedPrecondition, "failed to resume queue: %v", err)
+	}
+	return &pb.ResumeQueueResponse{}, nil
+}
+
 func (s *grpcServer) DestroyQueue(ctx context.Context, req *pb.DestroyQueueRequest) (*pb.DestroyQueueResponse, error) {
 	if err := s.daemon.queueManager.DestroyQueue(req.TaskId, req.QueueName); err != nil {
 		if errors.Is(err, ErrQueueProtected) {
@@ -322,6 +336,114 @@ func (s *grpcServer) StreamCommandOutput(req *pb.StreamCommandOutputRequest, str
 		}
 		if err != nil {
 			return status.Errorf(codes.Internal, "read error: %v", err)
+		}
+	}
+}
+
+func (s *grpcServer) StreamQueueOutput(req *pb.StreamQueueOutputRequest, stream grpc.ServerStreamingServer[pb.QueueOutputChunk]) error {
+	queueName := req.QueueName
+	if queueName == "" {
+		queueName = "default"
+	}
+
+	// Track which commands we've already fully streamed.
+	streamed := make(map[string]bool)
+
+	for {
+		queue, commands, err := s.daemon.queueManager.GetQueueStatus(req.TaskId, queueName)
+		if err != nil {
+			return status.Errorf(codes.Internal, "failed to get queue status: %v", err)
+		}
+
+		for _, cmd := range commands {
+			if streamed[cmd.ID] {
+				continue
+			}
+			if cmd.Status == "pending" {
+				break // serial queue: nothing after this has started
+			}
+
+			isRunning := cmd.Status == "running"
+			if err := s.streamCommandForQueue(cmd, req.Follow && isRunning, stream); err != nil {
+				return err
+			}
+			if !isRunning {
+				streamed[cmd.ID] = true
+			}
+		}
+
+		if !req.Follow {
+			return nil
+		}
+
+		// Check termination: queue stopped, or no pending/running commands left
+		allDone := true
+		for _, c := range commands {
+			if c.Status == "pending" || c.Status == "running" {
+				allDone = false
+				break
+			}
+		}
+		if allDone || queue.Status == "stopped" {
+			return nil
+		}
+
+		select {
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+}
+
+// streamCommandForQueue streams a single command's output file for the queue tail.
+func (s *grpcServer) streamCommandForQueue(cmd *Command, follow bool, stream grpc.ServerStreamingServer[pb.QueueOutputChunk]) error {
+	if cmd.OutputPath == "" {
+		return nil
+	}
+
+	f, err := os.Open(cmd.OutputPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return status.Errorf(codes.Internal, "failed to open output: %v", err)
+	}
+	defer f.Close()
+
+	// Send header chunk identifying the command
+	cmdStr := strings.Join(cmd.Command, " ")
+	header := fmt.Sprintf("\n=== %s: %s ===\n", cmd.ID, cmdStr)
+	if err := stream.Send(&pb.QueueOutputChunk{Data: []byte(header), CommandId: cmd.ID}); err != nil {
+		return err
+	}
+
+	buf := make([]byte, 4096)
+	for {
+		n, readErr := f.Read(buf)
+		if n > 0 {
+			if sendErr := stream.Send(&pb.QueueOutputChunk{Data: buf[:n]}); sendErr != nil {
+				return sendErr
+			}
+		}
+		if readErr == io.EOF {
+			if !follow {
+				return nil
+			}
+			// Check if command is still running
+			updated, err := s.daemon.queueManager.GetCommandStatus(cmd.ID)
+			if err != nil || updated.Status == "completed" || updated.Status == "failed" {
+				return nil
+			}
+			select {
+			case <-stream.Context().Done():
+				return stream.Context().Err()
+			case <-time.After(100 * time.Millisecond):
+			}
+			continue
+		}
+		if readErr != nil {
+			return status.Errorf(codes.Internal, "read error: %v", readErr)
 		}
 	}
 }

@@ -290,6 +290,115 @@ func TestQueueManagerFlushQueue(t *testing.T) {
 	}
 }
 
+// TestQueueManagerResumeQueue verifies that resuming a stopped serial queue
+// flips it back to active and kicks off the next pending command.
+func TestQueueManagerResumeQueue(t *testing.T) {
+	qm, state := newTestQueueManager(t)
+	defer state.Close()
+
+	taskID := "task-resume"
+	createTestTask(t, state, taskID)
+
+	if err := qm.InitQueues(taskID); err != nil {
+		t.Fatalf("InitQueues: %v", err)
+	}
+
+	// Manually stop the default queue and add pending commands
+	if err := state.UpdateQueueStatus(taskID, "default", "stopped"); err != nil {
+		t.Fatalf("UpdateQueueStatus: %v", err)
+	}
+
+	now := time.Now()
+	// Simulate a failed command that caused the stop
+	state.CreateCommand(&Command{
+		ID:        "cmd-failed",
+		TaskID:    taskID,
+		QueueName: "default",
+		Command:   []string{"false"},
+		Status:    "failed",
+		CreatedAt: now,
+	})
+	// Pending command that should get kicked off after resume
+	state.CreateCommand(&Command{
+		ID:        "cmd-next",
+		TaskID:    taskID,
+		QueueName: "default",
+		Command:   []string{"echo", "resumed"},
+		Status:    "pending",
+		CreatedAt: now.Add(time.Millisecond),
+	})
+
+	// Resume should work
+	if err := qm.ResumeQueue(taskID, "default"); err != nil {
+		t.Fatalf("ResumeQueue: %v", err)
+	}
+
+	// Queue should be active
+	q, _, err := qm.GetQueueStatus(taskID, "default")
+	if err != nil {
+		t.Fatalf("GetQueueStatus: %v", err)
+	}
+	if q.Status != "active" {
+		t.Errorf("queue status: got %q, want active", q.Status)
+	}
+
+	// Poll until the pending command gets picked up (status changes from "pending").
+	// The goroutine runs asynchronously so we need to wait.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		cmd, err := qm.GetCommandStatus("cmd-next")
+		if err != nil {
+			t.Fatalf("GetCommandStatus: %v", err)
+		}
+		if cmd.Status != "pending" {
+			return // success
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Error("expected cmd-next to be picked up after resume, but still pending after 2s")
+}
+
+// TestQueueManagerResumeActiveQueue verifies that resuming an already-active
+// queue returns an error.
+func TestQueueManagerResumeActiveQueue(t *testing.T) {
+	qm, state := newTestQueueManager(t)
+	defer state.Close()
+
+	taskID := "task-resume-active"
+	createTestTask(t, state, taskID)
+
+	if err := qm.InitQueues(taskID); err != nil {
+		t.Fatalf("InitQueues: %v", err)
+	}
+
+	err := qm.ResumeQueue(taskID, "default")
+	if err == nil {
+		t.Error("expected error resuming active queue, got nil")
+	}
+}
+
+// TestQueueManagerResumeConcurrentQueue verifies that resuming a concurrent
+// queue returns an error (only serial queues support resume).
+func TestQueueManagerResumeConcurrentQueue(t *testing.T) {
+	qm, state := newTestQueueManager(t)
+	defer state.Close()
+
+	taskID := "task-resume-concurrent"
+	createTestTask(t, state, taskID)
+
+	if err := qm.InitQueues(taskID); err != nil {
+		t.Fatalf("InitQueues: %v", err)
+	}
+
+	// Manually stop admin (concurrent) queue
+	state.UpdateQueueStatus(taskID, "admin", "stopped")
+
+	err := qm.ResumeQueue(taskID, "admin")
+	if err == nil {
+		t.Error("expected error resuming concurrent queue, got nil")
+	}
+}
+
 // TestQueueManagerCleanupTask verifies that CleanupTask removes all queues
 // and commands for a task.
 func TestQueueManagerCleanupTask(t *testing.T) {

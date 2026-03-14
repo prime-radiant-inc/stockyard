@@ -23,12 +23,14 @@ service Stockyard {
     rpc ListQueues(ListQueuesRequest) returns (ListQueuesResponse);
     rpc GetQueueStatus(GetQueueStatusRequest) returns (GetQueueStatusResponse);
     rpc FlushQueue(FlushQueueRequest) returns (FlushQueueResponse);
+    rpc ResumeQueue(ResumeQueueRequest) returns (ResumeQueueResponse);
     rpc DestroyQueue(DestroyQueueRequest) returns (DestroyQueueResponse);
 
     // Command execution
     rpc QueueCommand(QueueCommandRequest) returns (QueueCommandResponse);
     rpc GetCommandStatus(GetCommandStatusRequest) returns (GetCommandStatusResponse);
     rpc StreamCommandOutput(StreamCommandOutputRequest) returns (stream CommandOutputChunk);
+    rpc StreamQueueOutput(StreamQueueOutputRequest) returns (stream QueueOutputChunk);
 }
 
 message CreateTaskRequest {
@@ -161,6 +163,12 @@ message FlushQueueRequest {
 }
 message FlushQueueResponse {}
 
+message ResumeQueueRequest {
+    string task_id = 1;
+    string queue_name = 2;
+}
+message ResumeQueueResponse {}
+
 message DestroyQueueRequest {
     string task_id = 1;
     string queue_name = 2;
@@ -192,6 +200,16 @@ message StreamCommandOutputRequest {
 }
 message CommandOutputChunk {
     bytes data = 1;
+}
+
+message StreamQueueOutputRequest {
+    string task_id = 1;
+    string queue_name = 2;
+    bool follow = 3;
+}
+message QueueOutputChunk {
+    bytes data = 1;
+    string command_id = 2;  // set on first chunk of each command for client-side headers
 }
 
 // Shared info types

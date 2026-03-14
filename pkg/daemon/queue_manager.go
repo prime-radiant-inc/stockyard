@@ -206,6 +206,46 @@ func (qm *QueueManager) ListQueues(taskID string) ([]*Queue, error) {
 	return qm.state.ListQueues(taskID)
 }
 
+// ResumeQueue transitions a stopped serial queue back to active and kicks off
+// the next pending command if one exists. Only serial queues can be resumed
+// (concurrent queues never stop).
+func (qm *QueueManager) ResumeQueue(taskID, queueName string) error {
+	qm.mu.Lock()
+	defer qm.mu.Unlock()
+
+	queue, err := qm.state.GetQueue(taskID, queueName)
+	if err != nil {
+		return err
+	}
+	if queue.Status != "stopped" {
+		return fmt.Errorf("queue %q is not stopped (status: %s)", queueName, queue.Status)
+	}
+	if queue.Mode != "serial" {
+		return fmt.Errorf("only serial queues can be resumed")
+	}
+
+	if err := qm.state.UpdateQueueStatus(taskID, queueName, "active"); err != nil {
+		return fmt.Errorf("update queue status: %w", err)
+	}
+
+	// Kick off the next pending command if one exists.
+	cmds, err := qm.state.ListCommands(taskID, queueName)
+	if err != nil {
+		return nil // queue is active now, just no auto-start
+	}
+	for _, c := range cmds {
+		if c.Status == "pending" {
+			if err := qm.state.UpdateCommandStatus(c.ID, "running"); err != nil {
+				return nil
+			}
+			go qm.executeCommand(taskID, c.ID)
+			return nil
+		}
+	}
+
+	return nil
+}
+
 // FlushQueue clears all pending commands from a queue.
 // Commands that are running, completed, or failed are left intact.
 func (qm *QueueManager) FlushQueue(taskID, queueName string) error {

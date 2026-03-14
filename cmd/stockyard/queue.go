@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -131,6 +132,54 @@ var queueStatusCmd = &cobra.Command{
 	},
 }
 
+var queueResumeCmd = &cobra.Command{
+	Use:   "resume <task-id> <queue-name>",
+	Short: "Resume a stopped serial queue",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		taskID, queueName := args[0], args[1]
+
+		c, err := getClient()
+		if err != nil {
+			return err
+		}
+		defer c.Close()
+
+		if err := c.ResumeQueue(context.Background(), taskID, queueName); err != nil {
+			return fmt.Errorf("failed to resume queue: %w", err)
+		}
+
+		fmt.Printf("Queue resumed: %s\n", queueName)
+		return nil
+	},
+}
+
+var queueTailFollow bool
+
+var queueTailCmd = &cobra.Command{
+	Use:   "tail <task-id> [queue-name]",
+	Short: "Stream output from all commands in a queue",
+	Args:  cobra.RangeArgs(1, 2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		taskID := args[0]
+		queueName := "default"
+		if len(args) > 1 {
+			queueName = args[1]
+		}
+
+		c, err := getClient()
+		if err != nil {
+			return err
+		}
+		defer c.Close()
+
+		if err := c.StreamQueueOutput(context.Background(), taskID, queueName, queueTailFollow, os.Stdout); err != nil {
+			return fmt.Errorf("failed to stream queue output: %w", err)
+		}
+		return nil
+	},
+}
+
 var queueFlushCmd = &cobra.Command{
 	Use:   "flush <task-id> <queue-name>",
 	Short: "Remove all pending commands from a queue",
@@ -181,6 +230,9 @@ func init() {
 	queueCmd.AddCommand(queueListCmd)
 	queueCmd.AddCommand(queueStatusCmd)
 	queueCmd.AddCommand(queueFlushCmd)
+	queueCmd.AddCommand(queueResumeCmd)
+	queueTailCmd.Flags().BoolVarP(&queueTailFollow, "follow", "f", false, "Follow output (stream until queue is idle or stopped)")
+	queueCmd.AddCommand(queueTailCmd)
 	queueCmd.AddCommand(queueDestroyCmd)
 	rootCmd.AddCommand(queueCmd)
 }

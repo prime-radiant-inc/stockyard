@@ -220,6 +220,15 @@ func (c *Client) FlushQueue(ctx context.Context, taskID, queueName string) error
 	return err
 }
 
+// ResumeQueue resumes a stopped serial queue.
+func (c *Client) ResumeQueue(ctx context.Context, taskID, queueName string) error {
+	_, err := c.client.ResumeQueue(ctx, &pb.ResumeQueueRequest{
+		TaskId:    taskID,
+		QueueName: queueName,
+	})
+	return err
+}
+
 // DestroyQueue destroys a queue and all its commands.
 func (c *Client) DestroyQueue(ctx context.Context, taskID, queueName string) error {
 	_, err := c.client.DestroyQueue(ctx, &pb.DestroyQueueRequest{
@@ -251,6 +260,29 @@ func (c *Client) GetCommandStatus(ctx context.Context, commandID string) (*pb.Co
 		return nil, err
 	}
 	return resp.Command, nil
+}
+
+// StreamQueueOutput streams output from all commands in a queue to the given writer.
+func (c *Client) StreamQueueOutput(ctx context.Context, taskID, queueName string, follow bool, out io.Writer) error {
+	stream, err := c.client.StreamQueueOutput(ctx, &pb.StreamQueueOutputRequest{
+		TaskId:    taskID,
+		QueueName: queueName,
+		Follow:    follow,
+	})
+	if err != nil {
+		return err
+	}
+
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		out.Write(chunk.Data)
+	}
 }
 
 // StreamCommandOutput streams output from a command to the given writer.

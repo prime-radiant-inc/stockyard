@@ -102,6 +102,7 @@ Command metadata (spec, status, exit code, timestamps, queue name) is stored in 
 |-----|-------------|
 | `CreateQueue(task_id, queue_name, mode)` | Create a custom queue. Mode is `serial` (default) or `concurrent`. Fails if name exists. |
 | `FlushQueue(task_id, queue_name)` | Clear pending commands from a queue. |
+| `ResumeQueue(task_id, queue_name)` | Resume a stopped serial queue. Kicks off the next pending command. |
 | `DestroyQueue(task_id, queue_name)` | Remove a queue. Fails for protected queues. |
 | `ListQueues(task_id)` | List all queues with config and protected status. |
 
@@ -112,6 +113,7 @@ Command metadata (spec, status, exit code, timestamps, queue name) is stored in 
 | `QueueCommand(task_id, queue_name, command[], env, stop_on_failure)` | Append a command to an existing queue. Returns command_id. |
 | `GetCommandStatus(task_id, command_id)` | Status, exit code, output location. |
 | `StreamCommandOutput(task_id, command_id)` | Server-side stream. Tails persisted output file. |
+| `StreamQueueOutput(task_id, queue_name, follow)` | Server-side stream. Walks all commands in order, streaming each one's output. With follow, tails the running command and advances. |
 | `GetQueueStatus(task_id, queue_name)` | Queue's command list with statuses. |
 
 ### CLI
@@ -133,6 +135,11 @@ stockyard queue destroy <task-id> test-suite
 stockyard command status <task-id> <command-id>
 stockyard command logs <task-id> <command-id>
 stockyard command logs <task-id> <command-id> --follow
+
+# Queue output
+stockyard queue tail <task-id> [queue-name]
+stockyard queue tail <task-id> default --follow
+stockyard queue resume <task-id> <queue-name>
 ```
 
 ## Typical Lifecycle
@@ -173,7 +180,7 @@ This extends the existing `DestroyTask` cleanup path, which already handles the 
 ## What This Design Does Not Cover
 
 - **Artifact retrieval** — how to get files out of the VM after commands run. Currently possible via scp over Tailscale. A dedicated mechanism may come later.
-- **Queue recovery after failure** — when a command fails with `stop_on_failure`, the queue becomes stopped. A `ResumeQueue` RPC would let callers skip past the failure and continue with pending commands. For now, the primary use case is ephemeral agent invocations where failure means tearing down the VM, not recovering the queue.
+- **Queue recovery after failure** — `ResumeQueue` flips a stopped serial queue back to active and kicks off the next pending command (skipping past the failure). The failed command stays in history.
 - **Command cancellation** — killing a running command. Could be added by closing the vsock connection or sending a signal.
 - **Queue-level env** — if needed, can be added later as a layer between VM env and command env.
 - **State passing between commands** — how commands pass environment or state to subsequent commands. TBD.

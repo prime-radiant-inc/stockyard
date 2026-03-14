@@ -33,10 +33,12 @@ const (
 	Stockyard_ListQueues_FullMethodName          = "/stockyard.v1.Stockyard/ListQueues"
 	Stockyard_GetQueueStatus_FullMethodName      = "/stockyard.v1.Stockyard/GetQueueStatus"
 	Stockyard_FlushQueue_FullMethodName          = "/stockyard.v1.Stockyard/FlushQueue"
+	Stockyard_ResumeQueue_FullMethodName         = "/stockyard.v1.Stockyard/ResumeQueue"
 	Stockyard_DestroyQueue_FullMethodName        = "/stockyard.v1.Stockyard/DestroyQueue"
 	Stockyard_QueueCommand_FullMethodName        = "/stockyard.v1.Stockyard/QueueCommand"
 	Stockyard_GetCommandStatus_FullMethodName    = "/stockyard.v1.Stockyard/GetCommandStatus"
 	Stockyard_StreamCommandOutput_FullMethodName = "/stockyard.v1.Stockyard/StreamCommandOutput"
+	Stockyard_StreamQueueOutput_FullMethodName   = "/stockyard.v1.Stockyard/StreamQueueOutput"
 )
 
 // StockyardClient is the client API for Stockyard service.
@@ -58,11 +60,13 @@ type StockyardClient interface {
 	ListQueues(ctx context.Context, in *ListQueuesRequest, opts ...grpc.CallOption) (*ListQueuesResponse, error)
 	GetQueueStatus(ctx context.Context, in *GetQueueStatusRequest, opts ...grpc.CallOption) (*GetQueueStatusResponse, error)
 	FlushQueue(ctx context.Context, in *FlushQueueRequest, opts ...grpc.CallOption) (*FlushQueueResponse, error)
+	ResumeQueue(ctx context.Context, in *ResumeQueueRequest, opts ...grpc.CallOption) (*ResumeQueueResponse, error)
 	DestroyQueue(ctx context.Context, in *DestroyQueueRequest, opts ...grpc.CallOption) (*DestroyQueueResponse, error)
 	// Command execution
 	QueueCommand(ctx context.Context, in *QueueCommandRequest, opts ...grpc.CallOption) (*QueueCommandResponse, error)
 	GetCommandStatus(ctx context.Context, in *GetCommandStatusRequest, opts ...grpc.CallOption) (*GetCommandStatusResponse, error)
 	StreamCommandOutput(ctx context.Context, in *StreamCommandOutputRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CommandOutputChunk], error)
+	StreamQueueOutput(ctx context.Context, in *StreamQueueOutputRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[QueueOutputChunk], error)
 }
 
 type stockyardClient struct {
@@ -222,6 +226,16 @@ func (c *stockyardClient) FlushQueue(ctx context.Context, in *FlushQueueRequest,
 	return out, nil
 }
 
+func (c *stockyardClient) ResumeQueue(ctx context.Context, in *ResumeQueueRequest, opts ...grpc.CallOption) (*ResumeQueueResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResumeQueueResponse)
+	err := c.cc.Invoke(ctx, Stockyard_ResumeQueue_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *stockyardClient) DestroyQueue(ctx context.Context, in *DestroyQueueRequest, opts ...grpc.CallOption) (*DestroyQueueResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DestroyQueueResponse)
@@ -271,6 +285,25 @@ func (c *stockyardClient) StreamCommandOutput(ctx context.Context, in *StreamCom
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Stockyard_StreamCommandOutputClient = grpc.ServerStreamingClient[CommandOutputChunk]
 
+func (c *stockyardClient) StreamQueueOutput(ctx context.Context, in *StreamQueueOutputRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[QueueOutputChunk], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Stockyard_ServiceDesc.Streams[2], Stockyard_StreamQueueOutput_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamQueueOutputRequest, QueueOutputChunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Stockyard_StreamQueueOutputClient = grpc.ServerStreamingClient[QueueOutputChunk]
+
 // StockyardServer is the server API for Stockyard service.
 // All implementations must embed UnimplementedStockyardServer
 // for forward compatibility.
@@ -290,11 +323,13 @@ type StockyardServer interface {
 	ListQueues(context.Context, *ListQueuesRequest) (*ListQueuesResponse, error)
 	GetQueueStatus(context.Context, *GetQueueStatusRequest) (*GetQueueStatusResponse, error)
 	FlushQueue(context.Context, *FlushQueueRequest) (*FlushQueueResponse, error)
+	ResumeQueue(context.Context, *ResumeQueueRequest) (*ResumeQueueResponse, error)
 	DestroyQueue(context.Context, *DestroyQueueRequest) (*DestroyQueueResponse, error)
 	// Command execution
 	QueueCommand(context.Context, *QueueCommandRequest) (*QueueCommandResponse, error)
 	GetCommandStatus(context.Context, *GetCommandStatusRequest) (*GetCommandStatusResponse, error)
 	StreamCommandOutput(*StreamCommandOutputRequest, grpc.ServerStreamingServer[CommandOutputChunk]) error
+	StreamQueueOutput(*StreamQueueOutputRequest, grpc.ServerStreamingServer[QueueOutputChunk]) error
 	mustEmbedUnimplementedStockyardServer()
 }
 
@@ -347,6 +382,9 @@ func (UnimplementedStockyardServer) GetQueueStatus(context.Context, *GetQueueSta
 func (UnimplementedStockyardServer) FlushQueue(context.Context, *FlushQueueRequest) (*FlushQueueResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FlushQueue not implemented")
 }
+func (UnimplementedStockyardServer) ResumeQueue(context.Context, *ResumeQueueRequest) (*ResumeQueueResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResumeQueue not implemented")
+}
 func (UnimplementedStockyardServer) DestroyQueue(context.Context, *DestroyQueueRequest) (*DestroyQueueResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DestroyQueue not implemented")
 }
@@ -358,6 +396,9 @@ func (UnimplementedStockyardServer) GetCommandStatus(context.Context, *GetComman
 }
 func (UnimplementedStockyardServer) StreamCommandOutput(*StreamCommandOutputRequest, grpc.ServerStreamingServer[CommandOutputChunk]) error {
 	return status.Error(codes.Unimplemented, "method StreamCommandOutput not implemented")
+}
+func (UnimplementedStockyardServer) StreamQueueOutput(*StreamQueueOutputRequest, grpc.ServerStreamingServer[QueueOutputChunk]) error {
+	return status.Error(codes.Unimplemented, "method StreamQueueOutput not implemented")
 }
 func (UnimplementedStockyardServer) mustEmbedUnimplementedStockyardServer() {}
 func (UnimplementedStockyardServer) testEmbeddedByValue()                   {}
@@ -625,6 +666,24 @@ func _Stockyard_FlushQueue_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Stockyard_ResumeQueue_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResumeQueueRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StockyardServer).ResumeQueue(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Stockyard_ResumeQueue_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StockyardServer).ResumeQueue(ctx, req.(*ResumeQueueRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Stockyard_DestroyQueue_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DestroyQueueRequest)
 	if err := dec(in); err != nil {
@@ -690,6 +749,17 @@ func _Stockyard_StreamCommandOutput_Handler(srv interface{}, stream grpc.ServerS
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Stockyard_StreamCommandOutputServer = grpc.ServerStreamingServer[CommandOutputChunk]
 
+func _Stockyard_StreamQueueOutput_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamQueueOutputRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StockyardServer).StreamQueueOutput(m, &grpc.GenericServerStream[StreamQueueOutputRequest, QueueOutputChunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Stockyard_StreamQueueOutputServer = grpc.ServerStreamingServer[QueueOutputChunk]
+
 // Stockyard_ServiceDesc is the grpc.ServiceDesc for Stockyard service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -750,6 +820,10 @@ var Stockyard_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Stockyard_FlushQueue_Handler,
 		},
 		{
+			MethodName: "ResumeQueue",
+			Handler:    _Stockyard_ResumeQueue_Handler,
+		},
+		{
 			MethodName: "DestroyQueue",
 			Handler:    _Stockyard_DestroyQueue_Handler,
 		},
@@ -771,6 +845,11 @@ var Stockyard_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "StreamCommandOutput",
 			Handler:       _Stockyard_StreamCommandOutput_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "StreamQueueOutput",
+			Handler:       _Stockyard_StreamQueueOutput_Handler,
 			ServerStreams: true,
 		},
 	},
