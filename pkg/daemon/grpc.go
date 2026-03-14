@@ -432,9 +432,9 @@ func (s *grpcServer) streamCommandForQueue(cmd *Command, follow bool, stream grp
 	}
 	defer f.Close()
 
-	// Send header chunk identifying the command
+	// Send header: >>> cmd-xxx  command args
 	cmdStr := strings.Join(cmd.Command, " ")
-	header := fmt.Sprintf("\n=== %s: %s ===\n", cmd.ID, cmdStr)
+	header := fmt.Sprintf("\n>>> %s  %s\n", cmd.ID, cmdStr)
 	if err := stream.Send(&pb.QueueOutputChunk{Data: []byte(header), CommandId: cmd.ID}); err != nil {
 		return err
 	}
@@ -449,12 +449,13 @@ func (s *grpcServer) streamCommandForQueue(cmd *Command, follow bool, stream grp
 		}
 		if readErr == io.EOF {
 			if !follow {
-				return nil
+				break
 			}
 			// Check if command is still running
 			updated, err := s.daemon.queueManager.GetCommandStatus(cmd.ID)
 			if err != nil || updated.Status == "completed" || updated.Status == "failed" {
-				return nil
+				cmd = updated
+				break
 			}
 			select {
 			case <-stream.Context().Done():
@@ -467,6 +468,30 @@ func (s *grpcServer) streamCommandForQueue(cmd *Command, follow bool, stream grp
 			return status.Errorf(codes.Internal, "read error: %v", readErr)
 		}
 	}
+
+	// Send footer: <<< cmd-xxx  status  exit=N  (duration)
+	// Re-fetch to get final status, exit code, and timestamps.
+	final, err := s.daemon.queueManager.GetCommandStatus(cmd.ID)
+	if err == nil {
+		cmd = final
+	}
+	footer := fmt.Sprintf("<<< %s  %s", cmd.ID, cmd.Status)
+	if cmd.ExitCode != nil {
+		footer += fmt.Sprintf("  exit=%d", *cmd.ExitCode)
+	}
+	if cmd.StartedAt != nil && cmd.FinishedAt != nil {
+		dur := cmd.FinishedAt.Sub(*cmd.StartedAt)
+		if dur < time.Second {
+			footer += fmt.Sprintf("  (%dms)", dur.Milliseconds())
+		} else {
+			footer += fmt.Sprintf("  (%.1fs)", dur.Seconds())
+		}
+	}
+	footer += "\n"
+	if err := stream.Send(&pb.QueueOutputChunk{Data: []byte(footer)}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func commandToProto(c *Command) *pb.CommandInfo {
