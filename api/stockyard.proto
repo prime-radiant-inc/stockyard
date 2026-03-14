@@ -17,12 +17,26 @@ service Stockyard {
     rpc RestoreSnapshot(RestoreSnapshotRequest) returns (RestoreSnapshotResponse);
 
     rpc GetLogs(GetLogsRequest) returns (stream LogEntry);
+
+    // Queue management
+    rpc CreateQueue(CreateQueueRequest) returns (CreateQueueResponse);
+    rpc ListQueues(ListQueuesRequest) returns (ListQueuesResponse);
+    rpc GetQueueStatus(GetQueueStatusRequest) returns (GetQueueStatusResponse);
+    rpc FlushQueue(FlushQueueRequest) returns (FlushQueueResponse);
+    rpc ResumeQueue(ResumeQueueRequest) returns (ResumeQueueResponse);
+    rpc DestroyQueue(DestroyQueueRequest) returns (DestroyQueueResponse);
+
+    // Command execution
+    rpc QueueCommand(QueueCommandRequest) returns (QueueCommandResponse);
+    rpc GetCommandStatus(GetCommandStatusRequest) returns (GetCommandStatusResponse);
+    rpc StreamCommandOutput(StreamCommandOutputRequest) returns (stream CommandOutputChunk);
+    rpc StreamQueueOutput(StreamQueueOutputRequest) returns (stream QueueOutputChunk);
 }
 
 message CreateTaskRequest {
     string name = 1;
-    repeated string command = 2;
-    map<string, string> env = 3;
+    reserved 2;  // was: command (now use QueueCommand after task creation)
+    map<string, string> vm_env = 3;  // VM-level env injected via cloud-init
     int32 cpus = 4;
     string memory = 5;
     bool no_tailscale = 6;
@@ -117,4 +131,103 @@ message Snapshot {
     string name = 1;
     string label = 2;
     string created_at = 3;
+}
+
+// Queue management messages
+message CreateQueueRequest {
+    string task_id = 1;
+    string queue_name = 2;
+    string mode = 3;  // "serial" or "concurrent", default "serial"
+}
+message CreateQueueResponse {}
+
+message ListQueuesRequest {
+    string task_id = 1;
+}
+message ListQueuesResponse {
+    repeated QueueInfo queues = 1;
+}
+
+message GetQueueStatusRequest {
+    string task_id = 1;
+    string queue_name = 2;
+}
+message GetQueueStatusResponse {
+    QueueInfo queue = 1;
+    repeated CommandInfo commands = 2;
+}
+
+message FlushQueueRequest {
+    string task_id = 1;
+    string queue_name = 2;
+}
+message FlushQueueResponse {}
+
+message ResumeQueueRequest {
+    string task_id = 1;
+    string queue_name = 2;
+}
+message ResumeQueueResponse {}
+
+message DestroyQueueRequest {
+    string task_id = 1;
+    string queue_name = 2;
+}
+message DestroyQueueResponse {}
+
+// Command execution messages
+message QueueCommandRequest {
+    string task_id = 1;
+    string queue_name = 2;
+    repeated string command = 3;
+    map<string, string> env = 4;
+    bool stop_on_failure = 5;
+}
+message QueueCommandResponse {
+    string command_id = 1;
+}
+
+message GetCommandStatusRequest {
+    string command_id = 1;
+}
+message GetCommandStatusResponse {
+    CommandInfo command = 1;
+}
+
+message StreamCommandOutputRequest {
+    string command_id = 1;
+    bool follow = 2;
+}
+message CommandOutputChunk {
+    bytes data = 1;
+}
+
+message StreamQueueOutputRequest {
+    string task_id = 1;
+    string queue_name = 2;
+    bool follow = 3;
+}
+message QueueOutputChunk {
+    bytes data = 1;
+    string command_id = 2;  // set on first chunk of each command for client-side headers
+}
+
+// Shared info types
+message QueueInfo {
+    string name = 1;
+    string mode = 2;
+    bool protected = 3;
+    string status = 4;
+}
+
+message CommandInfo {
+    string id = 1;
+    string queue_name = 2;
+    repeated string command = 3;
+    string status = 4;
+    int32 exit_code = 5;
+    bool stop_on_failure = 6;
+    string created_at = 7;
+    string started_at = 8;
+    string finished_at = 9;
 }

@@ -78,11 +78,15 @@ func ReadMessage(r io.Reader) (uint8, []byte, error) {
 
 // OpenMessage requests a shell session for a user.
 // Includes terminal type and initial window size.
+// Command, if non-empty, specifies the program to run instead of the default login shell.
+// Env provides additional environment variables to set for the session.
 type OpenMessage struct {
-	User string `json:"user"`
-	Term string `json:"term"` // e.g., "xterm-256color"
-	Cols int    `json:"cols"`
-	Rows int    `json:"rows"`
+	User    string            `json:"user"`
+	Term    string            `json:"term"` // e.g., "xterm-256color"
+	Cols    int               `json:"cols"`
+	Rows    int               `json:"rows"`
+	Command []string          `json:"command"`
+	Env     map[string]string `json:"env,omitempty"`
 }
 
 func (m *OpenMessage) Marshal() ([]byte, error) {

@@ -1,0 +1,356 @@
+// Package daemon provides state management for the stockyard daemon.
+package daemon
+
+import (
+	"crypto/rand"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"github.com/obra/stockyard/pkg/config"
+)
+
+// QueueManager manages command queues and coordinates execution.
+// It wraps the State layer and adds scheduling logic.
+type QueueManager struct {
+	state *State
+	cfg   *config.Config
+	mu    sync.Mutex
+}
+
+// NewQueueManager creates a new QueueManager.
+func NewQueueManager(state *State, cfg *config.Config) *QueueManager {
+	return &QueueManager{state: state, cfg: cfg}
+}
+
+// generateCommandID creates a unique command ID using random bytes.
+func generateCommandID() string {
+	b := make([]byte, 8)
+	rand.Read(b)
+	return fmt.Sprintf("cmd-%x", b)
+}
+
+// outputPath returns the path for a command's output log file.
+func (qm *QueueManager) outputPath(taskID, commandID string) string {
+	return filepath.Join(qm.cfg.Daemon.DataDir, "tasks", taskID, "commands", commandID, "output.log")
+}
+
+// InitQueues creates the built-in queues (default + admin) for a task.
+// "default" is a serial protected queue; "admin" is a concurrent protected queue.
+func (qm *QueueManager) InitQueues(taskID string) error {
+	now := time.Now()
+
+	defaultQueue := &Queue{
+		TaskID:    taskID,
+		Name:      "default",
+		Mode:      "serial",
+		Protected: true,
+		Status:    "active",
+		CreatedAt: now,
+	}
+	if err := qm.state.CreateQueue(defaultQueue); err != nil {
+		return fmt.Errorf("create default queue: %w", err)
+	}
+
+	adminQueue := &Queue{
+		TaskID:    taskID,
+		Name:      "admin",
+		Mode:      "concurrent",
+		Protected: true,
+		Status:    "active",
+		CreatedAt: now.Add(time.Nanosecond), // ensure stable ordering
+	}
+	if err := qm.state.CreateQueue(adminQueue); err != nil {
+		return fmt.Errorf("create admin queue: %w", err)
+	}
+
+	return nil
+}
+
+// validateQueueName checks that a queue name is safe and reasonable.
+func validateQueueName(name string) error {
+	if name == "" {
+		return fmt.Errorf("queue name is required")
+	}
+	if len(name) > 64 {
+		return fmt.Errorf("queue name too long (max 64)")
+	}
+	for _, c := range name {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+			return fmt.Errorf("queue name contains invalid character: %c", c)
+		}
+	}
+	return nil
+}
+
+// CreateQueue creates a custom (non-protected) queue for a task.
+func (qm *QueueManager) CreateQueue(taskID, name, mode string) error {
+	if err := validateQueueName(name); err != nil {
+		return err
+	}
+	if mode != "serial" && mode != "concurrent" {
+		return fmt.Errorf("invalid queue mode %q: must be serial or concurrent", mode)
+	}
+	q := &Queue{
+		TaskID:    taskID,
+		Name:      name,
+		Mode:      mode,
+		Protected: false,
+		Status:    "active",
+		CreatedAt: time.Now(),
+	}
+	return qm.state.CreateQueue(q)
+}
+
+// QueueCommand appends a command to a queue and returns the command ID.
+// For serial queues, triggers execution if no command is currently running.
+// For concurrent queues, triggers execution immediately.
+func (qm *QueueManager) QueueCommand(taskID, queueName string, command []string, env map[string]string, stopOnFailure bool) (string, error) {
+	qm.mu.Lock()
+	defer qm.mu.Unlock()
+
+	// Verify queue exists
+	queue, err := qm.state.GetQueue(taskID, queueName)
+	if err != nil {
+		return "", fmt.Errorf("get queue: %w", err)
+	}
+
+	// Reject commands on stopped queues
+	if queue.Status == "stopped" {
+		return "", fmt.Errorf("queue %q is stopped", queueName)
+	}
+
+	commandID := generateCommandID()
+	outputPath := qm.outputPath(taskID, commandID)
+
+	// Determine initial status: for serial queues that will start immediately,
+	// mark as "running" under the lock to prevent the race where another
+	// QueueCommand call sees no running command before the goroutine updates status.
+	startImmediately := false
+	initialStatus := "pending"
+	switch queue.Mode {
+	case "concurrent":
+		startImmediately = true
+		initialStatus = "running"
+	case "serial":
+		if !qm.isRunning(taskID, queueName) {
+			startImmediately = true
+			initialStatus = "running"
+		}
+	}
+
+	now := time.Now()
+	cmd := &Command{
+		ID:            commandID,
+		TaskID:        taskID,
+		QueueName:     queueName,
+		Command:       command,
+		Env:           env,
+		Status:        initialStatus,
+		StopOnFailure: stopOnFailure,
+		OutputPath:    outputPath,
+		CreatedAt:     now,
+	}
+	if startImmediately {
+		cmd.StartedAt = &now
+	}
+
+	if err := qm.state.CreateCommand(cmd); err != nil {
+		return "", fmt.Errorf("create command: %w", err)
+	}
+
+	if startImmediately {
+		go qm.executeCommand(taskID, commandID)
+	}
+
+	return commandID, nil
+}
+
+// isRunning reports whether any command in the given queue has status "running".
+// Caller must hold qm.mu.
+func (qm *QueueManager) isRunning(taskID, queueName string) bool {
+	cmds, err := qm.state.ListCommands(taskID, queueName)
+	if err != nil {
+		return false
+	}
+	for _, c := range cmds {
+		if c.Status == "running" {
+			return true
+		}
+	}
+	return false
+}
+
+// GetCommandStatus returns command info by ID.
+func (qm *QueueManager) GetCommandStatus(commandID string) (*Command, error) {
+	return qm.state.GetCommand(commandID)
+}
+
+// GetQueueStatus returns queue info along with all its commands.
+func (qm *QueueManager) GetQueueStatus(taskID, queueName string) (*Queue, []*Command, error) {
+	queue, err := qm.state.GetQueue(taskID, queueName)
+	if err != nil {
+		return nil, nil, err
+	}
+	cmds, err := qm.state.ListCommands(taskID, queueName)
+	if err != nil {
+		return nil, nil, err
+	}
+	return queue, cmds, nil
+}
+
+// ListQueues returns all queues for a task.
+func (qm *QueueManager) ListQueues(taskID string) ([]*Queue, error) {
+	return qm.state.ListQueues(taskID)
+}
+
+// ResumeQueue transitions a stopped serial queue back to active and kicks off
+// the next pending command if one exists. Only serial queues can be resumed
+// (concurrent queues never stop).
+func (qm *QueueManager) ResumeQueue(taskID, queueName string) error {
+	qm.mu.Lock()
+	defer qm.mu.Unlock()
+
+	queue, err := qm.state.GetQueue(taskID, queueName)
+	if err != nil {
+		return err
+	}
+	if queue.Status != "stopped" {
+		return fmt.Errorf("queue %q is not stopped (status: %s)", queueName, queue.Status)
+	}
+	if queue.Mode != "serial" {
+		return fmt.Errorf("only serial queues can be resumed")
+	}
+
+	if err := qm.state.UpdateQueueStatus(taskID, queueName, "active"); err != nil {
+		return fmt.Errorf("update queue status: %w", err)
+	}
+
+	// Kick off the next pending command if one exists.
+	cmds, err := qm.state.ListCommands(taskID, queueName)
+	if err != nil {
+		return fmt.Errorf("list commands after resume: %w", err)
+	}
+	for _, c := range cmds {
+		if c.Status == "pending" {
+			if err := qm.state.UpdateCommandStatus(c.ID, "running"); err != nil {
+				return fmt.Errorf("update command status after resume: %w", err)
+			}
+			go qm.executeCommand(taskID, c.ID)
+			return nil
+		}
+	}
+
+	return nil
+}
+
+// FlushQueue clears all pending commands from a queue.
+// Commands that are running, completed, or failed are left intact.
+func (qm *QueueManager) FlushQueue(taskID, queueName string) error {
+	return qm.state.FlushQueueCommands(taskID, queueName)
+}
+
+// DestroyQueue removes a non-protected queue and all its commands.
+// Returns an error if the queue is protected.
+func (qm *QueueManager) DestroyQueue(taskID, queueName string) error {
+	if err := qm.state.DeleteCommandsByQueue(taskID, queueName); err != nil {
+		return fmt.Errorf("delete queue commands: %w", err)
+	}
+	return qm.state.DestroyQueue(taskID, queueName)
+}
+
+// CleanupTask removes all queues, commands, and output files for a task.
+func (qm *QueueManager) CleanupTask(taskID string) error {
+	// Remove output files directory
+	taskDir := filepath.Join(qm.cfg.Daemon.DataDir, "tasks", taskID)
+	if err := os.RemoveAll(taskDir); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove task dir: %w", err)
+	}
+
+	if err := qm.state.DeleteCommandsByTask(taskID); err != nil {
+		return fmt.Errorf("delete commands: %w", err)
+	}
+	if err := qm.state.DeleteQueuesByTask(taskID); err != nil {
+		return fmt.Errorf("delete queues: %w", err)
+	}
+
+	return nil
+}
+
+// executeCommand opens a vsock connection, runs a command, and persists output.
+// Runs in a goroutine spawned by QueueCommand or triggerNext.
+// Vsock execution is implemented in this method; it will fail gracefully if the
+// task has no vsock path (e.g., in tests where no VM is running).
+func (qm *QueueManager) executeCommand(taskID, commandID string) {
+	cmd, err := qm.state.GetCommand(commandID)
+	if err != nil {
+		// Command was already marked "running" — mark it failed so it doesn't stick.
+		qm.state.UpdateCommandExit(commandID, 1)
+		return
+	}
+
+	task, err := qm.state.GetTask(taskID)
+	if err != nil {
+		qm.state.UpdateCommandExit(commandID, 1)
+		return
+	}
+
+	// Status was already set to "running" by the caller (QueueCommand or
+	// triggerNext) under the mutex to prevent scheduling races.
+
+	// Run the command; if vsock is unavailable it will return exit code 1
+	exitCode, execErr := qm.runVsockCommand(task, cmd)
+	if execErr != nil {
+		fmt.Printf("Command %s execution error: %v\n", commandID, execErr)
+	}
+
+	// Persist exit code and terminal status (completed / failed)
+	qm.state.UpdateCommandExit(commandID, exitCode)
+
+	// Post-run queue management for serial queues
+	queue, err := qm.state.GetQueue(taskID, cmd.QueueName)
+	if err != nil {
+		return
+	}
+
+	if queue.Mode == "serial" {
+		if cmd.StopOnFailure && exitCode != 0 {
+			qm.state.UpdateQueueStatus(taskID, cmd.QueueName, "stopped")
+			return
+		}
+		qm.triggerNext(taskID, cmd.QueueName)
+	}
+}
+
+// triggerNext checks if the next pending command in a serial queue should run.
+// It does nothing when the queue is in "stopped" status.
+func (qm *QueueManager) triggerNext(taskID, queueName string) {
+	qm.mu.Lock()
+	defer qm.mu.Unlock()
+
+	queue, err := qm.state.GetQueue(taskID, queueName)
+	if err != nil {
+		return
+	}
+	if queue.Status == "stopped" {
+		return
+	}
+
+	cmds, err := qm.state.ListCommands(taskID, queueName)
+	if err != nil {
+		return
+	}
+
+	for _, c := range cmds {
+		if c.Status == "pending" {
+			// Mark as running under the lock to prevent scheduling races
+			if err := qm.state.UpdateCommandStatus(c.ID, "running"); err != nil {
+				return
+			}
+			go qm.executeCommand(taskID, c.ID)
+			return
+		}
+	}
+}

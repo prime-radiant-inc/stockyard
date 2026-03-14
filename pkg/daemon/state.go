@@ -3,6 +3,8 @@ package daemon
 
 import (
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +13,22 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// Sentinel errors for the State layer. Use errors.Is to check these
+// in callers (e.g. gRPC handlers) instead of string matching.
+var (
+	ErrTaskNotFound    = errors.New("task not found")
+	ErrTaskNotStopped  = errors.New("task is not stopped")
+	ErrQueueNotFound   = errors.New("queue not found")
+	ErrQueueProtected  = errors.New("cannot destroy protected queue")
+	ErrCommandNotFound = errors.New("command not found")
+)
+
+// scanner is satisfied by both *sql.Row and *sql.Rows, allowing
+// scanCommand to be reused for single-row and multi-row queries.
+type scanner interface {
+	Scan(dest ...any) error
+}
 
 // Task represents a running or completed task in the system.
 type Task struct {
@@ -25,6 +43,32 @@ type Task struct {
 	TailscaleHostname string
 	CreatedAt         time.Time
 	StoppedAt         *time.Time
+}
+
+// Queue represents a named command queue for a task.
+type Queue struct {
+	TaskID    string
+	Name      string
+	Mode      string // "serial" or "concurrent"
+	Protected bool
+	Status    string // "active" or "stopped"
+	CreatedAt time.Time
+}
+
+// Command represents a queued command for execution.
+type Command struct {
+	ID            string
+	TaskID        string
+	QueueName     string
+	Command       []string
+	Env           map[string]string
+	Status        string // "pending", "running", "completed", "failed"
+	ExitCode      *int
+	StopOnFailure bool
+	OutputPath    string
+	CreatedAt     time.Time
+	StartedAt     *time.Time
+	FinishedAt    *time.Time
 }
 
 // StatusChangeCallback is called when a task's status changes.
@@ -124,6 +168,34 @@ func (s *State) migrate() error {
 
 	CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_task_id ON snapshots(task_id);
+
+	CREATE TABLE IF NOT EXISTS queues (
+		task_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		mode TEXT NOT NULL DEFAULT 'serial',
+		protected BOOLEAN NOT NULL DEFAULT 0,
+		status TEXT NOT NULL DEFAULT 'active',
+		created_at DATETIME NOT NULL,
+		PRIMARY KEY (task_id, name)
+	);
+
+	CREATE TABLE IF NOT EXISTS commands (
+		id TEXT PRIMARY KEY,
+		task_id TEXT NOT NULL,
+		queue_name TEXT NOT NULL,
+		command TEXT NOT NULL,
+		env TEXT,
+		status TEXT NOT NULL DEFAULT 'pending',
+		exit_code INTEGER,
+		stop_on_failure BOOLEAN NOT NULL DEFAULT 1,
+		output_path TEXT,
+		created_at DATETIME NOT NULL,
+		started_at DATETIME,
+		finished_at DATETIME
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_commands_task_queue ON commands(task_id, queue_name);
+	CREATE INDEX IF NOT EXISTS idx_commands_status ON commands(status);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -219,7 +291,7 @@ func (s *State) GetTask(id string) (*Task, error) {
 		&stoppedAt,
 	)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("task not found: %s", id)
+		return nil, fmt.Errorf("%w: %s", ErrTaskNotFound, id)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get task: %w", err)
@@ -345,7 +417,7 @@ func (s *State) UpdateTaskStatus(id, status string) error {
 	var oldStatus string
 	err := s.db.QueryRow("SELECT status FROM tasks WHERE id = ?", id).Scan(&oldStatus)
 	if err == sql.ErrNoRows {
-		return fmt.Errorf("task not found: %s", id)
+		return fmt.Errorf("%w: %s", ErrTaskNotFound, id)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to get current task status: %w", err)
@@ -407,7 +479,7 @@ func (s *State) UpdateTaskVMID(id, vmid string) error {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 	if rowsAffected == 0 {
-		return fmt.Errorf("task not found: %s", id)
+		return fmt.Errorf("%w: %s", ErrTaskNotFound, id)
 	}
 
 	return nil
@@ -485,7 +557,7 @@ func (s *State) UpdateTaskCID(id string, cid uint32) error {
 	}
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected == 0 {
-		return fmt.Errorf("task not found: %s", id)
+		return fmt.Errorf("%w: %s", ErrTaskNotFound, id)
 	}
 	return nil
 }
@@ -499,7 +571,7 @@ func (s *State) UpdateTaskVsockPath(id string, vsockPath string) error {
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("task not found: %s", id)
+		return fmt.Errorf("%w: %s", ErrTaskNotFound, id)
 	}
 	return nil
 }
@@ -518,7 +590,7 @@ func (s *State) DeleteTask(id string) error {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 	if rowsAffected == 0 {
-		return fmt.Errorf("task not found: %s", id)
+		return fmt.Errorf("%w: %s", ErrTaskNotFound, id)
 	}
 
 	return nil
@@ -568,4 +640,327 @@ func (s *State) ListTaskSnapshots(taskID string) ([]SnapshotRecord, error) {
 	}
 
 	return snapshots, nil
+}
+
+// CreateQueue inserts a new queue into the database.
+func (s *State) CreateQueue(q *Queue) error {
+	query := `
+	INSERT INTO queues (task_id, name, mode, protected, status, created_at)
+	VALUES (?, ?, ?, ?, ?, ?)
+	`
+	_, err := s.db.Exec(query, q.TaskID, q.Name, q.Mode, q.Protected, q.Status, q.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to create queue: %w", err)
+	}
+	return nil
+}
+
+// GetQueue retrieves a queue by task ID and name.
+func (s *State) GetQueue(taskID, name string) (*Queue, error) {
+	query := `
+	SELECT task_id, name, mode, protected, status, created_at
+	FROM queues
+	WHERE task_id = ? AND name = ?
+	`
+	row := s.db.QueryRow(query, taskID, name)
+
+	q := &Queue{}
+	err := row.Scan(&q.TaskID, &q.Name, &q.Mode, &q.Protected, &q.Status, &q.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("%w: %s/%s", ErrQueueNotFound, taskID, name)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get queue: %w", err)
+	}
+	return q, nil
+}
+
+// ListQueues returns all queues for a given task.
+func (s *State) ListQueues(taskID string) ([]*Queue, error) {
+	query := `
+	SELECT task_id, name, mode, protected, status, created_at
+	FROM queues
+	WHERE task_id = ?
+	ORDER BY created_at ASC
+	`
+	rows, err := s.db.Query(query, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list queues: %w", err)
+	}
+	defer rows.Close()
+
+	var queues []*Queue
+	for rows.Next() {
+		q := &Queue{}
+		if err := rows.Scan(&q.TaskID, &q.Name, &q.Mode, &q.Protected, &q.Status, &q.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan queue: %w", err)
+		}
+		queues = append(queues, q)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating queues: %w", err)
+	}
+
+	return queues, nil
+}
+
+// UpdateQueueStatus updates the status of a queue.
+func (s *State) UpdateQueueStatus(taskID, name, status string) error {
+	query := `UPDATE queues SET status = ? WHERE task_id = ? AND name = ?`
+	result, err := s.db.Exec(query, status, taskID, name)
+	if err != nil {
+		return fmt.Errorf("failed to update queue status: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("%w: %s/%s", ErrQueueNotFound, taskID, name)
+	}
+	return nil
+}
+
+// DestroyQueue deletes a queue. Returns an error if the queue is protected.
+func (s *State) DestroyQueue(taskID, name string) error {
+	q, err := s.GetQueue(taskID, name)
+	if err != nil {
+		return err
+	}
+	if q.Protected {
+		return fmt.Errorf("%w: %s/%s", ErrQueueProtected, taskID, name)
+	}
+
+	_, err = s.db.Exec(`DELETE FROM queues WHERE task_id = ? AND name = ?`, taskID, name)
+	if err != nil {
+		return fmt.Errorf("failed to destroy queue: %w", err)
+	}
+	return nil
+}
+
+// DeleteQueuesByTask removes all queues for a given task.
+func (s *State) DeleteQueuesByTask(taskID string) error {
+	_, err := s.db.Exec(`DELETE FROM queues WHERE task_id = ?`, taskID)
+	if err != nil {
+		return fmt.Errorf("failed to delete queues by task: %w", err)
+	}
+	return nil
+}
+
+// CreateCommand inserts a new command into the database.
+// The Command and Env fields are JSON-encoded.
+func (s *State) CreateCommand(c *Command) error {
+	cmdJSON, err := json.Marshal(c.Command)
+	if err != nil {
+		return fmt.Errorf("failed to marshal command: %w", err)
+	}
+
+	var envJSON []byte
+	if c.Env != nil {
+		envJSON, err = json.Marshal(c.Env)
+		if err != nil {
+			return fmt.Errorf("failed to marshal env: %w", err)
+		}
+	}
+
+	query := `
+	INSERT INTO commands (id, task_id, queue_name, command, env, status, exit_code, stop_on_failure, output_path, created_at, started_at, finished_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = s.db.Exec(query,
+		c.ID,
+		c.TaskID,
+		c.QueueName,
+		string(cmdJSON),
+		nullableString(envJSON),
+		c.Status,
+		c.ExitCode,
+		c.StopOnFailure,
+		c.OutputPath,
+		c.CreatedAt,
+		c.StartedAt,
+		c.FinishedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create command: %w", err)
+	}
+	return nil
+}
+
+// nullableString converts a byte slice to sql.NullString.
+func nullableString(b []byte) sql.NullString {
+	if b == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: string(b), Valid: true}
+}
+
+// GetCommand retrieves a command by ID.
+func (s *State) GetCommand(id string) (*Command, error) {
+	query := `
+	SELECT id, task_id, queue_name, command, env, status, exit_code, stop_on_failure, output_path, created_at, started_at, finished_at
+	FROM commands
+	WHERE id = ?
+	`
+	row := s.db.QueryRow(query, id)
+	return scanCommand(row)
+}
+
+func scanCommand(s scanner) (*Command, error) {
+	c := &Command{}
+	var cmdJSON string
+	var envJSON sql.NullString
+	var exitCode sql.NullInt64
+	var outputPath sql.NullString
+	var startedAt sql.NullTime
+	var finishedAt sql.NullTime
+
+	err := s.Scan(
+		&c.ID,
+		&c.TaskID,
+		&c.QueueName,
+		&cmdJSON,
+		&envJSON,
+		&c.Status,
+		&exitCode,
+		&c.StopOnFailure,
+		&outputPath,
+		&c.CreatedAt,
+		&startedAt,
+		&finishedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, ErrCommandNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan command: %w", err)
+	}
+
+	if err := json.Unmarshal([]byte(cmdJSON), &c.Command); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal command: %w", err)
+	}
+	if envJSON.Valid && envJSON.String != "" {
+		if err := json.Unmarshal([]byte(envJSON.String), &c.Env); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal env: %w", err)
+		}
+	}
+	if exitCode.Valid {
+		v := int(exitCode.Int64)
+		c.ExitCode = &v
+	}
+	if outputPath.Valid {
+		c.OutputPath = outputPath.String
+	}
+	if startedAt.Valid {
+		c.StartedAt = &startedAt.Time
+	}
+	if finishedAt.Valid {
+		c.FinishedAt = &finishedAt.Time
+	}
+
+	return c, nil
+}
+
+// ListCommands returns all commands for a given task and queue, ordered by created_at ASC.
+func (s *State) ListCommands(taskID, queueName string) ([]*Command, error) {
+	query := `
+	SELECT id, task_id, queue_name, command, env, status, exit_code, stop_on_failure, output_path, created_at, started_at, finished_at
+	FROM commands
+	WHERE task_id = ? AND queue_name = ?
+	ORDER BY created_at ASC
+	`
+	rows, err := s.db.Query(query, taskID, queueName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list commands: %w", err)
+	}
+	defer rows.Close()
+
+	var cmds []*Command
+	for rows.Next() {
+		c, err := scanCommand(rows)
+		if err != nil {
+			return nil, err
+		}
+		cmds = append(cmds, c)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating commands: %w", err)
+	}
+
+	return cmds, nil
+}
+
+// UpdateCommandStatus updates the status of a command.
+// If the status becomes "running", started_at is set to now.
+func (s *State) UpdateCommandStatus(id, status string) error {
+	var query string
+	var args []interface{}
+
+	if status == "running" {
+		query = `UPDATE commands SET status = ?, started_at = ? WHERE id = ?`
+		args = []interface{}{status, time.Now(), id}
+	} else {
+		query = `UPDATE commands SET status = ? WHERE id = ?`
+		args = []interface{}{status, id}
+	}
+
+	result, err := s.db.Exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to update command status: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("%w: %s", ErrCommandNotFound, id)
+	}
+	return nil
+}
+
+// UpdateCommandExit sets the exit code, final status, and finished_at for a command.
+// Status is set to "completed" if exitCode == 0, "failed" otherwise.
+func (s *State) UpdateCommandExit(id string, exitCode int) error {
+	status := "completed"
+	if exitCode != 0 {
+		status = "failed"
+	}
+
+	query := `UPDATE commands SET exit_code = ?, status = ?, finished_at = ? WHERE id = ?`
+	result, err := s.db.Exec(query, exitCode, status, time.Now(), id)
+	if err != nil {
+		return fmt.Errorf("failed to update command exit: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("%w: %s", ErrCommandNotFound, id)
+	}
+	return nil
+}
+
+// DeleteCommandsByQueue removes all commands for a given task queue.
+func (s *State) DeleteCommandsByQueue(taskID, queueName string) error {
+	_, err := s.db.Exec(`DELETE FROM commands WHERE task_id = ? AND queue_name = ?`, taskID, queueName)
+	if err != nil {
+		return fmt.Errorf("failed to delete commands by queue: %w", err)
+	}
+	return nil
+}
+
+// FlushQueueCommands deletes all pending commands for a given task queue.
+// Non-pending commands (running, completed, failed) are preserved.
+func (s *State) FlushQueueCommands(taskID, queueName string) error {
+	_, err := s.db.Exec(
+		`DELETE FROM commands WHERE task_id = ? AND queue_name = ? AND status = 'pending'`,
+		taskID, queueName,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to flush queue commands: %w", err)
+	}
+	return nil
+}
+
+// DeleteCommandsByTask removes all commands for a given task.
+func (s *State) DeleteCommandsByTask(taskID string) error {
+	_, err := s.db.Exec(`DELETE FROM commands WHERE task_id = ?`, taskID)
+	if err != nil {
+		return fmt.Errorf("failed to delete commands by task: %w", err)
+	}
+	return nil
 }

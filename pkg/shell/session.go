@@ -5,19 +5,12 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"strconv"
 	"sync"
+	"syscall"
 
 	"github.com/creack/pty"
 )
-
-// ValidateUser checks if a user exists on the system
-func ValidateUser(username string) error {
-	_, err := user.Lookup(username)
-	if err != nil {
-		return fmt.Errorf("user %q not found: %w", username, err)
-	}
-	return nil
-}
 
 // Session represents an active shell session
 type Session struct {
@@ -28,20 +21,81 @@ type Session struct {
 	closed  bool
 }
 
-// NewSession creates a new shell session for the given user.
-// Requires root privileges to use login -f.
-// Sets TERM environment variable and initial window size.
-func NewSession(username, term string, cols, rows int) (*Session, error) {
-	if err := ValidateUser(username); err != nil {
-		return nil, err
+// NewSession creates a new session that executes the given command.
+// command is required; returns an error if nil or empty.
+// env variables are merged on top of the system environment.
+// When running as root and username is non-empty, drops privileges
+// to that user via SysProcAttr.Credential.
+func NewSession(username, term string, cols, rows int, command []string, env map[string]string) (*Session, error) {
+	if len(command) == 0 {
+		return nil, fmt.Errorf("command is required")
 	}
 
-	// Use login -f for a proper login shell with full environment setup
-	// This handles PAM, sets up environment variables, etc.
-	cmd := exec.Command("login", "-f", username)
+	cmd := exec.Command(command[0], command[1:]...)
 
-	// Set TERM environment variable
-	cmd.Env = append(os.Environ(), "TERM="+term)
+	// Drop privileges if running as root and username is specified
+	if username != "" && os.Getuid() == 0 {
+		u, err := user.Lookup(username)
+		if err != nil {
+			return nil, fmt.Errorf("lookup user %q: %w", username, err)
+		}
+		uid, err := strconv.ParseUint(u.Uid, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("parse uid: %w", err)
+		}
+		gid, err := strconv.ParseUint(u.Gid, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("parse gid: %w", err)
+		}
+
+		// Resolve supplementary groups so the child doesn't inherit root's groups
+		gids, err := u.GroupIds()
+		if err != nil {
+			return nil, fmt.Errorf("lookup groups for %q: %w", username, err)
+		}
+		var groups []uint32
+		for _, gidStr := range gids {
+			g, err := strconv.ParseUint(gidStr, 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("parse supplementary gid: %w", err)
+			}
+			groups = append(groups, uint32(g))
+		}
+
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Credential: &syscall.Credential{
+				Uid:    uint32(uid),
+				Gid:    uint32(gid),
+				Groups: groups,
+			},
+		}
+		cmd.Dir = u.HomeDir
+
+		// Build a clean environment instead of inheriting root's env.
+		// This prevents LD_PRELOAD and other dangerous variables from leaking.
+		// Caller-provided env is applied first so that mandatory values
+		// (PATH, HOME, etc.) cannot be overridden.
+		var cmdEnv []string
+		for k, v := range env {
+			cmdEnv = append(cmdEnv, k+"="+v)
+		}
+		cmdEnv = append(cmdEnv,
+			"PATH=/usr/local/bin:/usr/bin:/bin",
+			"TERM="+term,
+			"HOME="+u.HomeDir,
+			"USER="+username,
+			"LOGNAME="+username,
+		)
+		cmd.Env = cmdEnv
+	} else {
+		// Not dropping privileges — use system env with overlay
+		cmdEnv := os.Environ()
+		cmdEnv = append(cmdEnv, "TERM="+term)
+		for k, v := range env {
+			cmdEnv = append(cmdEnv, k+"="+v)
+		}
+		cmd.Env = cmdEnv
+	}
 
 	// Start with PTY
 	ptyFile, err := pty.StartWithSize(cmd, &pty.Winsize{

@@ -142,6 +142,58 @@ func TestOpenMessage_Unmarshal(t *testing.T) {
 	}
 }
 
+func TestOpenMessageWithCommand(t *testing.T) {
+	msg := OpenMessage{
+		User:    "mooby",
+		Term:    "xterm-256color",
+		Cols:    120,
+		Rows:    40,
+		Command: []string{"claude", "-p", "implement OAuth"},
+		Env:     map[string]string{"CLAUDE_MODEL": "opus"},
+	}
+
+	data, err := msg.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var decoded OpenMessage
+	if err := decoded.Unmarshal(data); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(decoded.Command) != 3 || decoded.Command[0] != "claude" {
+		t.Errorf("command = %v, want [claude -p implement OAuth]", decoded.Command)
+	}
+	if decoded.Env["CLAUDE_MODEL"] != "opus" {
+		t.Errorf("env CLAUDE_MODEL = %q, want %q", decoded.Env["CLAUDE_MODEL"], "opus")
+	}
+}
+
+func TestOpenMessageCommandRequired(t *testing.T) {
+	msg := OpenMessage{
+		User: "mooby",
+		Term: "xterm",
+		Cols: 80,
+		Rows: 24,
+		// Command intentionally empty
+	}
+
+	data, err := msg.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var decoded OpenMessage
+	if err := decoded.Unmarshal(data); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(decoded.Command) != 0 {
+		t.Errorf("expected empty command, got %v", decoded.Command)
+	}
+}
+
 func TestResizeMessage(t *testing.T) {
 	msg := ResizeMessage{Cols: 120, Rows: 40}
 	data, err := msg.Marshal()

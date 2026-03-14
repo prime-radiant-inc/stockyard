@@ -179,3 +179,130 @@ func (c *Client) StreamLogs(ctx context.Context, taskID string, follow bool, tai
 		fmt.Fprintf(out, "%s %s\n", entry.Timestamp, entry.Line)
 	}
 }
+
+// CreateQueue creates a new command queue for a task.
+func (c *Client) CreateQueue(ctx context.Context, taskID, queueName, mode string) error {
+	_, err := c.client.CreateQueue(ctx, &pb.CreateQueueRequest{
+		TaskId:    taskID,
+		QueueName: queueName,
+		Mode:      mode,
+	})
+	return err
+}
+
+// ListQueues returns all queues for a task.
+func (c *Client) ListQueues(ctx context.Context, taskID string) ([]*pb.QueueInfo, error) {
+	resp, err := c.client.ListQueues(ctx, &pb.ListQueuesRequest{TaskId: taskID})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Queues, nil
+}
+
+// GetQueueStatus returns info about a queue and its commands.
+func (c *Client) GetQueueStatus(ctx context.Context, taskID, queueName string) (*pb.QueueInfo, []*pb.CommandInfo, error) {
+	resp, err := c.client.GetQueueStatus(ctx, &pb.GetQueueStatusRequest{
+		TaskId:    taskID,
+		QueueName: queueName,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return resp.Queue, resp.Commands, nil
+}
+
+// FlushQueue removes all pending commands from a queue.
+func (c *Client) FlushQueue(ctx context.Context, taskID, queueName string) error {
+	_, err := c.client.FlushQueue(ctx, &pb.FlushQueueRequest{
+		TaskId:    taskID,
+		QueueName: queueName,
+	})
+	return err
+}
+
+// ResumeQueue resumes a stopped serial queue.
+func (c *Client) ResumeQueue(ctx context.Context, taskID, queueName string) error {
+	_, err := c.client.ResumeQueue(ctx, &pb.ResumeQueueRequest{
+		TaskId:    taskID,
+		QueueName: queueName,
+	})
+	return err
+}
+
+// DestroyQueue destroys a queue and all its commands.
+func (c *Client) DestroyQueue(ctx context.Context, taskID, queueName string) error {
+	_, err := c.client.DestroyQueue(ctx, &pb.DestroyQueueRequest{
+		TaskId:    taskID,
+		QueueName: queueName,
+	})
+	return err
+}
+
+// QueueCommand enqueues a command for execution in a task's queue.
+func (c *Client) QueueCommand(ctx context.Context, taskID, queueName string, command []string, env map[string]string, stopOnFailure bool) (string, error) {
+	resp, err := c.client.QueueCommand(ctx, &pb.QueueCommandRequest{
+		TaskId:        taskID,
+		QueueName:     queueName,
+		Command:       command,
+		Env:           env,
+		StopOnFailure: stopOnFailure,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.CommandId, nil
+}
+
+// GetCommandStatus returns the status of a specific command.
+func (c *Client) GetCommandStatus(ctx context.Context, commandID string) (*pb.CommandInfo, error) {
+	resp, err := c.client.GetCommandStatus(ctx, &pb.GetCommandStatusRequest{CommandId: commandID})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Command, nil
+}
+
+// StreamQueueOutput streams output from all commands in a queue to the given writer.
+func (c *Client) StreamQueueOutput(ctx context.Context, taskID, queueName string, follow bool, out io.Writer) error {
+	stream, err := c.client.StreamQueueOutput(ctx, &pb.StreamQueueOutputRequest{
+		TaskId:    taskID,
+		QueueName: queueName,
+		Follow:    follow,
+	})
+	if err != nil {
+		return err
+	}
+
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		out.Write(chunk.Data)
+	}
+}
+
+// StreamCommandOutput streams output from a command to the given writer.
+func (c *Client) StreamCommandOutput(ctx context.Context, commandID string, follow bool, out io.Writer) error {
+	stream, err := c.client.StreamCommandOutput(ctx, &pb.StreamCommandOutputRequest{
+		CommandId: commandID,
+		Follow:    follow,
+	})
+	if err != nil {
+		return err
+	}
+
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		out.Write(chunk.Data)
+	}
+}

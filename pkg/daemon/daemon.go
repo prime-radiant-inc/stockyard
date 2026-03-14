@@ -28,9 +28,10 @@ type Daemon struct {
 	cfg       *config.Config
 	secrets   secrets.Provider
 	zfs       *zfs.Manager
-	state     *State
-	tasks     *TaskManager
-	snapshots *SnapshotService
+	state        *State
+	tasks        *TaskManager
+	queueManager *QueueManager
+	snapshots    *SnapshotService
 	dhcp      *network.DHCPServer
 	ipPool    *network.IPPool
 
@@ -101,6 +102,7 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 		}
 	}
 	d.tasks = NewTaskManager(d, fcConfig)
+	d.queueManager = NewQueueManager(state, cfg)
 
 	// Initialize DHCP server
 	dhcpConfig := network.DHCPConfig{
@@ -409,6 +411,11 @@ func (d *Daemon) Config() *config.Config {
 // Tasks returns the daemon's task manager.
 func (d *Daemon) Tasks() *TaskManager {
 	return d.tasks
+}
+
+// QueueManager returns the daemon's queue manager.
+func (d *Daemon) QueueManager() *QueueManager {
+	return d.queueManager
 }
 
 // SetTaskManager sets the daemon's task manager.

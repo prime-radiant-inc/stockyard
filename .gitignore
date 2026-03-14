@@ -2,6 +2,7 @@ work/
 bin/
 /stockyard
 /stockyardd
+/stockyard-shell
 .worktrees/
 
 # VM image build artifacts

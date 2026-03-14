@@ -115,9 +115,10 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 		return
 	}
 
-	// Validate required fields
-	if openMsg.User == "" {
-		sendError(conn, "user is required")
+	// Validate command is present
+	if len(openMsg.Command) == 0 {
+		log.Printf("No command specified in open message")
+		sendError(conn, "command is required")
 		return
 	}
 	if openMsg.Cols <= 0 {
@@ -130,11 +131,11 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 		openMsg.Term = "xterm"
 	}
 
-	log.Printf("Opening shell for user %q (term=%s, size=%dx%d)",
-		openMsg.User, openMsg.Term, openMsg.Cols, openMsg.Rows)
+	log.Printf("Executing command for user %q: %v (term=%s, size=%dx%d)",
+		openMsg.User, openMsg.Command, openMsg.Term, openMsg.Cols, openMsg.Rows)
 
-	// Create session
-	session, err := shell.NewSession(openMsg.User, openMsg.Term, openMsg.Cols, openMsg.Rows)
+	// Create session with the specified command
+	session, err := shell.NewSession(openMsg.User, openMsg.Term, openMsg.Cols, openMsg.Rows, openMsg.Command, openMsg.Env)
 	if err != nil {
 		log.Printf("Failed to create session: %v", err)
 		sendError(conn, fmt.Sprintf("failed to create session: %v", err))
@@ -147,35 +148,38 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 	defer connCancel()
 
 	// Bridge I/O between vsock and PTY
-	var ioWg sync.WaitGroup
+	var ptyDone sync.WaitGroup // tracks the PTY→vsock goroutine
 
 	// PTY -> vsock (stdout)
-	ioWg.Add(1)
+	ptyDone.Add(1)
 	go func() {
-		defer ioWg.Done()
+		defer ptyDone.Done()
 		defer connCancel()
 		buf := make([]byte, 4096)
 		for {
 			n, err := session.PTY().Read(buf)
+			// Always send data before checking error — io.Reader can
+			// return n > 0 alongside a non-nil error (e.g. EIO from
+			// a PTY whose slave process just exited). Dropping that
+			// final chunk is the root cause of output loss for fast
+			// commands.
+			if n > 0 {
+				if werr := shell.WriteMessage(conn, shell.MsgData, buf[:n]); werr != nil {
+					log.Printf("vsock write error: %v", werr)
+					return
+				}
+			}
 			if err != nil {
 				if err != io.EOF {
 					log.Printf("PTY read error: %v", err)
 				}
 				return
 			}
-			if n > 0 {
-				if err := shell.WriteMessage(conn, shell.MsgData, buf[:n]); err != nil {
-					log.Printf("vsock write error: %v", err)
-					return
-				}
-			}
 		}
 	}()
 
 	// vsock -> PTY (stdin) + handle control messages
-	ioWg.Add(1)
 	go func() {
-		defer ioWg.Done()
 		defer connCancel()
 		for {
 			select {
@@ -224,15 +228,23 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 
 	log.Printf("Shell exited with code %d", exitCode)
 
+	// Wait for the PTY→vsock goroutine to drain remaining output before
+	// sending MsgExit. The PTY read will return EOF once the process is
+	// gone and the kernel buffer is empty. Without this, fast commands
+	// (like "echo hello") lose output because MsgExit arrives before MsgData.
+	// We only wait for the PTY reader, not the vsock→PTY goroutine (which
+	// blocks on ReadMessage and won't exit until we cancel the context).
+	ptyDone.Wait()
+
 	// Send exit message (best effort)
 	exitMsg := shell.ExitMessage{Code: exitCode}
 	if exitPayload, err := exitMsg.Marshal(); err == nil {
 		shell.WriteMessage(conn, shell.MsgExit, exitPayload)
 	}
 
-	// Cancel to stop I/O goroutines
+	// Cancel context so the vsock→PTY goroutine exits its read loop.
+	// It will terminate fully when defer conn.Close() fires on return.
 	connCancel()
-	ioWg.Wait()
 }
 
 func sendError(conn net.Conn, message string) {
