@@ -1,0 +1,15 @@
+[Unit]
+Description=LLM API Logging Proxy
+After=network.target
+
+[Service]
+Type=simple
+User=mooby
+ExecStart=/usr/local/bin/llm-proxy --port 12071
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
