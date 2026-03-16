@@ -207,7 +207,7 @@ else
             # Connect to Tailscale in BACKGROUND (non-blocking)
             log_timing "Starting Tailscale connection (background)..."
             (
-                if tailscale up --authkey="$TS_AUTH_KEY" --hostname="$HOSTNAME" --accept-routes --ssh --ephemeral --timeout=30s 2>&1; then
+                if tailscale up --authkey="$TS_AUTH_KEY" --hostname="$HOSTNAME" --accept-routes --ssh --timeout=30s 2>&1; then
                     TS_IP=$(tailscale ip -4 2>/dev/null || echo "unknown")
                     echo "[$(date +%s.%N)] Tailscale connected: $TS_IP" >> /var/log/stockyard/tailscale.log
                 else
