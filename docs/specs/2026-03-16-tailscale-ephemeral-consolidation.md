@@ -2,61 +2,46 @@
 
 **Issue:** PRI-710 — Stockyard VMs not registering as ephemeral Tailscale nodes
 **Date:** 2026-03-16
+**Status:** Done
 
 ## Problem
 
 Stockyard VM instances persist in the Tailscale admin panel after destruction. They should be ephemeral nodes that auto-remove when disconnected.
 
-Root cause: the host-side pre-registration path (`preregister.go`) runs `tailscale up` without `--ephemeral`. Since this is the primary registration path, nodes are created as persistent. Additionally, there are redundant `tailscale up` invocations across four code paths — a result of evolutionary layering where newer approaches were added without removing older ones.
+## Root Cause
 
-## Current State
+Two issues:
 
-Five places generate `tailscale up` commands:
+1. **The Tailscale auth key was not an ephemeral key.** In modern Tailscale (1.x+), ephemeral behavior is a property of the auth key, not a CLI flag. The `--ephemeral` flag to `tailscale up` no longer exists. Keys must be generated with the "Ephemeral" option in the Tailscale admin console.
 
-| Path | Location | `--ephemeral`? | Status |
-|------|----------|----------------|--------|
-| Pre-registration (host) | `pkg/tailscale/preregister.go:84` | No | **Active — primary path** |
-| Cloud-init runcmd (firecracker) | `pkg/firecracker/cloudinit.go:106` | No | Active — redundant with init script |
-| Cloud-init runcmd (flintlock) | `pkg/flintlock/cloudinit.go:105` | No | Active — redundant with init script |
-| Init script fallback (VM) | `vm-image/init/stockyard-init.sh:210` | Yes | Active — fallback path |
-| Cloud-init template | `vm-image/cloud-init/user-data.template:87` | No | Dead code |
-| Helper method | `pkg/tailscale/tailscale.go:49` | No | Dead code |
+2. **Redundant `tailscale up` code paths.** Four separate places generated `tailscale up` commands — a result of evolutionary layering where newer approaches were added without removing older ones. This made it unclear which path actually ran and created a risk of double-registration.
 
-The VM boot sequence (in `pkg/daemon/tasks.go`) runs pre-registration AND generates cloud-init with a `tailscale up` runcmd. Inside the VM, the init script also handles Tailscale. This creates up to three competing `tailscale up` invocations for a single VM.
+## What Was Done
 
-## Design
+### Auth key fix
 
-### Single authority: the init script
+Replaced the Tailscale auth key (in AWS SSM Parameter Store) with an ephemeral auth key generated from the Tailscale admin console. Nodes registered with this key auto-remove from the tailnet after disconnecting.
 
-The init script (`stockyard-init.sh`) becomes the sole owner of Tailscale setup inside the VM. It already handles both cases correctly:
+### Code consolidation
 
-- **Pre-registered state exists:** Start `tailscaled` with the state file, wait for reconnection. No `tailscale up` needed.
-- **No state (fallback):** Run `tailscale up --authkey=... --ephemeral` to register fresh.
+Made the VM init script (`stockyard-init.sh`) the single authority for Tailscale setup inside the VM:
 
-### Changes
+- **Removed `tailscale up` from cloud-init runcmd** in both `pkg/firecracker/cloudinit.go` and `pkg/flintlock/cloudinit.go`. The init script handles Tailscale via MMDS metadata.
+- **Removed `TailscaleAuthKey`/`TailscaleHostname` fields** from `CloudInitConfig` structs (firecracker and flintlock). The auth key reaches the VM via MMDS metadata, not cloud-init.
+- **Stopped passing Tailscale fields** to `CloudInitConfig` in `pkg/daemon/tasks.go`.
+- **Removed `--ephemeral` flag** from `preregister.go` and `stockyard-init.sh` — this flag doesn't exist in modern Tailscale and was causing pre-registration to fail.
 
-1. **`pkg/tailscale/preregister.go`** — Add `--ephemeral` to `tailscale up` args (line 84-93). This is the bug fix.
+### Dead code removal
 
-2. **`pkg/firecracker/cloudinit.go`** — Remove the Tailscale `tailscale up` command from cloud-init runcmd generation. The init script handles this.
+- Deleted `vm-image/cloud-init/user-data.template` and `meta-data.template` (unreferenced Go templates using legacy `vscode` user)
+- Removed `GenerateCloudInitScript` from `pkg/tailscale/tailscale.go` (defined but never called)
 
-3. **`pkg/flintlock/cloudinit.go`** — Same as above.
+## What We Learned
 
-4. **`pkg/daemon/tasks.go`** — Stop passing `TailscaleAuthKey` to `CloudInitConfig` (it's only used to generate the now-removed runcmd). The auth key still reaches the VM via MMDS metadata for the init script's fallback path.
+- `--ephemeral` is not a `tailscale up` CLI flag in modern Tailscale. Ephemeral behavior is controlled by the auth key type.
+- The `--no-tailscale` flow is unaffected — it gates on `tailscaleAuthKey` being empty, which skips pre-registration, MMDS auth key, and all init script Tailscale paths.
+- `RemoveDevice` in `tailscale.go` is a no-op that relies on ephemeral key expiration — which now actually works with the correct key type.
 
-5. **Delete dead code:**
-   - `vm-image/cloud-init/user-data.template`
-   - `GenerateCloudInitScript` method from `pkg/tailscale/tailscale.go`
+## Verified
 
-6. **`pkg/tailscale/tailscale.go:RemoveDevice`** — No change. The function documents that it relies on ephemeral key expiration, which will now actually work.
-
-### What stays the same
-
-- The MMDS metadata pipeline (auth key and pre-registered state passed to VM)
-- The init script's two-branch logic
-- `RemoveDevice` behavior (relies on ephemeral expiry)
-- `CloudInitConfig` struct still has `TailscaleAuthKey`/`TailscaleHostname` fields (removing them is optional cleanup; they become unused by the firecracker provider but may still be referenced by flintlock)
-
-### Testing
-
-- Existing `pkg/flintlock/cloudinit_test.go` tests will need updating to reflect that `tailscale up` is no longer in runcmd output
-- Verify `preregister.go` change with existing `pkg/tailscale/preregister_test.go`
+E2E tested on stockyard-eval instance: VM registered as ephemeral in the Tailscale admin console.
