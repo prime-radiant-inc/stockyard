@@ -14,8 +14,6 @@ type CloudInitConfig struct {
 	Hostname          string
 	Environment       map[string]string
 	SSHAuthorizedKeys []string
-	TailscaleAuthKey  string
-	TailscaleHostname string
 	WorkspacePath     string
 	PostCreateScript  string
 }
@@ -95,16 +93,6 @@ func (c *CloudInitConfig) Generate() (string, error) {
 
 	// Create stockyard directory
 	cmds = append(cmds, "mkdir -p /etc/stockyard")
-
-	// Set up Tailscale if auth key provided
-	if c.TailscaleAuthKey != "" {
-		tsHostname := c.TailscaleHostname
-		if tsHostname == "" {
-			tsHostname = c.Hostname
-		}
-		cmds = append(cmds, fmt.Sprintf("tailscale up --authkey=%s --hostname=%s --accept-routes --ssh",
-			c.TailscaleAuthKey, tsHostname))
-	}
 
 	// Run post-create script if provided
 	if c.PostCreateScript != "" {
