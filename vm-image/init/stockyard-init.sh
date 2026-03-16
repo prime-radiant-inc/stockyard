@@ -236,10 +236,8 @@ if [ -d /workspace ]; then
 fi
 
 # Setup Claude Code hooks for VM user
-if [ -f /etc/stockyard/claude-hooks.json ]; then
-    su - "${VM_USER}" -c "/usr/local/bin/setup-claude-hooks.sh" 2>/dev/null || true
-    log_timing "Claude hooks configured"
-fi
+su - "${VM_USER}" -c "/usr/local/bin/setup-claude-hooks.sh" 2>/dev/null || true
+log_timing "Claude hooks configured"
 
 # Create run directory for snapshot socket
 mkdir -p /run/stockyard
