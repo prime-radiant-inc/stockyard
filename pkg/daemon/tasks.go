@@ -187,11 +187,9 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 	// Generate cloud-init config
 	cloudInitCfg := &firecracker.CloudInitConfig{
-		Hostname:          hostname,
-		Environment:       env,
-		TailscaleAuthKey:  tailscaleAuthKey,
-		TailscaleHostname: tailscaleHostname,
-		WorkspacePath:     workspacePath,
+		Hostname:      hostname,
+		Environment:   env,
+		WorkspacePath: workspacePath,
 	}
 
 	cloudInitData, err := cloudInitCfg.Generate()
