@@ -89,6 +89,7 @@ func (p *PreRegistrar) PreRegister(ctx context.Context, hostname string) (*PreRe
 		"--hostname="+hostname,
 		"--accept-routes",
 		"--ssh",
+		"--ephemeral",
 		"--timeout=30s",
 	)
 
