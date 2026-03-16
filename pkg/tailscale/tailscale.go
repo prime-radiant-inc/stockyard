@@ -44,10 +44,6 @@ func NewManager(authKey string) (*Manager, error) {
 	return &Manager{authKey: authKey}, nil
 }
 
-// GenerateCloudInitScript generates the cloud-init script for Tailscale setup
-func (m *Manager) GenerateCloudInitScript(hostname string) string {
-	return fmt.Sprintf(`tailscale up --authkey=%s --hostname=%s --accept-routes --ssh`, m.authKey, hostname)
-}
 
 // GetAuthKey returns the auth key (for cloud-init injection)
 func (m *Manager) GetAuthKey() string {
