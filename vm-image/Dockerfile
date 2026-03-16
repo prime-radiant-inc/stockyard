@@ -134,6 +134,13 @@ RUN systemctl disable tailscaled.service 2>/dev/null || true
 # Note: Our custom Firecracker kernel includes CONFIG_TUN and CONFIG_NF_TABLES,
 # so tailscaled uses native TUN mode (no userspace networking needed)
 
+# llm-proxy (LLM API logging proxy)
+ARG LLM_PROXY_VERSION=v0.7.1
+ARG TARGETARCH=amd64
+RUN curl -fsSL "https://github.com/prime-radiant-inc/llm-proxy/releases/download/${LLM_PROXY_VERSION}/llm-proxy-linux-${TARGETARCH}" \
+    -o /usr/local/bin/llm-proxy \
+    && chmod +x /usr/local/bin/llm-proxy
+
 # ============================================================================
 # Section 4: Coding Agents
 # ============================================================================
@@ -202,6 +209,10 @@ RUN chmod +x /usr/local/bin/stockyard-shell
 # Add the systemd service for stockyard-shell
 COPY init/stockyard-shell.service /etc/systemd/system/stockyard-shell.service
 RUN systemctl enable stockyard-shell.service 2>/dev/null || true
+
+# Add llm-proxy service for LLM API logging
+COPY init/llm-proxy.service /etc/systemd/system/llm-proxy.service
+RUN systemctl enable llm-proxy.service 2>/dev/null || true
 
 # Copy Claude Code hooks setup script
 COPY scripts/setup-claude-hooks.sh /usr/local/bin/setup-claude-hooks.sh
@@ -310,6 +321,12 @@ RUN cd /tmp/linux-${KERNEL_VERSION} \
 # ============================================================================
 # Section 9: Finalize
 # ============================================================================
+
+# LLM proxy environment — routes agent CLI traffic through local logging proxy
+RUN cat > /etc/profile.d/llm-proxy.sh <<'EOF'
+export ANTHROPIC_BASE_URL="http://localhost:12071/anthropic/api.anthropic.com"
+export OPENAI_BASE_URL="http://localhost:12071/openai/api.openai.com"
+EOF
 
 # Persist VM_USER for runtime scripts
 ENV VM_USER=${VM_USER}
