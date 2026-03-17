@@ -1,8 +1,9 @@
 #!/bin/bash
 # build.sh - Build the Stockyard VM Docker image
 #
-# This script builds the stockyard-snapshot Go binary and then
-# builds the Docker image containing all development tools.
+# Builds the Docker image containing all development tools.
+# stockyard-shell and stockyard-snapshot are NOT baked in —
+# they're injected at deploy time so they can update independently.
 #
 # Usage:
 #   ./build.sh                    # Build with default settings
@@ -24,28 +25,8 @@ echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
 echo "VM User: ${VM_USER}"
 echo ""
 
-# Step 1: Build the stockyard-snapshot Go binary
-echo "=== Step 1: Building stockyard-snapshot binary ==="
-cd scripts/stockyard-snapshot
-
-# Detect architecture
-GOARCH="${GOARCH:-$(go env GOARCH)}"
-GOOS="${GOOS:-linux}"
-
-echo "Building for ${GOOS}/${GOARCH}..."
-CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" go build -buildvcs=false -o stockyard-snapshot .
-
-if [ ! -f stockyard-snapshot ]; then
-    echo "ERROR: Failed to build stockyard-snapshot binary"
-    exit 1
-fi
-echo "Built: scripts/stockyard-snapshot/stockyard-snapshot"
-
-cd "${SCRIPT_DIR}"
-
-# Step 2: Build the Docker image
-echo ""
-echo "=== Step 2: Building Docker image ==="
+# Build the Docker image
+echo "=== Building Docker image ==="
 docker build \
     --build-arg VM_USER="${VM_USER}" \
     -t "${IMAGE_NAME}:${IMAGE_TAG}" \

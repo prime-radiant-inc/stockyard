@@ -198,13 +198,10 @@ RUN mkdir -p /var/run/sshd \
 # Create stockyard directories
 RUN mkdir -p /etc/stockyard /var/log/stockyard /run/stockyard
 
-# Copy stockyard-snapshot binary (built externally by build.sh)
-COPY scripts/stockyard-snapshot/stockyard-snapshot /usr/local/bin/stockyard-snapshot
-RUN chmod +x /usr/local/bin/stockyard-snapshot
-
-# Copy stockyard-shell binary for vsock terminal access
-COPY scripts/stockyard-shell/stockyard-shell /usr/local/bin/stockyard-shell
-RUN chmod +x /usr/local/bin/stockyard-shell
+# stockyard-snapshot and stockyard-shell binaries are injected at deploy time
+# (not baked into the image) so they can be updated independently without
+# rebuilding the VM image. The systemd service files are baked in since they
+# don't change.
 
 # Add the systemd service for stockyard-shell
 COPY init/stockyard-shell.service /etc/systemd/system/stockyard-shell.service

@@ -17,12 +17,8 @@ ZFS_SNAPSHOT := tank/stockyard/images/rootfs@base
 # Default target: build everything
 all: rootfs
 
-# Build dependencies (stockyard-shell binary)
-build-deps:
-	$(MAKE) -C .. build-shell
-
-# Build Docker image (depends on shell binary)
-docker: build-deps
+# Build Docker image (stockyard-snapshot is built by build.sh)
+docker:
 	@./build.sh
 
 # Convert to Firecracker rootfs (depends on docker image)

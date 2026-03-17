@@ -60,13 +60,13 @@ jobs:
       - name: Build binaries
         run: make build
 
-      - name: Build stockyard-shell
-        run: make build-shell
+      - name: Build VM binaries
+        run: make build-vm
 
       - name: Upload binaries to S3
         run: |
           SHA="${{ github.sha }}"
-          tar czf stockyard-binaries.tar.gz -C bin stockyardd stockyard
+          tar czf stockyard-binaries.tar.gz -C bin stockyardd stockyard stockyard-shell stockyard-snapshot
 
           aws s3 cp stockyard-binaries.tar.gz \
             "s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/binaries/${SHA}/stockyard-binaries.tar.gz"
@@ -76,18 +76,11 @@ jobs:
           echo "### Binaries uploaded" >> $GITHUB_STEP_SUMMARY
           echo "Version: \`${SHA}\`" >> $GITHUB_STEP_SUMMARY
 
-      - name: Upload stockyard-shell as workflow artifact
-        uses: actions/upload-artifact@v4
-        if: needs.changes.outputs.vm_image == 'true'
-        with:
-          name: stockyard-shell
-          path: vm-image/scripts/stockyard-shell/stockyard-shell
-
   # Only runs when vm-image/ files change
   vm-image:
     name: Build VM Image
     runs-on: ubuntu-latest
-    needs: [changes, build]
+    needs: [changes]
     if: needs.changes.outputs.vm_image == 'true'
     timeout-minutes: 30
 
@@ -106,15 +99,8 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Download stockyard-shell
-        uses: actions/download-artifact@v4
-        with:
-          name: stockyard-shell
-          path: vm-image/scripts/stockyard-shell/
-
       - name: Build VM image
         run: |
-          chmod +x vm-image/scripts/stockyard-shell/stockyard-shell
           cd vm-image
           ./build.sh
           sudo ./convert-to-rootfs.sh

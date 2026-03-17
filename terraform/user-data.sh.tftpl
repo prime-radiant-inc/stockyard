@@ -63,6 +63,17 @@ aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/vm-image/$IMG_VERSION/rootfs.ext4" /
 aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/vm-image/$IMG_VERSION/vmlinux.bin" /var/lib/stockyard/vmlinux.bin
 chmod +x /usr/local/bin/stockyard /usr/local/bin/stockyardd
 
+# Inject VM binaries into the rootfs (updated independently of the image)
+echo "Injecting VM binaries into rootfs..."
+mkdir -p /tmp/rootfs-mount
+mount -o loop /var/lib/stockyard/rootfs.ext4 /tmp/rootfs-mount
+for bin in stockyard-shell stockyard-snapshot; do
+  cp "/usr/local/bin/$bin" "/tmp/rootfs-mount/usr/local/bin/$bin"
+  chmod +x "/tmp/rootfs-mount/usr/local/bin/$bin"
+done
+umount /tmp/rootfs-mount
+rmdir /tmp/rootfs-mount
+
 # ============================================
 # 3. ZFS
 # ============================================

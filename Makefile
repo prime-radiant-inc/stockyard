@@ -7,9 +7,13 @@ build:
 	go build -o bin/stockyard ./cmd/stockyard
 	go build -o bin/stockyardd ./cmd/stockyardd
 
-# Build stockyard-shell for VM (static binary for Linux)
-build-shell:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o vm-image/scripts/stockyard-shell/stockyard-shell ./cmd/stockyard-shell
+# Build VM binaries (static Linux binaries injected into rootfs at deploy time)
+build-vm:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/stockyard-shell ./cmd/stockyard-shell
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -o bin/stockyard-snapshot ./vm-image/scripts/stockyard-snapshot
+
+# Alias for backwards compat
+build-shell: build-vm
 
 proto:
 	mkdir -p pkg/api/v1
