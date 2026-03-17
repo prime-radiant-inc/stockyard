@@ -31,6 +31,20 @@ source "amazon-ebs" "stockyard" {
 
   ssh_username = "ubuntu"
 
+  # No default VPC in this account — discover terminus VPC by tag
+  vpc_filter {
+    filters = {
+      "tag:Name" = "terminus"
+    }
+  }
+
+  subnet_filter {
+    filters = {
+      "tag:Name" = "terminus-public-*"
+    }
+    most_free = true
+  }
+
   tags = {
     Name       = "stockyard-host"
     managed_by = "packer"
@@ -44,7 +58,7 @@ build {
   provisioner "shell" {
     inline = [
       "sudo apt-get update",
-      "sudo apt-get install -y build-essential git zfsutils-linux jq docker.io",
+      "sudo apt-get install -y build-essential git zfsutils-linux jq docker.io unzip",
     ]
   }
 
