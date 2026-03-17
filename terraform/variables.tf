@@ -27,9 +27,11 @@ variable "tailscale_auth_key" {
 variable "anthropic_api_key" {
   type      = string
   sensitive = true
+  default   = ""
 }
 
 variable "github_token" {
   type      = string
   sensitive = true
+  default   = ""
 }

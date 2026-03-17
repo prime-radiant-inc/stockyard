@@ -84,9 +84,16 @@ jq '.secrets.provider = "file" | .secrets.dir = "/etc/stockyard/secrets"' \
 
 mkdir -p /etc/stockyard/secrets
 chmod 700 /etc/stockyard/secrets
-ssm_get /stockyard/ANTHROPIC_API_KEY > /etc/stockyard/secrets/anthropic-api-key
-ssm_get /stockyard/GITHUB_TOKEN > /etc/stockyard/secrets/github-token
 echo -n "$TS_KEY" > /etc/stockyard/secrets/tailscale-auth-key
+
+# Optional secrets — only fetch if they exist in SSM
+if aws ssm get-parameter --region "$REGION" --name "/stockyard/ANTHROPIC_API_KEY" --with-decryption >/dev/null 2>&1; then
+  ssm_get /stockyard/ANTHROPIC_API_KEY > /etc/stockyard/secrets/anthropic-api-key
+fi
+if aws ssm get-parameter --region "$REGION" --name "/stockyard/GITHUB_TOKEN" --with-decryption >/dev/null 2>&1; then
+  ssm_get /stockyard/GITHUB_TOKEN > /etc/stockyard/secrets/github-token
+fi
+
 chmod 600 /etc/stockyard/secrets/*
 
 # ============================================

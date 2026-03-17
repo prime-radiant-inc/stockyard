@@ -25,11 +25,11 @@ module "stockyard" {
     nested_virtualization = "enabled"
   }
 
-  ssm_parameters = {
+  ssm_parameters = { for k, v in {
     TAILSCALE_AUTH_KEY = var.tailscale_auth_key
     ANTHROPIC_API_KEY  = var.anthropic_api_key
     GITHUB_TOKEN       = var.github_token
-  }
+  } : k => v if v != "" }
 
   iam_policy_statements = [{
     Effect   = "Allow"
