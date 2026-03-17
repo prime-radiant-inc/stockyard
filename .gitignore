@@ -21,3 +21,10 @@ vm-image/scripts/stockyard-shell/stockyard-shell
 
 # Local settings
 .claude/settings.local.json
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform.lock.hcl

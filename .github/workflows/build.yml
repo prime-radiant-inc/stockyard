@@ -1,0 +1,63 @@
+name: Build and Upload
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-west-1
+  ARTIFACTS_BUCKET: terminus-deploy-artifacts
+
+jobs:
+  build:
+    name: Build and Upload
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build binaries
+        run: make build
+
+      - name: Build stockyard-shell
+        run: make build-shell
+
+      - name: Build VM image
+        run: |
+          cd vm-image
+          ./build.sh
+          sudo ./convert-to-rootfs.sh
+
+      - name: Upload artifacts to S3
+        run: |
+          SHA="${{ github.sha }}"
+          PREFIX="s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/${SHA}"
+
+          aws s3 cp bin/stockyardd "${PREFIX}/stockyardd"
+          aws s3 cp bin/stockyard "${PREFIX}/stockyard"
+          aws s3 cp vm-image/output/rootfs.ext4 "${PREFIX}/rootfs.ext4"
+          aws s3 cp vm-image/output/vmlinux.bin "${PREFIX}/vmlinux.bin"
+
+          # Update latest pointer
+          echo -n "${SHA}" | aws s3 cp - "s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/latest"
+
+          echo "### Artifacts uploaded" >> $GITHUB_STEP_SUMMARY
+          echo "Version: \`${SHA}\`" >> $GITHUB_STEP_SUMMARY
+          echo "S3: \`${PREFIX}/\`" >> $GITHUB_STEP_SUMMARY

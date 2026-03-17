@@ -1,0 +1,101 @@
+#!/bin/bash
+# Stockyard host bootstrap — thin version.
+# System deps are pre-baked in the AMI (Packer). This script:
+#   1. Connects to Tailscale
+#   2. Downloads pre-built artifacts from S3
+#   3. Sets up ZFS
+#   4. Configures networking
+#   5. Initializes stockyard
+#   6. Starts the daemon
+
+set -euo pipefail
+exec > >(tee /var/log/stockyard-bootstrap.log) 2>&1
+echo "=== Stockyard Bootstrap $(date) ==="
+
+REGION="${region}"
+ARTIFACTS_BUCKET="${artifacts_bucket}"
+VERSION="${stockyard_version}"
+
+ssm_get() {
+  aws ssm get-parameter --region "$REGION" --name "$1" --with-decryption --query 'Parameter.Value' --output text
+}
+
+# ============================================
+# 1. Tailscale
+# ============================================
+echo "[1/6] Connecting to Tailscale..."
+TS_KEY=$(ssm_get /stockyard/TAILSCALE_AUTH_KEY)
+tailscale up --authkey="$TS_KEY" --hostname="stockyard-$(hostname -s)" --ssh
+echo "Tailscale connected"
+
+# ============================================
+# 2. Download release artifacts from S3
+# ============================================
+echo "[2/6] Downloading stockyard $VERSION..."
+mkdir -p /var/lib/stockyard
+
+if [ "$VERSION" = "latest" ]; then
+  VERSION=$(aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/latest" - 2>/dev/null || echo "")
+  if [ -z "$VERSION" ]; then
+    echo "ERROR: Could not resolve latest version from S3"
+    exit 1
+  fi
+fi
+
+aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/$VERSION/stockyardd" /usr/local/bin/stockyardd
+aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/$VERSION/stockyard" /usr/local/bin/stockyard
+aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/$VERSION/rootfs.ext4" /var/lib/stockyard/rootfs.ext4
+aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/$VERSION/vmlinux.bin" /var/lib/stockyard/vmlinux.bin
+chmod +x /usr/local/bin/stockyard /usr/local/bin/stockyardd
+
+# ============================================
+# 3. ZFS
+# ============================================
+echo "[3/6] Setting up ZFS..."
+truncate -s 50G /var/lib/stockyard/zpool.img
+zpool create tank /var/lib/stockyard/zpool.img
+zfs create tank/stockyard
+zfs create tank/stockyard/workspaces
+zfs set compression=lz4 tank/stockyard
+
+# ============================================
+# 4. Networking (bridge + NAT)
+# ============================================
+echo "[4/6] Configuring networking..."
+ip link add flbr0 type bridge
+ip addr add 10.0.100.1/24 dev flbr0
+ip link set flbr0 up
+
+sysctl -w net.ipv4.ip_forward=1
+echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-stockyard.conf
+
+iptables -t nat -A POSTROUTING -s 10.0.100.0/24 ! -o flbr0 -j MASQUERADE
+iptables -A FORWARD -i flbr0 -j ACCEPT
+iptables -A FORWARD -o flbr0 -j ACCEPT
+
+# ============================================
+# 5. Initialize stockyard
+# ============================================
+echo "[5/6] Initializing stockyard..."
+stockyard init --instance "stockyard-$(hostname -s)"
+jq '.secrets.provider = "file" | .secrets.dir = "/etc/stockyard/secrets"' \
+  /etc/stockyard/config.json > /tmp/stockyard-config.json \
+  && mv /tmp/stockyard-config.json /etc/stockyard/config.json
+
+mkdir -p /etc/stockyard/secrets
+chmod 700 /etc/stockyard/secrets
+ssm_get /stockyard/ANTHROPIC_API_KEY > /etc/stockyard/secrets/anthropic-api-key
+ssm_get /stockyard/GITHUB_TOKEN > /etc/stockyard/secrets/github-token
+echo -n "$TS_KEY" > /etc/stockyard/secrets/tailscale-auth-key
+chmod 600 /etc/stockyard/secrets/*
+
+# ============================================
+# 6. Start daemon
+# ============================================
+echo "[6/6] Starting stockyardd..."
+systemctl daemon-reload
+systemctl enable stockyardd
+systemctl start stockyardd
+
+echo ""
+echo "=== Stockyard Ready $(date) ==="
