@@ -323,10 +323,9 @@ RUN cd /tmp/linux-${KERNEL_VERSION} \
 # ============================================================================
 
 # LLM proxy environment — routes agent CLI traffic through local logging proxy
-RUN cat > /etc/profile.d/llm-proxy.sh <<'EOF'
-export ANTHROPIC_BASE_URL="http://localhost:12071/anthropic/api.anthropic.com"
-export OPENAI_BASE_URL="http://localhost:12071/openai/api.openai.com"
-EOF
+# Prepended before the non-interactive guard so it's available to ssh host "cmd"
+RUN sed -i '1i export OPENAI_BASE_URL="http://localhost:12071/openai/api.openai.com"' /home/${VM_USER}/.bashrc \
+    && sed -i '1i export ANTHROPIC_BASE_URL="http://localhost:12071/anthropic/api.anthropic.com"' /home/${VM_USER}/.bashrc
 
 # Persist VM_USER for runtime scripts
 ENV VM_USER=${VM_USER}
