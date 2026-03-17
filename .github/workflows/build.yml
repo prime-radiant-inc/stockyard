@@ -66,12 +66,17 @@ jobs:
       - name: Upload binaries to S3
         run: |
           SHA="${{ github.sha }}"
-          PREFIX="s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/${SHA}"
+          tar czf stockyard-binaries.tar.gz -C bin stockyardd stockyard
 
-          aws s3 cp bin/stockyardd "${PREFIX}/stockyardd"
-          aws s3 cp bin/stockyard "${PREFIX}/stockyard"
+          aws s3 cp stockyard-binaries.tar.gz \
+            "s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/binaries/${SHA}/stockyard-binaries.tar.gz"
 
-      - name: Upload binaries as workflow artifact
+          echo -n "${SHA}" | aws s3 cp - "s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/latest-binaries"
+
+          echo "### Binaries uploaded" >> $GITHUB_STEP_SUMMARY
+          echo "Version: \`${SHA}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload stockyard-shell as workflow artifact
         uses: actions/upload-artifact@v4
         if: needs.changes.outputs.vm_image == 'true'
         with:
@@ -117,61 +122,12 @@ jobs:
       - name: Upload VM image to S3
         run: |
           SHA="${{ github.sha }}"
-          PREFIX="s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/${SHA}"
+          PREFIX="s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/vm-image/${SHA}"
 
           aws s3 cp vm-image/output/rootfs.ext4 "${PREFIX}/rootfs.ext4"
           aws s3 cp vm-image/output/vmlinux.bin "${PREFIX}/vmlinux.bin"
 
-  # Copy previous VM image when vm-image/ didn't change
-  carry-forward:
-    name: Carry Forward VM Image
-    runs-on: ubuntu-latest
-    needs: [changes, build]
-    if: needs.changes.outputs.vm_image == 'false'
-    timeout-minutes: 5
+          echo -n "${SHA}" | aws s3 cp - "s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/latest-vm-image"
 
-    steps:
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Copy VM image from previous release
-        run: |
-          SHA="${{ github.sha }}"
-          PREFIX="s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/${SHA}"
-
-          # Get the previous latest SHA
-          PREV=$(aws s3 cp "s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/latest" - 2>/dev/null || echo "")
-          if [ -z "$PREV" ]; then
-            echo "::warning::No previous release found — VM image will be missing. Push a vm-image/ change to build one."
-            exit 0
-          fi
-
-          PREV_PREFIX="s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/${PREV}"
-          aws s3 cp "${PREV_PREFIX}/rootfs.ext4" "${PREFIX}/rootfs.ext4"
-          aws s3 cp "${PREV_PREFIX}/vmlinux.bin" "${PREFIX}/vmlinux.bin"
-
-  # Update the latest pointer after everything succeeds
-  finalize:
-    name: Update Latest
-    runs-on: ubuntu-latest
-    needs: [build, vm-image, carry-forward]
-    if: always() && needs.build.result == 'success' && (needs.vm-image.result == 'success' || needs.carry-forward.result == 'success')
-    timeout-minutes: 2
-
-    steps:
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Update latest pointer
-        run: |
-          SHA="${{ github.sha }}"
-          echo -n "${SHA}" | aws s3 cp - "s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/latest"
-
-          echo "### Artifacts uploaded" >> $GITHUB_STEP_SUMMARY
+          echo "### VM image uploaded" >> $GITHUB_STEP_SUMMARY
           echo "Version: \`${SHA}\`" >> $GITHUB_STEP_SUMMARY

@@ -31,21 +31,36 @@ echo "Tailscale connected"
 # ============================================
 # 2. Download release artifacts from S3
 # ============================================
-echo "[2/6] Downloading stockyard $VERSION..."
+echo "[2/6] Downloading stockyard artifacts..."
 mkdir -p /var/lib/stockyard
 
-if [ "$VERSION" = "latest" ]; then
-  VERSION=$(aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/latest" - 2>/dev/null || echo "")
-  if [ -z "$VERSION" ]; then
-    echo "ERROR: Could not resolve latest version from S3"
+# Resolve binary version
+BIN_VERSION="$VERSION"
+if [ "$BIN_VERSION" = "latest" ]; then
+  BIN_VERSION=$(aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/latest-binaries" - 2>/dev/null || echo "")
+  if [ -z "$BIN_VERSION" ]; then
+    echo "ERROR: Could not resolve latest binaries version from S3"
     exit 1
   fi
 fi
+echo "Binaries version: $BIN_VERSION"
 
-aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/$VERSION/stockyardd" /usr/local/bin/stockyardd
-aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/$VERSION/stockyard" /usr/local/bin/stockyard
-aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/$VERSION/rootfs.ext4" /var/lib/stockyard/rootfs.ext4
-aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/$VERSION/vmlinux.bin" /var/lib/stockyard/vmlinux.bin
+# Resolve VM image version
+IMG_VERSION="$VERSION"
+if [ "$IMG_VERSION" = "latest" ]; then
+  IMG_VERSION=$(aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/latest-vm-image" - 2>/dev/null || echo "")
+  if [ -z "$IMG_VERSION" ]; then
+    echo "ERROR: Could not resolve latest VM image version from S3"
+    exit 1
+  fi
+fi
+echo "VM image version: $IMG_VERSION"
+
+aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/binaries/$BIN_VERSION/stockyard-binaries.tar.gz" /tmp/stockyard-binaries.tar.gz
+tar xzf /tmp/stockyard-binaries.tar.gz -C /usr/local/bin/
+rm /tmp/stockyard-binaries.tar.gz
+aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/vm-image/$IMG_VERSION/rootfs.ext4" /var/lib/stockyard/rootfs.ext4
+aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/vm-image/$IMG_VERSION/vmlinux.bin" /var/lib/stockyard/vmlinux.bin
 chmod +x /usr/local/bin/stockyard /usr/local/bin/stockyardd
 
 # ============================================
