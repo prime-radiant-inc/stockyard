@@ -5,6 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=mooby
+WorkingDirectory=/home/mooby
 ExecStart=/usr/local/bin/llm-proxy --port 12071
 Restart=on-failure
 RestartSec=3
