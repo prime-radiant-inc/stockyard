@@ -57,22 +57,27 @@ fi
 echo "VM image version: $IMG_VERSION"
 
 aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/binaries/$BIN_VERSION/stockyard-binaries.tar.gz" /tmp/stockyard-binaries.tar.gz
-tar xzf /tmp/stockyard-binaries.tar.gz -C /usr/local/bin/
-rm /tmp/stockyard-binaries.tar.gz
+mkdir -p /tmp/stockyard-release
+tar xzf /tmp/stockyard-binaries.tar.gz -C /tmp/stockyard-release
+cp /tmp/stockyard-release/host/* /usr/local/bin/
+chmod +x /usr/local/bin/stockyard /usr/local/bin/stockyardd
 aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/vm-image/$IMG_VERSION/rootfs.ext4" /var/lib/stockyard/rootfs.ext4
 aws s3 cp "s3://$ARTIFACTS_BUCKET/stockyard/vm-image/$IMG_VERSION/vmlinux.bin" /var/lib/stockyard/vmlinux.bin
 chmod +x /usr/local/bin/stockyard /usr/local/bin/stockyardd
 
-# Inject VM binaries into the rootfs (updated independently of the image)
-echo "Injecting VM binaries into rootfs..."
+# Inject guest binaries into the rootfs (updated independently of the image)
+echo "Injecting guest binaries into rootfs..."
 mkdir -p /tmp/rootfs-mount
 mount -o loop /var/lib/stockyard/rootfs.ext4 /tmp/rootfs-mount
-for bin in stockyard-shell stockyard-snapshot; do
-  cp "/usr/local/bin/$bin" "/tmp/rootfs-mount/usr/local/bin/$bin"
-  chmod +x "/tmp/rootfs-mount/usr/local/bin/$bin"
-done
+cp /tmp/stockyard-release/guest/* /tmp/rootfs-mount/usr/local/bin/
+chmod +x /tmp/rootfs-mount/usr/local/bin/stockyard-shell \
+         /tmp/rootfs-mount/usr/local/bin/stockyard-snapshot \
+         /tmp/rootfs-mount/usr/local/bin/stockyard
 umount /tmp/rootfs-mount
 rmdir /tmp/rootfs-mount
+
+# Clean up
+rm -rf /tmp/stockyard-release /tmp/stockyard-binaries.tar.gz
 
 # ============================================
 # 3. ZFS

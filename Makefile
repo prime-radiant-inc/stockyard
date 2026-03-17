@@ -1,19 +1,22 @@
-.PHONY: all build build-shell proto clean test test-unit lint fmt install uninstall
+.PHONY: all build build-host build-guest proto clean test test-unit lint fmt install uninstall
 .PHONY: deploy deploy-all deploy-daemon deploy-image
 
 all: proto build
 
-build:
-	go build -o bin/stockyard ./cmd/stockyard
-	go build -o bin/stockyardd ./cmd/stockyardd
+build: build-host build-guest
 
-# Build VM binaries (static Linux binaries injected into rootfs at deploy time)
-build-vm:
+# Host binaries (run on the EC2 instance)
+build-host:
+	go build -o bin/stockyardd ./cmd/stockyardd
+	go build -o bin/stockyard ./cmd/stockyard
+
+# Guest binaries (static Linux, injected into VM rootfs at deploy time)
+build-guest:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/stockyard-shell ./cmd/stockyard-shell
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -o bin/stockyard-snapshot ./vm-image/scripts/stockyard-snapshot
 
 # Alias for backwards compat
-build-shell: build-vm
+build-shell: build-guest
 
 proto:
 	mkdir -p pkg/api/v1

@@ -57,16 +57,24 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Build binaries
-        run: make build
+      - name: Build host binaries
+        run: make build-host
 
-      - name: Build VM binaries
-        run: make build-vm
+      - name: Build guest binaries
+        run: make build-guest
 
       - name: Upload binaries to S3
         run: |
           SHA="${{ github.sha }}"
-          tar czf stockyard-binaries.tar.gz -C bin stockyardd stockyard stockyard-shell stockyard-snapshot
+
+          # Organize into host/ and guest/ for the tarball
+          mkdir -p release/host release/guest
+          cp bin/stockyardd bin/stockyard release/host/
+          cp bin/stockyard-shell bin/stockyard-snapshot release/guest/
+          # stockyard CLI goes in both (host build works for guest on same arch)
+          cp bin/stockyard release/guest/
+
+          tar czf stockyard-binaries.tar.gz -C release .
 
           aws s3 cp stockyard-binaries.tar.gz \
             "s3://${{ env.ARTIFACTS_BUCKET }}/stockyard/binaries/${SHA}/stockyard-binaries.tar.gz"
