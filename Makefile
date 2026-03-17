@@ -13,7 +13,7 @@ build-host:
 # Guest binaries (static Linux, injected into VM rootfs at deploy time)
 build-guest:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/stockyard-shell ./cmd/stockyard-shell
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -o bin/stockyard-snapshot ./vm-image/scripts/stockyard-snapshot
+	cd vm-image/scripts/stockyard-snapshot && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -o ../../../bin/stockyard-snapshot .
 
 # Alias for backwards compat
 build-shell: build-guest
