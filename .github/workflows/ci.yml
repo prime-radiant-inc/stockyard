@@ -71,9 +71,11 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
             go build -o stockyard-shell ./cmd/stockyard-shell
           CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
+            go build -o stockyard-snapshot ./cmd/stockyard-snapshot
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
             go build -o stockyard ./cmd/stockyard
-          tar czf stockyard-guest-linux-${{ matrix.arch }}.tar.gz stockyard-shell stockyard
-          rm stockyard-shell stockyard
+          tar czf stockyard-guest-linux-${{ matrix.arch }}.tar.gz stockyard-shell stockyard-snapshot stockyard
+          rm stockyard-shell stockyard-snapshot stockyard
 
       - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
