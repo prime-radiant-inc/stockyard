@@ -1,19 +1,17 @@
-.PHONY: all build build-host build-guest proto clean test test-unit lint fmt install uninstall
-.PHONY: deploy deploy-all deploy-daemon deploy-image
+.PHONY: all build build-host build-guest build-shell proto clean test test-unit lint fmt
 
 all: proto build
 
 build: build-host build-guest
 
-# Host binaries (run on the EC2 instance)
+# Host binaries (daemon + CLI)
 build-host:
 	go build -o bin/stockyardd ./cmd/stockyardd
 	go build -o bin/stockyard ./cmd/stockyard
 
-# Guest binaries (static Linux, injected into VM rootfs at deploy time)
+# Guest binaries (static Linux, run inside Firecracker VMs)
 build-guest:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/stockyard-shell ./cmd/stockyard-shell
-	cd vm-image/scripts/stockyard-snapshot && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -o ../../../bin/stockyard-snapshot .
 
 # Alias for backwards compat
 build-shell: build-guest
@@ -27,51 +25,6 @@ proto:
 
 clean:
 	rm -rf bin/
-
-install: build
-	install -m 755 bin/stockyard /usr/local/bin/stockyard
-	install -m 755 bin/stockyardd /usr/local/bin/stockyardd
-
-uninstall:
-	rm -f /usr/local/bin/stockyard /usr/local/bin/stockyardd
-
-# Deployment targets:
-#   deploy        - Full deployment (daemon + VM image) - the default
-#   deploy-all    - Alias for deploy
-#   deploy-daemon - Build and install daemon binaries only
-#   deploy-image  - Build and install VM image only (calls vm-image/Makefile)
-
-# Full deployment: daemon binaries + VM image
-# This is what you usually want - deploys everything
-deploy: deploy-daemon deploy-image
-	@echo ""
-	@echo "=== Full deployment complete (daemon + VM image) ==="
-
-# Alias for clarity
-deploy-all: deploy
-
-# Deploy daemon binaries only (build, install, restart)
-deploy-daemon: build
-	@echo ""
-	@echo "=== Deploying daemon binaries ==="
-	@echo ""
-	@echo "Stopping stockyardd..."
-	sudo systemctl stop stockyardd || true
-	@echo "Installing binaries..."
-	sudo install -m 755 bin/stockyard /usr/local/bin/stockyard
-	sudo install -m 755 bin/stockyardd /usr/local/bin/stockyardd
-	@echo "Starting stockyardd..."
-	sudo systemctl start stockyardd
-	@sleep 2
-	@echo "Verifying daemon status..."
-	@systemctl is-active stockyardd && echo "Daemon deploy successful!" || (echo "Deploy failed - daemon not running" && exit 1)
-
-# Deploy VM image only (build + install via vm-image/Makefile)
-# Note: This will also restart the daemon as part of the image deployment
-deploy-image:
-	@echo ""
-	@echo "=== Deploying VM image ==="
-	$(MAKE) -C vm-image deploy
 
 test: test-unit
 

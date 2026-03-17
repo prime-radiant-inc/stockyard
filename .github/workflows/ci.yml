@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: ['*']
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build host binaries
+        run: make build-host
+
+      - name: Build guest binaries
+        run: make build-guest
+
+      - name: Test
+        run: make test
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build client package
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
+            go build -o stockyard ./cmd/stockyard
+          tar czf stockyard-client-linux-${{ matrix.arch }}.tar.gz stockyard
+          rm stockyard
+
+      - name: Build server package
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
+            go build -o stockyardd ./cmd/stockyardd
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
+            go build -o stockyard ./cmd/stockyard
+          tar czf stockyard-server-linux-${{ matrix.arch }}.tar.gz stockyardd stockyard
+          rm stockyardd stockyard
+
+      - name: Build guest package
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
+            go build -o stockyard-shell ./cmd/stockyard-shell
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
+            go build -o stockyard ./cmd/stockyard
+          tar czf stockyard-guest-linux-${{ matrix.arch }}.tar.gz stockyard-shell stockyard
+          rm stockyard-shell stockyard
+
+      - name: Upload release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: stockyard-*-linux-${{ matrix.arch }}.tar.gz
