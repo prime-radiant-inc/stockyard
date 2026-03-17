@@ -25,8 +25,8 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build host binaries
-        run: make build-host
+      - name: Build server binaries
+        run: make build-server
 
       - name: Build guest binaries
         run: make build-guest

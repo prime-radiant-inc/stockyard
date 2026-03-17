@@ -1,13 +1,16 @@
-.PHONY: all build build-host build-guest build-shell proto clean test test-unit lint fmt
+.PHONY: all build build-client build-server build-guest build-shell proto clean test test-unit lint fmt
 
 all: proto build
 
-build: build-host build-guest
+build: build-server build-guest
 
-# Host binaries (daemon + CLI)
-build-host:
-	go build -o bin/stockyardd ./cmd/stockyardd
+# Client (CLI only)
+build-client:
 	go build -o bin/stockyard ./cmd/stockyard
+
+# Server (daemon + CLI)
+build-server: build-client
+	go build -o bin/stockyardd ./cmd/stockyardd
 
 # Guest binaries (static Linux, run inside Firecracker VMs)
 build-guest:
