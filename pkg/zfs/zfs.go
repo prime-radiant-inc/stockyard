@@ -268,7 +268,8 @@ func copyFile(src, dst string) error {
 		}
 	}()
 
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
+	buf := make([]byte, 4*1024*1024) // 4MB buffer — 32KB default is ~4x slower on ZFS
+	if _, err := io.CopyBuffer(dstFile, srcFile, buf); err != nil {
 		return err
 	}
 
