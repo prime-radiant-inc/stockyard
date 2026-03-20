@@ -30,6 +30,7 @@ type CreateTaskRequest struct {
 	NoTailscale       bool                   `protobuf:"varint,6,opt,name=no_tailscale,json=noTailscale,proto3" json:"no_tailscale,omitempty"`
 	TailscaleAuthKey  string                 `protobuf:"bytes,7,opt,name=tailscale_auth_key,json=tailscaleAuthKey,proto3" json:"tailscale_auth_key,omitempty"`    // Optional: override 1Password lookup
 	SshAuthorizedKeys []string               `protobuf:"bytes,8,rep,name=ssh_authorized_keys,json=sshAuthorizedKeys,proto3" json:"ssh_authorized_keys,omitempty"` // SSH public keys for VM access
+	Dotenv            []byte                 `protobuf:"bytes,9,opt,name=dotenv,proto3" json:"dotenv,omitempty"`                                                  // Raw .env file bytes for VM
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -109,6 +110,13 @@ func (x *CreateTaskRequest) GetTailscaleAuthKey() string {
 func (x *CreateTaskRequest) GetSshAuthorizedKeys() []string {
 	if x != nil {
 		return x.SshAuthorizedKeys
+	}
+	return nil
+}
+
+func (x *CreateTaskRequest) GetDotenv() []byte {
+	if x != nil {
+		return x.Dotenv
 	}
 	return nil
 }
@@ -2260,7 +2268,7 @@ var File_api_stockyard_proto protoreflect.FileDescriptor
 
 const file_api_stockyard_proto_rawDesc = "" +
 	"\n" +
-	"\x13api/stockyard.proto\x12\fstockyard.v1\"\xd7\x02\n" +
+	"\x13api/stockyard.proto\x12\fstockyard.v1\"\xef\x02\n" +
 	"\x11CreateTaskRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12A\n" +
 	"\x06vm_env\x18\x03 \x03(\v2*.stockyard.v1.CreateTaskRequest.VmEnvEntryR\x05vmEnv\x12\x12\n" +
@@ -2268,7 +2276,8 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"\x06memory\x18\x05 \x01(\tR\x06memory\x12!\n" +
 	"\fno_tailscale\x18\x06 \x01(\bR\vnoTailscale\x12,\n" +
 	"\x12tailscale_auth_key\x18\a \x01(\tR\x10tailscaleAuthKey\x12.\n" +
-	"\x13ssh_authorized_keys\x18\b \x03(\tR\x11sshAuthorizedKeys\x1a8\n" +
+	"\x13ssh_authorized_keys\x18\b \x03(\tR\x11sshAuthorizedKeys\x12\x16\n" +
+	"\x06dotenv\x18\t \x01(\fR\x06dotenv\x1a8\n" +
 	"\n" +
 	"VmEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +

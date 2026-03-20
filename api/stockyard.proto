@@ -42,6 +42,7 @@ message CreateTaskRequest {
     bool no_tailscale = 6;
     string tailscale_auth_key = 7;  // Optional: override 1Password lookup
     repeated string ssh_authorized_keys = 8;  // SSH public keys for VM access
+    bytes dotenv = 9;  // Raw .env file bytes for VM
 }
 
 message CreateTaskResponse {

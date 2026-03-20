@@ -42,6 +42,7 @@ func (s *grpcServer) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) 
 		NoTailscale:       req.NoTailscale,
 		TailscaleAuthKey:  req.TailscaleAuthKey,
 		SSHAuthorizedKeys: req.SshAuthorizedKeys,
+		DotEnv:           req.Dotenv,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create task: %v", err)

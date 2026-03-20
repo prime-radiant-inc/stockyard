@@ -176,6 +176,7 @@ type MMDSMetadata struct {
 	UserData          string
 	NetworkConfig     *MMDSNetworkConfig // Static IP configuration (optional)
 	TailscaleState    []byte             // Pre-registered Tailscale state (optional)
+	DotEnv            []byte             // Raw .env file bytes (optional)
 }
 
 // BuildMMDSData constructs the MMDS data structure for cloud-init.
@@ -201,6 +202,9 @@ func BuildMMDSData(meta MMDSMetadata) map[string]interface{} {
 	if len(meta.TailscaleState) > 0 {
 		// Base64 encode for safe JSON transport
 		metaData["tailscale-state"] = base64.StdEncoding.EncodeToString(meta.TailscaleState)
+	}
+	if len(meta.DotEnv) > 0 {
+		metaData["dotenv"] = base64.StdEncoding.EncodeToString(meta.DotEnv)
 	}
 	return map[string]interface{}{
 		"latest": map[string]interface{}{

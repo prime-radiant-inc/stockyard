@@ -66,6 +66,7 @@ type CreateTaskRequest struct {
 	NoTailscale       bool
 	TailscaleAuthKey  string   // Optional: overrides 1Password lookup
 	SSHAuthorizedKeys []string // SSH public keys for VM access
+	DotEnv            []byte   // Raw .env file bytes
 }
 
 // CreateTask creates a new VM-based task with the given parameters.
@@ -236,6 +237,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			SSHAuthorizedKeys: req.SSHAuthorizedKeys,
 			StaticIPArgs:      staticIPArgs,
 			NetworkMMDS:       mmdsNetworkConfig,
+			DotEnv:            req.DotEnv,
 			Metadata: map[string]string{
 				"task-id":   taskID,
 				"task-name": req.Name,

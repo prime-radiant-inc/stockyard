@@ -19,6 +19,7 @@ var (
 	runNoTailscale      bool
 	runTailscaleAuthKey string
 	runEnv              []string
+	runEnvFile          string
 )
 
 var runCmd = &cobra.Command{
@@ -43,6 +44,15 @@ Use 'stockyard exec' to run commands in the VM after creation.`,
 			}
 		}
 
+		// Read env file if specified
+		var dotenv []byte
+		if runEnvFile != "" {
+			dotenv, err = os.ReadFile(runEnvFile)
+			if err != nil {
+				return fmt.Errorf("failed to read env file: %w", err)
+			}
+		}
+
 		// Read SSH public keys from ~/.ssh/
 		sshKeys := readSSHPublicKeys()
 
@@ -54,6 +64,7 @@ Use 'stockyard exec' to run commands in the VM after creation.`,
 			NoTailscale:       runNoTailscale,
 			TailscaleAuthKey:  runTailscaleAuthKey,
 			SshAuthorizedKeys: sshKeys,
+			Dotenv:            dotenv,
 		}
 
 		fmt.Printf("Creating task...\n")
@@ -118,5 +129,6 @@ func init() {
 	runCmd.Flags().BoolVar(&runNoTailscale, "no-tailscale", false, "Skip Tailscale")
 	runCmd.Flags().StringVar(&runTailscaleAuthKey, "tailscale-auth-key", "", "Tailscale auth key (overrides 1Password)")
 	runCmd.Flags().StringArrayVar(&runEnv, "env", nil, "Environment variables (KEY=value)")
+	runCmd.Flags().StringVar(&runEnvFile, "env-file", "", "Path to .env file to include in the VM")
 	rootCmd.AddCommand(runCmd)
 }
