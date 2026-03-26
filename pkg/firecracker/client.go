@@ -41,6 +41,8 @@ type Client struct {
 	network    *NetworkManager
 	cidCounter uint32     // Next CID to allocate
 	cidMu      sync.Mutex // Protects cidCounter
+	mu         sync.Mutex
+	procs      map[string]*exec.Cmd // vmID -> cmd, for reaping
 }
 
 // NewClient creates a new Firecracker client.
@@ -66,11 +68,21 @@ func NewClient(cfg ClientConfig, zfsMgr *zfs.Manager) (*Client, error) {
 		zfs:        zfsMgr,
 		network:    NewNetworkManager(cfg.BridgeName),
 		cidCounter: 100, // Start CIDs at 100 (3-99 reserved)
+		procs:      make(map[string]*exec.Cmd),
 	}, nil
 }
 
-// Close cleans up resources. For direct Firecracker, this is a no-op.
+// Close cleans up resources by killing and reaping all tracked firecracker processes.
 func (c *Client) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for id, cmd := range c.procs {
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+			cmd.Wait()
+		}
+		delete(c.procs, id)
+	}
 	return nil
 }
 
@@ -203,6 +215,19 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
 	os.WriteFile(filepath.Join(vmDir, "api.sock.path"), []byte(apiSocketPath), 0644)
 
+	// Track process for reaping
+	c.mu.Lock()
+	c.procs[config.ID] = cmd
+	c.mu.Unlock()
+
+	// Reaper goroutine — wait for process exit to avoid zombies
+	go func() {
+		cmd.Wait() // blocks until firecracker exits; reaps the zombie
+		c.mu.Lock()
+		delete(c.procs, config.ID)
+		c.mu.Unlock()
+	}()
+
 	// Brief check to catch immediate failures (bad binary, permissions, etc.)
 	time.Sleep(50 * time.Millisecond)
 	if !processRunning(cmd.Process.Pid) {
@@ -218,6 +243,7 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	defer cancel()
 	if err := apiClient.WaitForSocket(waitCtx); err != nil {
 		cmd.Process.Kill()
+		// reaper goroutine will call cmd.Wait()
 		destroyZFSDataset(vmDatasetPath)
 		c.network.DeleteTap(tapName)
 		return nil, fmt.Errorf("wait for API socket: %w", err)
@@ -393,8 +419,32 @@ func (c *Client) DeleteVM(ctx context.Context, namespace, id string) error {
 		return nil // Already gone
 	}
 
-	// Stop if running
-	if data, err := os.ReadFile(filepath.Join(vmDir, "firecracker.pid")); err == nil {
+	// Stop if running — prefer tracked process for clean reaping
+	c.mu.Lock()
+	trackedCmd, tracked := c.procs[id]
+	c.mu.Unlock()
+
+	if tracked {
+		trackedCmd.Process.Signal(syscall.SIGTERM)
+		// Give it a second to exit gracefully
+		done := make(chan struct{})
+		go func() {
+			trackedCmd.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+			// reaped
+		case <-time.After(time.Second):
+			trackedCmd.Process.Kill()
+			<-done // wait for reaper
+		}
+		c.mu.Lock()
+		delete(c.procs, id)
+		c.mu.Unlock()
+	} else if data, err := os.ReadFile(filepath.Join(vmDir, "firecracker.pid")); err == nil {
+		// Fallback for processes we don't track (e.g., after daemon restart).
+		// These are reparented to init, which will reap them.
 		if pid, err := strconv.Atoi(string(data)); err == nil && processRunning(pid) {
 			syscall.Kill(pid, syscall.SIGTERM)
 			time.Sleep(time.Second)
@@ -548,6 +598,19 @@ func (c *Client) StartVM(ctx context.Context, config *VMConfig) (*VMInfo, error)
 	os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
 	os.WriteFile(filepath.Join(vmDir, "api.sock.path"), []byte(apiSocketPath), 0644)
 
+	// Track process for reaping
+	c.mu.Lock()
+	c.procs[config.ID] = cmd
+	c.mu.Unlock()
+
+	// Reaper goroutine — wait for process exit to avoid zombies
+	go func() {
+		cmd.Wait() // blocks until firecracker exits; reaps the zombie
+		c.mu.Lock()
+		delete(c.procs, config.ID)
+		c.mu.Unlock()
+	}()
+
 	// Brief check to catch immediate failures (bad binary, permissions, etc.)
 	time.Sleep(50 * time.Millisecond)
 	if !processRunning(cmd.Process.Pid) {
@@ -562,6 +625,7 @@ func (c *Client) StartVM(ctx context.Context, config *VMConfig) (*VMInfo, error)
 	defer cancel()
 	if err := apiClient.WaitForSocket(waitCtx); err != nil {
 		cmd.Process.Kill()
+		// reaper goroutine will call cmd.Wait()
 		c.network.DeleteTap(tapName)
 		return nil, fmt.Errorf("wait for API socket: %w", err)
 	}
@@ -697,15 +761,36 @@ func (c *Client) StopVM(ctx context.Context, namespace, id string) error {
 		}
 	}
 
-	// Fall back to SIGTERM/SIGKILL
-	if processRunning(vm.PID) {
+	// Stop process — prefer tracked process for clean reaping
+	c.mu.Lock()
+	trackedCmd, tracked := c.procs[id]
+	c.mu.Unlock()
+
+	if tracked {
+		trackedCmd.Process.Signal(syscall.SIGTERM)
+		done := make(chan struct{})
+		go func() {
+			trackedCmd.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+			// reaped
+		case <-time.After(2 * time.Second):
+			trackedCmd.Process.Kill()
+			<-done // wait for reaper
+		}
+		c.mu.Lock()
+		delete(c.procs, id)
+		c.mu.Unlock()
+	} else if processRunning(vm.PID) {
+		// Fallback for processes we don't track (e.g., after daemon restart).
+		// These are reparented to init, which will reap them.
 		syscall.Kill(vm.PID, syscall.SIGTERM)
 		time.Sleep(time.Second)
-	}
-
-	// Force kill if still running
-	if processRunning(vm.PID) {
-		syscall.Kill(vm.PID, syscall.SIGKILL)
+		if processRunning(vm.PID) {
+			syscall.Kill(vm.PID, syscall.SIGKILL)
+		}
 	}
 
 	// Clean up tap device
