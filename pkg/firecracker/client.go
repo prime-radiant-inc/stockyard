@@ -220,11 +220,14 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	c.procs[config.ID] = cmd
 	c.mu.Unlock()
 
-	// Reaper goroutine — wait for process exit to avoid zombies
+	// Reaper goroutine — wait for process exit to avoid zombies.
+	// Only delete our own entry; a Stop+Start cycle may have replaced it.
 	go func() {
-		cmd.Wait() // blocks until firecracker exits; reaps the zombie
+		cmd.Wait()
 		c.mu.Lock()
-		delete(c.procs, config.ID)
+		if c.procs[config.ID] == cmd {
+			delete(c.procs, config.ID)
+		}
 		c.mu.Unlock()
 	}()
 
@@ -603,11 +606,14 @@ func (c *Client) StartVM(ctx context.Context, config *VMConfig) (*VMInfo, error)
 	c.procs[config.ID] = cmd
 	c.mu.Unlock()
 
-	// Reaper goroutine — wait for process exit to avoid zombies
+	// Reaper goroutine — wait for process exit to avoid zombies.
+	// Only delete our own entry; a Stop+Start cycle may have replaced it.
 	go func() {
-		cmd.Wait() // blocks until firecracker exits; reaps the zombie
+		cmd.Wait()
 		c.mu.Lock()
-		delete(c.procs, config.ID)
+		if c.procs[config.ID] == cmd {
+			delete(c.procs, config.ID)
+		}
 		c.mu.Unlock()
 	}()
 
