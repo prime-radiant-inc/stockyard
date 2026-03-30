@@ -55,6 +55,8 @@ RUN apt-get update && apt-get install -y \
     less \
     tmux \
     bc \
+    rsync \
+    ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
 # yq (YAML processor) - install from GitHub releases
@@ -75,13 +77,13 @@ RUN apt-get update && apt-get install -y \
 # uv - modern Python package manager (much faster than pip)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Node.js 20
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+# Node.js 24
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Go 1.22
-RUN curl -fsSL https://go.dev/dl/go1.22.10.linux-amd64.tar.gz | tar -C /usr/local -xzf - \
+# Go 1.26
+RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xzf - \
     && ln -s /usr/local/go/bin/go /usr/local/bin/go \
     && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
@@ -125,6 +127,9 @@ RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | tee 
     && apt-get update \
     && apt-get install -y tailscale \
     && rm -rf /var/lib/apt/lists/*
+
+# dotenvx (dotenv CLI tool)
+RUN curl -sfS https://dotenvx.sh | sh
 
 # Configure tailscaled for Firecracker
 # DISABLE auto-start - stockyard-init.sh will start tailscaled AFTER DNS is configured
