@@ -11,14 +11,60 @@ stockyard init --instance my-dev
 # Start the daemon (in another terminal)
 stockyardd
 
-# Run a coding agent
-stockyard run --repo github.com/org/repo -- claude-code -p "your prompt"
+# Create a VM
+stockyard run --name my-task --env-file .env
 
 # Attach to the running VM
 stockyard attach <task-id>
 
 # List running tasks
 stockyard list
+```
+
+## Creating VMs
+
+```bash
+stockyard run [flags]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name` | | Human-readable task name |
+| `--env-file` | | Path to .env file to include in the VM |
+| `--env` | | Environment variables (`KEY=value`, repeatable) |
+| `--cpus` | 2 | Number of CPU cores |
+| `--memory` | 4G | Memory allocation |
+| `--no-tailscale` | false | Skip Tailscale setup |
+| `--tailscale-auth-key` | | Tailscale auth key (overrides 1Password lookup) |
+
+SSH public keys from `~/.ssh/*.pub` are automatically injected into the VM.
+
+### Environment Configuration
+
+The `--env-file` flag delivers a `.env` file into the VM via Firecracker's MMDS metadata service at boot. This is the primary way to pass API keys and tokens.
+
+Tailscale auth keys are handled separately via `--tailscale-auth-key` or automatic 1Password lookup.
+
+## Exec and Command Queues (Experimental)
+
+> **Note:** `exec` and command queues are an experiment in programmatic VM orchestration. The API works but it's not clear this is the right abstraction — running commands via SSH into the VM's Tailscale address is simpler and may be the better pattern. This interface may change significantly or be removed.
+
+`stockyard exec` runs commands inside a VM:
+
+```bash
+stockyard exec <task-id> -- go mod download
+stockyard exec <task-id> -- claude-code -p "implement OAuth"
+```
+
+Commands are managed through named queues. Two are created automatically with each VM:
+
+- **`default`** — serial execution. Commands run one at a time.
+- **`admin`** — concurrent. For interactive/debug shells.
+
+```bash
+stockyard queue list <task-id>
+stockyard queue status <task-id> default
+stockyard command logs <task-id> <command-id> --follow
 ```
 
 ## Remote Access
@@ -83,6 +129,7 @@ VMs include built-in services that communicate with the host via vsock:
 |---------|------|-------------|
 | `stockyard-shell` | 52 | Terminal access via vsock (no SSH needed) |
 | `stockyard-snapshot` | 51 | ZFS snapshot coordination |
+| `llm-proxy` | 12071 | LLM API logging proxy (routes Anthropic/OpenAI traffic) |
 
 ### Terminal Access
 

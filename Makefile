@@ -1,4 +1,4 @@
-.PHONY: all build build-client build-server build-guest build-shell proto clean test test-unit lint fmt
+.PHONY: all build build-client build-server build-guest proto clean test test-unit lint fmt
 
 all: proto build
 
@@ -17,8 +17,6 @@ build-guest:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/stockyard-shell ./cmd/stockyard-shell
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/stockyard-snapshot ./cmd/stockyard-snapshot
 
-# Alias for backwards compat
-build-shell: build-guest
 
 proto:
 	mkdir -p pkg/api/v1

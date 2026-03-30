@@ -4,7 +4,7 @@
 
 ```bash
 make build          # Build all binaries to bin/
-make build-shell    # Build stockyard-shell for VM (static Linux binary)
+make build-guest    # Build guest binaries for VM (static Linux binaries)
 ```
 
 ## Deploying
@@ -27,6 +27,7 @@ go test ./pkg/...   # Run package tests
 - `cmd/stockyard/` - CLI client
 - `cmd/stockyardd/` - Daemon
 - `cmd/stockyard-shell/` - Shell for VM (runs inside guest)
+- `cmd/stockyard-snapshot/` - ZFS snapshot coordinator (runs inside guest)
 - `pkg/daemon/` - Daemon core logic
 - `pkg/dashboard/` - Web dashboard and websocket server
 - `pkg/firecracker/` - Firecracker VM management
