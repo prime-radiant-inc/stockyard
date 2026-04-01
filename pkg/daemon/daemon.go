@@ -112,35 +112,38 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 	d.tasks = NewTaskManager(d, backend)
 	d.queueManager = NewQueueManager(state, cfg)
 
-	// Initialize DHCP server
-	dhcpConfig := network.DHCPConfig{
-		Bridge:     cfg.Firecracker.BridgeName,
-		Gateway:    cfg.Firecracker.VMGateway,
-		RangeStart: cfg.Firecracker.DHCPRangeStart,
-		RangeEnd:   cfg.Firecracker.DHCPRangeEnd,
-		Netmask:    "255.255.255.0", // /24
-		LeaseTime:  cfg.Firecracker.DHCPLeaseTime,
-		DNS:        "8.8.8.8",
-	}
-	dhcpServer, err := network.NewDHCPServer(dhcpConfig, cfg.Daemon.DataDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create DHCP server: %w", err)
-	}
-	d.dhcp = dhcpServer
+	// DHCP and IP pool are only needed for Firecracker backend
+	if cfg.Backend == "" || cfg.Backend == "firecracker" {
+		// Initialize DHCP server
+		dhcpConfig := network.DHCPConfig{
+			Bridge:     cfg.Firecracker.BridgeName,
+			Gateway:    cfg.Firecracker.VMGateway,
+			RangeStart: cfg.Firecracker.DHCPRangeStart,
+			RangeEnd:   cfg.Firecracker.DHCPRangeEnd,
+			Netmask:    "255.255.255.0", // /24
+			LeaseTime:  cfg.Firecracker.DHCPLeaseTime,
+			DNS:        "8.8.8.8",
+		}
+		dhcpServer, err := network.NewDHCPServer(dhcpConfig, cfg.Daemon.DataDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create DHCP server: %w", err)
+		}
+		d.dhcp = dhcpServer
 
-	// Initialize IP pool for static VM IPs
-	// Use the gateway and a /24 prefix (standard for VM networks)
-	ipPool, err := network.NewIPPoolFromGateway(cfg.Firecracker.VMGateway, 24)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create IP pool: %w", err)
+		// Initialize IP pool for static VM IPs
+		// Use the gateway and a /24 prefix (standard for VM networks)
+		ipPool, err := network.NewIPPoolFromGateway(cfg.Firecracker.VMGateway, 24)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create IP pool: %w", err)
+		}
+		// Persist allocations to survive daemon restarts
+		ipPool.SetPersistPath(filepath.Join(cfg.Daemon.DataDir, "ip_pool.json"))
+		if err := ipPool.LoadState(); err != nil {
+			// Log warning but continue - fresh state is fine
+			fmt.Printf("Warning: could not load IP pool state: %v\n", err)
+		}
+		d.ipPool = ipPool
 	}
-	// Persist allocations to survive daemon restarts
-	ipPool.SetPersistPath(filepath.Join(cfg.Daemon.DataDir, "ip_pool.json"))
-	if err := ipPool.LoadState(); err != nil {
-		// Log warning but continue - fresh state is fine
-		fmt.Printf("Warning: could not load IP pool state: %v\n", err)
-	}
-	d.ipPool = ipPool
 
 	return d, nil
 }
@@ -221,12 +224,14 @@ func (d *Daemon) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to ensure base image: %w", err)
 	}
 
-	// Start DHCP server
-	fmt.Println("Starting DHCP server...")
-	if err := d.dhcp.Start(); err != nil {
-		// Log warning but don't fail - dnsmasq might not be installed
-		fmt.Printf("Warning: Failed to start DHCP server: %v\n", err)
-		fmt.Println("VMs may not receive dynamic IPs. Ensure dnsmasq is installed.")
+	// Start DHCP server (Firecracker backend only)
+	if d.cfg.Backend == "" || d.cfg.Backend == "firecracker" {
+		fmt.Println("Starting DHCP server...")
+		if err := d.dhcp.Start(); err != nil {
+			// Log warning but don't fail - dnsmasq might not be installed
+			fmt.Printf("Warning: Failed to start DHCP server: %v\n", err)
+			fmt.Println("VMs may not receive dynamic IPs. Ensure dnsmasq is installed.")
+		}
 	}
 
 	socketDir := filepath.Dir(d.cfg.Daemon.SocketPath)
@@ -309,8 +314,11 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 		// Metrics collector and poller (with alert checking)
 		d.metricsCollector = dashboard.NewMetricsCollector(hub, d.dashboardServer.AlertChecker())
-		d.metricsPoller = NewMetricsPoller(d, &dashboardMetricsSink{d.metricsCollector}, 5*time.Second)
-		d.metricsPoller.Start()
+		// Only create metrics poller for Firecracker backend (uses FIFO)
+		if d.cfg.Backend == "" || d.cfg.Backend == "firecracker" {
+			d.metricsPoller = NewMetricsPoller(d, &dashboardMetricsSink{d.metricsCollector}, 5*time.Second)
+			d.metricsPoller.Start()
+		}
 
 		// Host metrics collector and polling
 		d.hostMetricsCollector = NewHostMetricsCollector()
