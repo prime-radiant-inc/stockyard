@@ -18,8 +18,10 @@ RUN apk add --no-cache \
     npm \
     go
 
-# Create stockyard user with sudo
+# Create stockyard user with sudo and password
 RUN adduser -D -s /bin/bash stockyard && \
+    echo 'stockyard:stockyard' | chpasswd && \
+    echo 'root:root' | chpasswd && \
     echo 'stockyard ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/stockyard
 
 # Generate SSH host keys (baked into image — instant sshd start)
@@ -42,10 +44,14 @@ RUN rc-update add networking boot && \
     rc-update add sshd default
 
 # Configure networking for DHCP
-RUN printf 'auto lo\niface lo inet loopback\n\nauto eth0\niface eth0 inet dhcp\n' > /etc/network/interfaces
+RUN printf 'auto lo\niface lo inet loopback\n\nauto eth0\niface eth0 inet dhcp\n' > /etc/network/interfaces && \
+    printf 'noarp\nnoipv4ll\n' > /etc/dhcpcd.conf
 
 # Set hostname
 RUN echo 'stockyard' > /etc/hostname
+
+# Remove Docker marker so OpenRC doesn't run in container mode
+RUN rm -f /.dockerenv
 
 # Ensure init exists
 RUN [ -f /sbin/init ] || ln -sf /sbin/openrc-init /sbin/init

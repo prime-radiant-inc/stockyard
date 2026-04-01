@@ -37,6 +37,9 @@ trap "rm -rf $TMPDIR $OUTPUT_DIR/rootfs.tar" EXIT
 
 tar xf "$OUTPUT_DIR/rootfs.tar" -C "$TMPDIR"
 
+# Remove Docker artifacts that confuse OpenRC (it runs in degraded "container" mode otherwise)
+rm -f "$TMPDIR/.dockerenv"
+
 # Ensure critical directories exist
 mkdir -p "$TMPDIR"/{dev,proc,sys,run,tmp,mnt/stockyard}
 chmod 1777 "$TMPDIR/tmp"
