@@ -522,6 +522,7 @@ func taskToProto(t *Task) *pb.Task {
 		Name:              t.Name,
 		Status:            t.Status,
 		TailscaleHostname: t.TailscaleHostname,
+		Ip:                t.IP,
 		CreatedAt:         t.CreatedAt.Format(time.RFC3339),
 	}
 	if t.StoppedAt != nil {

@@ -981,6 +981,7 @@ type Task struct {
 	TailscaleHostname string                 `protobuf:"bytes,4,opt,name=tailscale_hostname,json=tailscaleHostname,proto3" json:"tailscale_hostname,omitempty"`
 	CreatedAt         string                 `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	StoppedAt         string                 `protobuf:"bytes,6,opt,name=stopped_at,json=stoppedAt,proto3" json:"stopped_at,omitempty"`
+	Ip                string                 `protobuf:"bytes,7,opt,name=ip,proto3" json:"ip,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1053,6 +1054,13 @@ func (x *Task) GetCreatedAt() string {
 func (x *Task) GetStoppedAt() string {
 	if x != nil {
 		return x.StoppedAt
+	}
+	return ""
+}
+
+func (x *Task) GetIp() string {
+	if x != nil {
+		return x.Ip
 	}
 	return ""
 }
@@ -2321,7 +2329,7 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"\x04tail\x18\x03 \x01(\x05R\x04tail\"<\n" +
 	"\bLogEntry\x12\x1c\n" +
 	"\ttimestamp\x18\x01 \x01(\tR\ttimestamp\x12\x12\n" +
-	"\x04line\x18\x02 \x01(\tR\x04line\"\xaf\x01\n" +
+	"\x04line\x18\x02 \x01(\tR\x04line\"\xbf\x01\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
@@ -2330,7 +2338,8 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x05 \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"stopped_at\x18\x06 \x01(\tR\tstoppedAt\"S\n" +
+	"stopped_at\x18\x06 \x01(\tR\tstoppedAt\x12\x0e\n" +
+	"\x02ip\x18\a \x01(\tR\x02ip\"S\n" +
 	"\bSnapshot\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12\x1d\n" +
