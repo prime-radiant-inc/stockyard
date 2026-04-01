@@ -17,9 +17,11 @@ import (
 
 	"github.com/obra/stockyard/pkg/config"
 	"github.com/obra/stockyard/pkg/dashboard"
+	"github.com/obra/stockyard/pkg/firecracker"
 	"github.com/obra/stockyard/pkg/network"
 	"github.com/obra/stockyard/pkg/secrets"
 	"github.com/obra/stockyard/pkg/tailscale"
+	"github.com/obra/stockyard/pkg/vmbackend"
 	"github.com/obra/stockyard/pkg/zfs"
 )
 
@@ -90,18 +92,24 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 		state:   state,
 	}
 
-	// Initialize task manager with firecracker configuration
-	var fcConfig *FirecrackerConfig
+	// Initialize task manager with VM backend
+	var backend vmbackend.Backend
 	if cfg.Firecracker.KernelPath != "" && cfg.Firecracker.RootfsPath != "" {
-		fcConfig = &FirecrackerConfig{
+		fcCfg := firecracker.ClientConfig{
 			KernelPath: cfg.Firecracker.KernelPath,
 			RootfsPath: cfg.Firecracker.RootfsPath,
 			BridgeName: cfg.Firecracker.BridgeName,
 			ImagesPath: cfg.ZFS.ImagesPath,
 			VMsPath:    cfg.ZFS.VMsPath,
 		}
+		client, err := firecracker.NewClient(fcCfg, d.zfs)
+		if err != nil {
+			fmt.Printf("Warning: failed to create firecracker client: %v\n", err)
+		} else {
+			backend = vmbackend.NewFirecrackerBackend(client)
+		}
 	}
-	d.tasks = NewTaskManager(d, fcConfig)
+	d.tasks = NewTaskManager(d, backend)
 	d.queueManager = NewQueueManager(state, cfg)
 
 	// Initialize DHCP server

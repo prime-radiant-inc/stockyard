@@ -14,46 +14,21 @@ import (
 	"github.com/obra/stockyard/pkg/firecracker"
 	"github.com/obra/stockyard/pkg/network"
 	"github.com/obra/stockyard/pkg/tailscale"
+	"github.com/obra/stockyard/pkg/vmbackend"
 )
 
 // TaskManager handles the lifecycle of VM-based tasks.
 type TaskManager struct {
-	daemon *Daemon
-	fc     *firecracker.Client
+	daemon  *Daemon
+	backend vmbackend.Backend
 }
 
-// FirecrackerConfig holds configuration for direct Firecracker VM management.
-type FirecrackerConfig struct {
-	KernelPath string
-	RootfsPath string
-	BridgeName string
-	ImagesPath string // ZFS dataset path for images
-	VMsPath    string // ZFS dataset path for VMs
-}
-
-// NewTaskManager creates a TaskManager with the given daemon and firecracker configuration.
-func NewTaskManager(d *Daemon, fcConfig *FirecrackerConfig) *TaskManager {
-	tm := &TaskManager{
-		daemon: d,
+// NewTaskManager creates a TaskManager with the given daemon and VM backend.
+func NewTaskManager(d *Daemon, backend vmbackend.Backend) *TaskManager {
+	return &TaskManager{
+		daemon:  d,
+		backend: backend,
 	}
-
-	if fcConfig != nil {
-		cfg := firecracker.ClientConfig{
-			KernelPath: fcConfig.KernelPath,
-			RootfsPath: fcConfig.RootfsPath,
-			BridgeName: fcConfig.BridgeName,
-			ImagesPath: fcConfig.ImagesPath,
-			VMsPath:    fcConfig.VMsPath,
-		}
-		client, err := firecracker.NewClient(cfg, d.zfs)
-		if err != nil {
-			fmt.Printf("Warning: failed to create firecracker client: %v\n", err)
-		} else {
-			tm.fc = client
-		}
-	}
-
-	return tm
 }
 
 // CreateTaskRequest contains the parameters for creating a new task.
@@ -209,42 +184,49 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		// Continue without pre-registered state - VM will use auth key
 	}
 
-	// Create VM if firecracker client is available
+	// Create VM if backend is available
 	var vmID string
-	var vmMetricsPath string
 	var vmCID uint32
 	var vmVsockPath string
-	if tm.fc != nil {
-		// Convert network config to MMDS format if available
-		var mmdsNetworkConfig *firecracker.MMDSNetworkConfig
-		if networkConfig != nil {
-			mmdsNetworkConfig = &firecracker.MMDSNetworkConfig{
-				IP:      networkConfig.IP,
-				Netmask: networkConfig.Netmask,
-				Gateway: networkConfig.Gateway,
-				DNS:     networkConfig.DNS,
-			}
+	var vmIP string
+	if tm.backend != nil {
+		// Build backend-agnostic VM config
+		vmEnv := make(map[string]string)
+		vmMetadata := map[string]string{
+			"task-id":   taskID,
+			"task-name": req.Name,
 		}
 
-		vmCfg := &firecracker.VMConfig{
+		// Pass Firecracker-specific fields through Env/Metadata maps
+		// (the Firecracker adapter extracts these)
+		if tailscaleAuthKey != "" {
+			vmEnv["_tailscale_auth_key"] = tailscaleAuthKey
+		}
+		if staticIPArgs != "" {
+			vmEnv["_static_ip_args"] = staticIPArgs
+		}
+		if len(tailscaleState) > 0 {
+			vmMetadata["_tailscale_state"] = string(tailscaleState)
+		}
+		if networkConfig != nil {
+			vmMetadata["_network_ip"] = networkConfig.IP
+			vmMetadata["_network_netmask"] = networkConfig.Netmask
+			vmMetadata["_network_gateway"] = networkConfig.Gateway
+			vmMetadata["_network_dns"] = networkConfig.DNS
+		}
+
+		vmCfg := &vmbackend.VMConfig{
 			ID:                taskID,
-			Namespace:         "stockyard",
 			VCPU:              req.CPUs,
 			MemoryMB:          req.MemoryMB,
 			CloudInitData:     cloudInitData,
-			TailscaleAuthKey:  tailscaleAuthKey,
-			TailscaleState:    tailscaleState,
 			SSHAuthorizedKeys: req.SSHAuthorizedKeys,
-			StaticIPArgs:      staticIPArgs,
-			NetworkMMDS:       mmdsNetworkConfig,
 			DotEnv:            req.DotEnv,
-			Metadata: map[string]string{
-				"task-id":   taskID,
-				"task-name": req.Name,
-			},
+			Env:               vmEnv,
+			Metadata:          vmMetadata,
 		}
 
-		vm, err := tm.fc.CreateVM(ctx, vmCfg)
+		vm, err := tm.backend.CreateVM(ctx, vmCfg)
 		if err != nil {
 			tm.daemon.zfs.DestroyDataset(ctx, taskID)
 			if tm.daemon.IPPool() != nil {
@@ -253,9 +235,9 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			return nil, fmt.Errorf("failed to create VM: %w", err)
 		}
 		vmID = vm.ID
-		vmMetricsPath = vm.MetricsPath
 		vmCID = vm.CID
 		vmVsockPath = vm.VsockPath
+		vmIP = vm.IP
 	}
 
 	// Determine command string for storage
@@ -273,14 +255,15 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		VMID:              vmID,
 		CID:               vmCID,
 		VsockPath:         vmVsockPath,
+		IP:                vmIP,
 		TailscaleHostname: tailscaleHostname,
 		CreatedAt:         time.Now(),
 	}
 
 	if err := tm.daemon.state.CreateTask(task); err != nil {
 		// Attempt cleanup on failure
-		if tm.fc != nil && vmID != "" {
-			tm.fc.DeleteVM(ctx, "stockyard", vmID)
+		if tm.backend != nil && vmID != "" {
+			tm.backend.DeleteVM(ctx, vmID)
 		}
 		tm.daemon.zfs.DestroyDataset(ctx, taskID)
 		if tm.daemon.IPPool() != nil {
@@ -306,12 +289,6 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		tm.daemon.logTailer.TailFile(taskID, "stderr", filepath.Join(vmDir, "stderr.log"))
 	}
 
-	// Start metrics collection if dashboard is enabled
-	if tm.daemon.metricsPoller != nil && vmMetricsPath != "" {
-		memoryBytes := int64(req.MemoryMB) * 1024 * 1024
-		tm.daemon.metricsPoller.StartTaskMetrics(taskID, vmMetricsPath, memoryBytes)
-	}
-
 	return task, nil
 }
 
@@ -332,18 +309,16 @@ func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
 	}
 
 	// Start VM using existing workspace and rootfs
-	var vmInfo *firecracker.VMInfo
-	if tm.fc != nil && task.VMID != "" {
-		// Build minimal config for restarting - use defaults for CPU/memory
-		vmCfg := &firecracker.VMConfig{
-			ID:        task.VMID,
-			Namespace: "stockyard",
-			VCPU:      2,      // Default
-			MemoryMB:  1024,   // Default
+	var vmInfo *vmbackend.VMInfo
+	if tm.backend != nil && task.VMID != "" {
+		vmCfg := &vmbackend.VMConfig{
+			ID:       task.VMID,
+			VCPU:     2,    // Default
+			MemoryMB: 1024, // Default
 		}
 
 		var err error
-		vmInfo, err = tm.fc.StartVM(ctx, vmCfg)
+		vmInfo, err = tm.backend.StartVM(ctx, vmCfg)
 		if err != nil {
 			// Revert status on failure
 			tm.daemon.state.UpdateTaskStatus(taskID, "failed")
@@ -377,13 +352,6 @@ func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
 		tm.daemon.logTailer.TailFile(taskID, "stderr", filepath.Join(vmDir, "stderr.log"))
 	}
 
-	// Start metrics collection if dashboard is enabled
-	if tm.daemon.metricsPoller != nil && vmInfo != nil && vmInfo.MetricsPath != "" {
-		// Use default memory (1024MB) since we don't store it in the task
-		memoryBytes := int64(1024) * 1024 * 1024
-		tm.daemon.metricsPoller.StartTaskMetrics(taskID, vmInfo.MetricsPath, memoryBytes)
-	}
-
 	// Record activity event for VM started
 	if af := tm.daemon.ActivityFeed(); af != nil {
 		af.VMStarted(taskID, task.Name, "")
@@ -409,9 +377,9 @@ func (tm *TaskManager) StopTask(ctx context.Context, taskID string) error {
 		tm.daemon.metricsPoller.StopTaskMetrics(taskID)
 	}
 
-	// Stop VM if firecracker client is available and task has a VM
-	if tm.fc != nil && task.VMID != "" {
-		if err := tm.fc.StopVM(ctx, "stockyard", task.VMID); err != nil {
+	// Stop VM if backend is available and task has a VM
+	if tm.backend != nil && task.VMID != "" {
+		if err := tm.backend.StopVM(ctx, task.VMID); err != nil {
 			fmt.Printf("Warning: failed to stop VM %s: %v\n", task.VMID, err)
 		}
 	}
@@ -477,9 +445,9 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 		tm.daemon.metricsPoller.StopTaskMetrics(taskID)
 	}
 
-	// Delete VM if firecracker client is available and task has a VM
-	if tm.fc != nil && task.VMID != "" {
-		if err := tm.fc.DeleteVM(ctx, "stockyard", task.VMID); err != nil {
+	// Delete VM if backend is available and task has a VM
+	if tm.backend != nil && task.VMID != "" {
+		if err := tm.backend.DeleteVM(ctx, task.VMID); err != nil {
 			fmt.Printf("Warning: failed to delete VM %s: %v\n", task.VMID, err)
 		}
 	}
@@ -522,8 +490,8 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 
 // Close closes the task manager and releases resources.
 func (tm *TaskManager) Close() error {
-	if tm.fc != nil {
-		return tm.fc.Close()
+	if tm.backend != nil {
+		return tm.backend.Close()
 	}
 	return nil
 }
