@@ -55,7 +55,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	}
 
 	// Generate task ID
-	taskID := firecracker.GenerateVMID()
+	taskID := vmbackend.GenerateVMID()
 
 	// Allocate static IP for the VM
 	var staticIPArgs string

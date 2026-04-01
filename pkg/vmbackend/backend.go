@@ -4,6 +4,8 @@ package vmbackend
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Backend abstracts VM lifecycle management across different hypervisors.
@@ -63,4 +65,9 @@ type VMState struct {
 	ID     string
 	PID    int
 	Status string // "running", "stopped", "unknown"
+}
+
+// GenerateVMID creates a unique 8-character identifier for a new VM.
+func GenerateVMID() string {
+	return uuid.New().String()[:8]
 }
