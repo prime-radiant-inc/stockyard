@@ -184,6 +184,19 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		// Continue without pre-registered state - VM will use auth key
 	}
 
+	// Clone rootfs for the VM (non-Firecracker backends need pre-cloned rootfs)
+	var rootfsPath string
+	if tm.daemon.RootfsProvisioner() != nil {
+		var err error
+		rootfsPath, err = tm.daemon.RootfsProvisioner().Clone(ctx, taskID)
+		if err != nil {
+			if tm.daemon.IPPool() != nil {
+				tm.daemon.IPPool().Release(taskID)
+			}
+			return nil, fmt.Errorf("failed to clone rootfs: %w", err)
+		}
+	}
+
 	// Create VM if backend is available
 	var vmID string
 	var vmCID uint32
@@ -219,6 +232,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			ID:                taskID,
 			VCPU:              req.CPUs,
 			MemoryMB:          req.MemoryMB,
+			RootfsPath:        rootfsPath,
 			CloudInitData:     cloudInitData,
 			SSHAuthorizedKeys: req.SSHAuthorizedKeys,
 			DotEnv:            req.DotEnv,
@@ -455,6 +469,13 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 	// Destroy ZFS dataset
 	if err := tm.daemon.zfs.DestroyDataset(ctx, taskID); err != nil {
 		fmt.Printf("Warning: failed to destroy ZFS dataset for %s: %v\n", taskID, err)
+	}
+
+	// Clean up rootfs clone (for non-Firecracker backends)
+	if tm.daemon.RootfsProvisioner() != nil {
+		if err := tm.daemon.RootfsProvisioner().Destroy(ctx, taskID); err != nil {
+			fmt.Printf("Warning: failed to destroy rootfs for %s: %v\n", taskID, err)
+		}
 	}
 
 	// Record activity event for VM stopped (if it was running)
