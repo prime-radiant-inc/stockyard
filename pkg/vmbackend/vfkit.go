@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +19,9 @@ import (
 )
 
 const macOSLeaseFile = "/var/db/dhcpd_leases"
+
+// Matches kernel IP-Config output: "my address is 192.168.64.X"
+var ipConfigRegex = regexp.MustCompile(`my address is (192\.168\.\d+\.\d+)`)
 
 // VfkitConfig holds configuration for the vfkit backend.
 type VfkitConfig struct {
@@ -106,22 +110,24 @@ func (b *VfkitBackend) CreateVM(ctx context.Context, cfg *VMConfig) (*VMInfo, er
 		b.mu.Unlock()
 	}()
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	if !vfkitProcessRunning(cmd.Process.Pid) {
 		stderrContent, _ := os.ReadFile(filepath.Join(vmDir, "stderr.log"))
 		os.RemoveAll(vmDir)
 		return nil, fmt.Errorf("vfkit exited immediately: %s", string(stderrContent))
 	}
 
-	// Try to discover IP quickly (non-blocking — best effort)
-	hostname := fmt.Sprintf("stockyard-%s", cfg.ID)
+	// Discover IP from kernel console log (kernel ip=dhcp prints it at ~0.2s)
+	consolePath := filepath.Join(vmDir, "console.log")
 	discoveredIP := ""
-	for i := 0; i < 10; i++ {
-		if found, err := FindIPByName(macOSLeaseFile, hostname); err == nil {
-			discoveredIP = found
-			break
+	for i := 0; i < 20; i++ {
+		if data, err := os.ReadFile(consolePath); err == nil {
+			if match := ipConfigRegex.FindSubmatch(data); match != nil {
+				discoveredIP = string(match[1])
+				break
+			}
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	return &VMInfo{
@@ -228,9 +234,9 @@ func (b *VfkitBackend) buildArgs(cfg *VMConfig, vmDir, mac, ip string) []string 
 		os.WriteFile(initrdPath, []byte{}, 0644)
 	}
 
-	// Use DHCP (vmnet NAT only routes to IPs it assigned). Static IP won't work.
-	// The IP is discovered post-boot via the lease file.
-	cmdline := "console=hvc0 root=/dev/vda rw"
+	// Kernel-level DHCP — gets IP at ~0.2s during boot, before init runs.
+	// vmnet NAT only routes to IPs it assigned, so DHCP is required.
+	cmdline := "console=hvc0 root=/dev/vda rw ip=dhcp"
 
 	sharedDir := filepath.Join(vmDir, "shared")
 

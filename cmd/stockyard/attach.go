@@ -63,7 +63,17 @@ var attachCmd = &cobra.Command{
 			return fmt.Errorf("ssh not found: %w", err)
 		}
 
-		sshArgs := []string{"ssh", "-o", "StrictHostKeyChecking=accept-new", fmt.Sprintf("%s@%s", sshUser, sshHost)}
+		sshArgs := []string{"ssh",
+			"-o", "StrictHostKeyChecking=no",
+			"-o", "UserKnownHostsFile=/dev/null",
+			"-o", "LogLevel=ERROR",
+			fmt.Sprintf("%s@%s", sshUser, sshHost),
+		}
+		// Append any extra args after "--"
+		if cmd.ArgsLenAtDash() >= 0 {
+			sshArgs = append(sshArgs, "--")
+			sshArgs = append(sshArgs, args[1:]...)
+		}
 
 		return syscall.Exec(sshPath, sshArgs, os.Environ())
 	},
