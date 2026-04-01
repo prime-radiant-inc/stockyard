@@ -94,20 +94,31 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 
 	// Initialize task manager with VM backend
 	var backend vmbackend.Backend
-	if cfg.Firecracker.KernelPath != "" && cfg.Firecracker.RootfsPath != "" {
-		fcCfg := firecracker.ClientConfig{
-			KernelPath: cfg.Firecracker.KernelPath,
-			RootfsPath: cfg.Firecracker.RootfsPath,
-			BridgeName: cfg.Firecracker.BridgeName,
-			ImagesPath: cfg.ZFS.ImagesPath,
-			VMsPath:    cfg.ZFS.VMsPath,
+	switch cfg.Backend {
+	case "", "firecracker":
+		if cfg.Firecracker.KernelPath != "" && cfg.Firecracker.RootfsPath != "" {
+			fcCfg := firecracker.ClientConfig{
+				KernelPath: cfg.Firecracker.KernelPath,
+				RootfsPath: cfg.Firecracker.RootfsPath,
+				BridgeName: cfg.Firecracker.BridgeName,
+				ImagesPath: cfg.ZFS.ImagesPath,
+				VMsPath:    cfg.ZFS.VMsPath,
+			}
+			client, err := firecracker.NewClient(fcCfg, d.zfs)
+			if err != nil {
+				fmt.Printf("Warning: failed to create firecracker client: %v\n", err)
+			} else {
+				backend = vmbackend.NewFirecrackerBackend(client)
+			}
 		}
-		client, err := firecracker.NewClient(fcCfg, d.zfs)
+	case "vfkit":
+		var err error
+		backend, err = createVfkitBackend(cfg)
 		if err != nil {
-			fmt.Printf("Warning: failed to create firecracker client: %v\n", err)
-		} else {
-			backend = vmbackend.NewFirecrackerBackend(client)
+			return nil, fmt.Errorf("failed to create vfkit backend: %w", err)
 		}
+	default:
+		return nil, fmt.Errorf("unknown backend: %s", cfg.Backend)
 	}
 	d.tasks = NewTaskManager(d, backend)
 	d.queueManager = NewQueueManager(state, cfg)

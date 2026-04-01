@@ -17,6 +17,7 @@ type Config struct {
 	Daemon      DaemonConfig      `json:"daemon"`
 	ZFS         ZFSConfig         `json:"zfs"`
 	Firecracker FirecrackerConfig `json:"firecracker"`
+	Vfkit       VfkitConfig       `json:"vfkit"`
 	VM          VMConfig          `json:"vm"`
 	HTTP        HTTPConfig        `json:"http"`
 	Rootfs      RootfsConfig      `json:"rootfs"`
