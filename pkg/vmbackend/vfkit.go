@@ -12,18 +12,23 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
-
-const macOSLeaseFile = "/var/db/dhcpd_leases"
 
 // VfkitConfig holds configuration for the vfkit backend.
 type VfkitConfig struct {
 	VfkitBin   string
 	KernelPath string
-	InitrdPath string
 	StateDir   string
+}
+
+var nextIP uint32 = 2 // Start at 192.168.64.2 (gateway is .1)
+
+func allocateIP() string {
+	ip := atomic.AddUint32(&nextIP, 1) - 1
+	return fmt.Sprintf("192.168.64.%d", ip)
 }
 
 type vfkitProc struct {
@@ -58,12 +63,14 @@ func (b *VfkitBackend) CreateVM(ctx context.Context, cfg *VMConfig) (*VMInfo, er
 	mac := generateMAC()
 	os.WriteFile(filepath.Join(vmDir, "mac_addr"), []byte(mac), 0644)
 
-	if err := writeCloudInit(vmDir, cfg); err != nil {
+	ip := allocateIP()
+
+	if err := writeAuthorizedKeys(vmDir, cfg); err != nil {
 		os.RemoveAll(vmDir)
-		return nil, fmt.Errorf("write cloud-init: %w", err)
+		return nil, fmt.Errorf("write authorized_keys: %w", err)
 	}
 
-	args := b.buildArgs(cfg, vmDir, mac)
+	args := b.buildArgs(cfg, vmDir, mac, ip)
 
 	cmd := exec.Command(b.cfg.VfkitBin, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -103,9 +110,6 @@ func (b *VfkitBackend) CreateVM(ctx context.Context, cfg *VMConfig) (*VMInfo, er
 		os.RemoveAll(vmDir)
 		return nil, fmt.Errorf("vfkit exited immediately: %s", string(stderrContent))
 	}
-
-	hostname := fmt.Sprintf("stockyard-%s", cfg.ID)
-	ip, _ := waitForIP(hostname, mac, 30*time.Second)
 
 	return &VMInfo{
 		ID:        cfg.ID,
@@ -199,71 +203,43 @@ func (b *VfkitBackend) Close() error {
 	return nil
 }
 
-func (b *VfkitBackend) buildArgs(cfg *VMConfig, vmDir, mac string) []string {
+func (b *VfkitBackend) buildArgs(cfg *VMConfig, vmDir, mac, ip string) []string {
 	kernelPath := cfg.KernelPath
 	if kernelPath == "" {
 		kernelPath = b.cfg.KernelPath
 	}
 
-	initrdPath := b.cfg.InitrdPath
+	cmdline := fmt.Sprintf("console=hvc0 root=/dev/vda rw ip=%s::192.168.64.1:255.255.255.0::eth0:off", ip)
+
+	sharedDir := filepath.Join(vmDir, "shared")
 
 	args := []string{
 		"--cpus", strconv.Itoa(int(cfg.VCPU)),
 		"--memory", strconv.Itoa(int(cfg.MemoryMB)),
-		"--kernel", kernelPath,
-		"--initrd", initrdPath,
-		"--kernel-cmdline", "console=hvc0 root=/dev/vda1 rw",
+		"--bootloader", fmt.Sprintf("linux,kernel=%s,cmdline=%s", kernelPath, cmdline),
 		"--device", fmt.Sprintf("virtio-blk,path=%s", cfg.RootfsPath),
 		"--device", fmt.Sprintf("virtio-net,nat,mac=%s", mac),
 		"--device", "virtio-rng",
 		"--device", fmt.Sprintf("virtio-serial,logFilePath=%s", filepath.Join(vmDir, "console.log")),
+		"--device", fmt.Sprintf("virtio-fs,sharedDir=%s,mountTag=stockyard", sharedDir),
 		"--restful-uri", fmt.Sprintf("unix://%s", filepath.Join(vmDir, "vfkit-rest.sock")),
-	}
-
-	userDataPath := filepath.Join(vmDir, "user-data")
-	metaDataPath := filepath.Join(vmDir, "meta-data")
-	if _, err := os.Stat(userDataPath); err == nil {
-		args = append(args, "--cloud-init", fmt.Sprintf("%s,%s", userDataPath, metaDataPath))
 	}
 
 	return args
 }
 
-func writeCloudInit(vmDir string, cfg *VMConfig) error {
-	hostname := fmt.Sprintf("stockyard-%s", cfg.ID)
-
-	metaData := fmt.Sprintf("instance-id: i-%s\nlocal-hostname: %s\n", cfg.ID, hostname)
-	if err := os.WriteFile(filepath.Join(vmDir, "meta-data"), []byte(metaData), 0644); err != nil {
+func writeAuthorizedKeys(vmDir string, cfg *VMConfig) error {
+	sharedDir := filepath.Join(vmDir, "shared")
+	if err := os.MkdirAll(sharedDir, 0755); err != nil {
 		return err
 	}
 
-	var userData strings.Builder
-	userData.WriteString("#cloud-config\n")
-
-	if len(cfg.SSHAuthorizedKeys) > 0 {
-		userData.WriteString("ssh_authorized_keys:\n")
-		for _, key := range cfg.SSHAuthorizedKeys {
-			userData.WriteString(fmt.Sprintf("  - %s\n", key))
-		}
+	if len(cfg.SSHAuthorizedKeys) == 0 {
+		return nil
 	}
 
-	return os.WriteFile(filepath.Join(vmDir, "user-data"), []byte(userData.String()), 0644)
-}
-
-func waitForIP(hostname, mac string, timeout time.Duration) (string, error) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		// Try hostname first (more reliable — macOS lease file MACs can be non-standard)
-		if ip, err := FindIPByName(macOSLeaseFile, hostname); err == nil {
-			return ip, nil
-		}
-		// Fall back to MAC
-		if ip, err := FindIPByMAC(macOSLeaseFile, mac); err == nil {
-			return ip, nil
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	return "", fmt.Errorf("timeout waiting for IP for %s (mac %s)", hostname, mac)
+	keys := strings.Join(cfg.SSHAuthorizedKeys, "\n") + "\n"
+	return os.WriteFile(filepath.Join(sharedDir, "authorized_keys"), []byte(keys), 0644)
 }
 
 func generateMAC() string {

@@ -11,7 +11,6 @@ func createVfkitBackend(cfg *config.Config) (vmbackend.Backend, error) {
 	vfkitCfg := vmbackend.VfkitConfig{
 		VfkitBin:   cfg.Vfkit.VfkitBin,
 		KernelPath: cfg.Vfkit.KernelPath,
-		InitrdPath: cfg.Vfkit.InitrdPath,
 		StateDir:   cfg.Daemon.DataDir + "/vms/stockyard",
 	}
 	return vmbackend.NewVfkitBackend(vfkitCfg), nil
