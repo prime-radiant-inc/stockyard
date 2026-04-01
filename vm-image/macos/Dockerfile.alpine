@@ -1,0 +1,47 @@
+FROM --platform=linux/arm64 alpine:3.21
+
+# Install essentials
+RUN apk add --no-cache \
+    openrc \
+    openssh-server \
+    rsync \
+    ripgrep \
+    curl \
+    git \
+    bash \
+    sudo
+
+# Install development tools
+RUN apk add --no-cache \
+    nodejs \
+    npm \
+    go
+
+# Create stockyard user with sudo
+RUN adduser -D -s /bin/bash stockyard && \
+    echo 'stockyard ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/stockyard
+
+# Generate SSH host keys (baked into image — instant sshd start)
+RUN ssh-keygen -A
+
+# Configure sshd for VirtioFS key injection
+COPY overlay/etc/ssh/sshd_config.d/stockyard.conf /etc/ssh/sshd_config.d/
+
+# Install VirtioFS mount init script
+COPY overlay/etc/init.d/stockyard-mount /etc/init.d/stockyard-mount
+RUN chmod +x /etc/init.d/stockyard-mount
+
+# Enable services at boot
+RUN rc-update add sshd default && \
+    rc-update add stockyard-mount default && \
+    rc-update add networking default
+
+# Configure networking for static IP (overridden by kernel cmdline)
+RUN echo 'auto eth0' > /etc/network/interfaces && \
+    echo 'iface eth0 inet manual' >> /etc/network/interfaces
+
+# Set hostname
+RUN echo 'stockyard' > /etc/hostname
+
+# Ensure init exists
+RUN [ -f /sbin/init ] || ln -sf /sbin/openrc-init /sbin/init

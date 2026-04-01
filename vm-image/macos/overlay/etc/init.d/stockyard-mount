@@ -1,0 +1,20 @@
+#!/sbin/openrc-run
+
+description="Mount stockyard VirtioFS share"
+
+depend() {
+    before sshd
+}
+
+start() {
+    ebegin "Mounting stockyard VirtioFS"
+    mkdir -p /mnt/stockyard
+    mount -t virtiofs stockyard /mnt/stockyard 2>/dev/null || true
+    eend 0
+}
+
+stop() {
+    ebegin "Unmounting stockyard VirtioFS"
+    umount /mnt/stockyard 2>/dev/null || true
+    eend 0
+}
