@@ -43,9 +43,9 @@ RUN rc-update add networking boot && \
     rc-update add stockyard-mount boot && \
     rc-update add sshd default
 
-# Configure networking for DHCP
-RUN printf 'auto lo\niface lo inet loopback\n\nauto eth0\niface eth0 inet dhcp\n' > /etc/network/interfaces && \
-    printf 'noarp\nnoipv4ll\n' > /etc/dhcpcd.conf
+# Configure networking — kernel handles DHCP via ip=dhcp cmdline,
+# so userspace just needs to bring up lo. No dhcpcd needed.
+RUN printf 'auto lo\niface lo inet loopback\n\nauto eth0\niface eth0 inet manual\n' > /etc/network/interfaces
 
 # Set hostname
 RUN echo 'stockyard' > /etc/hostname
