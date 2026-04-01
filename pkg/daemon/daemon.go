@@ -178,12 +178,16 @@ func (d *Daemon) reconcileRunningVMs() {
 
 	fmt.Printf("Reconciling %d running task(s)...\n", len(tasks))
 
-	// VM state directory: /var/lib/stockyard/vms/stockyard/<task-id>/
-	const vmStateDir = "/var/lib/stockyard/vms"
+	// VM state directory: <data-dir>/vms/stockyard/<task-id>/
+	vmStateDir := filepath.Join(d.cfg.Daemon.DataDir, "vms")
 	const vmNamespace = "stockyard"
 
 	for _, task := range tasks {
+		// Check for PID file from either backend
 		pidFile := filepath.Join(vmStateDir, vmNamespace, task.ID, "firecracker.pid")
+		if _, err := os.Stat(pidFile); os.IsNotExist(err) {
+			pidFile = filepath.Join(vmStateDir, vmNamespace, task.ID, "vfkit.pid")
+		}
 		pidData, err := os.ReadFile(pidFile)
 		if err != nil {
 			// PID file doesn't exist - VM is definitely not running
@@ -233,9 +237,11 @@ func (d *Daemon) Start(ctx context.Context) error {
 	// Reconcile running VMs - update status for any that died while daemon was stopped
 	d.reconcileRunningVMs()
 
-	// Ensure base rootfs image is available for VM creation
-	if err := d.ensureBaseImage(ctx); err != nil {
-		return fmt.Errorf("failed to ensure base image: %w", err)
+	// Ensure base rootfs image is available for VM creation (Firecracker only — uses ZFS)
+	if d.cfg.Backend == "" || d.cfg.Backend == "firecracker" {
+		if err := d.ensureBaseImage(ctx); err != nil {
+			return fmt.Errorf("failed to ensure base image: %w", err)
+		}
 	}
 
 	// Start DHCP server (Firecracker backend only)

@@ -69,23 +69,27 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		}
 	}
 
-	// Create ZFS dataset for workspace
-	if err := tm.daemon.zfs.CreateDataset(ctx, taskID); err != nil {
-		if tm.daemon.IPPool() != nil {
-			tm.daemon.IPPool().Release(taskID)
+	// Create ZFS dataset for workspace (Firecracker backend only)
+	var workspacePath string
+	if tm.daemon.zfs != nil && (tm.daemon.cfg.Backend == "" || tm.daemon.cfg.Backend == "firecracker") {
+		if err := tm.daemon.zfs.CreateDataset(ctx, taskID); err != nil {
+			if tm.daemon.IPPool() != nil {
+				tm.daemon.IPPool().Release(taskID)
+			}
+			return nil, fmt.Errorf("failed to create ZFS dataset: %w", err)
 		}
-		return nil, fmt.Errorf("failed to create ZFS dataset: %w", err)
-	}
 
-	// Get workspace mountpoint
-	workspacePath, err := tm.daemon.zfs.GetMountpoint(ctx, taskID)
-	if err != nil {
-		// Clean up dataset and IP on failure
-		tm.daemon.zfs.DestroyDataset(ctx, taskID)
-		if tm.daemon.IPPool() != nil {
-			tm.daemon.IPPool().Release(taskID)
+		var err error
+		workspacePath, err = tm.daemon.zfs.GetMountpoint(ctx, taskID)
+		if err != nil {
+			if tm.daemon.zfs != nil {
+				tm.daemon.zfs.DestroyDataset(ctx, taskID)
+			}
+			if tm.daemon.IPPool() != nil {
+				tm.daemon.IPPool().Release(taskID)
+			}
+			return nil, fmt.Errorf("failed to get workspace mountpoint: %w", err)
 		}
-		return nil, fmt.Errorf("failed to get workspace mountpoint: %w", err)
 	}
 
 	// Build environment with secrets
@@ -161,20 +165,26 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	// Generate hostname
 	hostname := fmt.Sprintf("stockyard-%s", taskID)
 
-	// Generate cloud-init config
-	cloudInitCfg := &firecracker.CloudInitConfig{
-		Hostname:      hostname,
-		Environment:   env,
-		WorkspacePath: workspacePath,
-	}
-
-	cloudInitData, err := cloudInitCfg.Generate()
-	if err != nil {
-		tm.daemon.zfs.DestroyDataset(ctx, taskID)
-		if tm.daemon.IPPool() != nil {
-			tm.daemon.IPPool().Release(taskID)
+	// Generate cloud-init config (Firecracker only — vfkit handles its own cloud-init)
+	var cloudInitData string
+	if tm.daemon.cfg.Backend == "" || tm.daemon.cfg.Backend == "firecracker" {
+		cloudInitCfg := &firecracker.CloudInitConfig{
+			Hostname:      hostname,
+			Environment:   env,
+			WorkspacePath: workspacePath,
 		}
-		return nil, fmt.Errorf("failed to generate cloud-init config: %w", err)
+
+		var err error
+		cloudInitData, err = cloudInitCfg.Generate()
+		if err != nil {
+			if tm.daemon.zfs != nil {
+				tm.daemon.zfs.DestroyDataset(ctx, taskID)
+			}
+			if tm.daemon.IPPool() != nil {
+				tm.daemon.IPPool().Release(taskID)
+			}
+			return nil, fmt.Errorf("failed to generate cloud-init config: %w", err)
+		}
 	}
 
 	// Wait for pre-registration to complete before building VMConfig
@@ -242,7 +252,9 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 		vm, err := tm.backend.CreateVM(ctx, vmCfg)
 		if err != nil {
-			tm.daemon.zfs.DestroyDataset(ctx, taskID)
+			if tm.daemon.zfs != nil {
+				tm.daemon.zfs.DestroyDataset(ctx, taskID)
+			}
 			if tm.daemon.IPPool() != nil {
 				tm.daemon.IPPool().Release(taskID)
 			}
@@ -279,7 +291,9 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		if tm.backend != nil && vmID != "" {
 			tm.backend.DeleteVM(ctx, vmID)
 		}
-		tm.daemon.zfs.DestroyDataset(ctx, taskID)
+		if tm.daemon.zfs != nil {
+				tm.daemon.zfs.DestroyDataset(ctx, taskID)
+			}
 		if tm.daemon.IPPool() != nil {
 			tm.daemon.IPPool().Release(taskID)
 		}
@@ -466,9 +480,11 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 		}
 	}
 
-	// Destroy ZFS dataset
-	if err := tm.daemon.zfs.DestroyDataset(ctx, taskID); err != nil {
-		fmt.Printf("Warning: failed to destroy ZFS dataset for %s: %v\n", taskID, err)
+	// Destroy ZFS dataset (Firecracker backend only)
+	if tm.daemon.zfs != nil && (tm.daemon.cfg.Backend == "" || tm.daemon.cfg.Backend == "firecracker") {
+		if err := tm.daemon.zfs.DestroyDataset(ctx, taskID); err != nil {
+			fmt.Printf("Warning: failed to destroy ZFS dataset for %s: %v\n", taskID, err)
+		}
 	}
 
 	// Clean up rootfs clone (for non-Firecracker backends)
