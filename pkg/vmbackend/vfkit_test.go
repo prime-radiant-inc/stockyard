@@ -48,7 +48,6 @@ func TestVfkitBackend_BuildArgs(t *testing.T) {
 		"--cpus", "--memory", "--bootloader", "vmlinux",
 		"virtio-blk", "virtio-net", "nat", "02:aa:bb:cc:dd:ee",
 		"rootfs.img", "virtio-fs", "mountTag=stockyard",
-		"ip=192.168.64.5",
 	}
 	for _, check := range mustContain {
 		if !strings.Contains(joined, check) {

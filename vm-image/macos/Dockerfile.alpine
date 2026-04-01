@@ -9,7 +9,8 @@ RUN apk add --no-cache \
     curl \
     git \
     bash \
-    sudo
+    sudo \
+    dhcpcd
 
 # Install development tools
 RUN apk add --no-cache \
@@ -22,7 +23,11 @@ RUN adduser -D -s /bin/bash stockyard && \
     echo 'stockyard ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/stockyard
 
 # Generate SSH host keys (baked into image — instant sshd start)
-RUN ssh-keygen -A
+# /var/empty must be root-owned 755 for sshd privilege separation
+RUN ssh-keygen -A && \
+    mkdir -p /var/empty && \
+    chmod 755 /var/empty && \
+    chown root:root /var/empty
 
 # Configure sshd for VirtioFS key injection
 COPY overlay/etc/ssh/sshd_config.d/stockyard.conf /etc/ssh/sshd_config.d/
@@ -32,13 +37,12 @@ COPY overlay/etc/init.d/stockyard-mount /etc/init.d/stockyard-mount
 RUN chmod +x /etc/init.d/stockyard-mount
 
 # Enable services at boot
-RUN rc-update add sshd default && \
-    rc-update add stockyard-mount default && \
-    rc-update add networking default
+RUN rc-update add networking boot && \
+    rc-update add stockyard-mount boot && \
+    rc-update add sshd default
 
-# Configure networking for static IP (overridden by kernel cmdline)
-RUN echo 'auto eth0' > /etc/network/interfaces && \
-    echo 'iface eth0 inet manual' >> /etc/network/interfaces
+# Configure networking for DHCP
+RUN printf 'auto lo\niface lo inet loopback\n\nauto eth0\niface eth0 inet dhcp\n' > /etc/network/interfaces
 
 # Set hostname
 RUN echo 'stockyard' > /etc/hostname

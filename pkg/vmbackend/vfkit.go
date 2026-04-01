@@ -17,6 +17,8 @@ import (
 	"time"
 )
 
+const macOSLeaseFile = "/var/db/dhcpd_leases"
+
 // VfkitConfig holds configuration for the vfkit backend.
 type VfkitConfig struct {
 	VfkitBin   string
@@ -111,10 +113,21 @@ func (b *VfkitBackend) CreateVM(ctx context.Context, cfg *VMConfig) (*VMInfo, er
 		return nil, fmt.Errorf("vfkit exited immediately: %s", string(stderrContent))
 	}
 
+	// Try to discover IP quickly (non-blocking — best effort)
+	hostname := fmt.Sprintf("stockyard-%s", cfg.ID)
+	discoveredIP := ""
+	for i := 0; i < 10; i++ {
+		if found, err := FindIPByName(macOSLeaseFile, hostname); err == nil {
+			discoveredIP = found
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
 	return &VMInfo{
 		ID:        cfg.ID,
 		PID:       cmd.Process.Pid,
-		IP:        ip,
+		IP:        discoveredIP,
 		StateDir:  vmDir,
 		State:     "running",
 		CreatedAt: time.Now(),
@@ -209,14 +222,22 @@ func (b *VfkitBackend) buildArgs(cfg *VMConfig, vmDir, mac, ip string) []string 
 		kernelPath = b.cfg.KernelPath
 	}
 
-	cmdline := fmt.Sprintf("console=hvc0 root=/dev/vda rw ip=%s::192.168.64.1:255.255.255.0::eth0:off", ip)
+	// vfkit requires an initrd even with --bootloader. Create a minimal empty one.
+	initrdPath := filepath.Join(vmDir, "empty-initrd.img")
+	if _, err := os.Stat(initrdPath); os.IsNotExist(err) {
+		os.WriteFile(initrdPath, []byte{}, 0644)
+	}
+
+	// Use DHCP (vmnet NAT only routes to IPs it assigned). Static IP won't work.
+	// The IP is discovered post-boot via the lease file.
+	cmdline := "console=hvc0 root=/dev/vda rw"
 
 	sharedDir := filepath.Join(vmDir, "shared")
 
 	args := []string{
 		"--cpus", strconv.Itoa(int(cfg.VCPU)),
 		"--memory", strconv.Itoa(int(cfg.MemoryMB)),
-		"--bootloader", fmt.Sprintf("linux,kernel=%s,cmdline=%s", kernelPath, cmdline),
+		"--bootloader", fmt.Sprintf("linux,kernel=%s,initrd=%s,cmdline=%s", kernelPath, initrdPath, cmdline),
 		"--device", fmt.Sprintf("virtio-blk,path=%s", cfg.RootfsPath),
 		"--device", fmt.Sprintf("virtio-net,nat,mac=%s", mac),
 		"--device", "virtio-rng",
