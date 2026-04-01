@@ -43,11 +43,18 @@ var logsCmd = &cobra.Command{
 			return fmt.Errorf("task not found: %s", taskID)
 		}
 
-		if task.Status != "running" || task.TailscaleHostname == "" {
-			return fmt.Errorf("task is not running or has no Tailscale access")
+		if task.Status != "running" {
+			return fmt.Errorf("task is not running")
 		}
 
-		return streamLogsSSH(task.TailscaleHostname, cfg.VM.User, logsFollow, logsSystem)
+		hostname := task.TailscaleHostname
+		if hostname == "" {
+			hostname = task.Ip
+		}
+		if hostname == "" {
+			return fmt.Errorf("task has no reachable address (no Tailscale hostname or IP)")
+		}
+		return streamLogsSSH(hostname, cfg.VM.User, logsFollow, logsSystem)
 	},
 }
 

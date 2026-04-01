@@ -45,12 +45,14 @@ var attachCmd = &cobra.Command{
 			return fmt.Errorf("task is not running (status: %s)", task.Status)
 		}
 
-		if task.TailscaleHostname == "" {
-			return fmt.Errorf("task has no Tailscale hostname (was --no-tailscale used?)")
-		}
-
-		// Build SSH command
+		// Determine SSH target — prefer Tailscale hostname, fall back to direct IP
 		sshHost := task.TailscaleHostname
+		if sshHost == "" {
+			sshHost = task.Ip
+		}
+		if sshHost == "" {
+			return fmt.Errorf("task has no reachable address (no Tailscale hostname or IP)")
+		}
 		sshUser := cfg.VM.User
 
 		fmt.Printf("Connecting to %s@%s...\n", sshUser, sshHost)
