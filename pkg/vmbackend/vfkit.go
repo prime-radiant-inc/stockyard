@@ -104,7 +104,8 @@ func (b *VfkitBackend) CreateVM(ctx context.Context, cfg *VMConfig) (*VMInfo, er
 		return nil, fmt.Errorf("vfkit exited immediately: %s", string(stderrContent))
 	}
 
-	ip, _ := waitForIP(mac, 30*time.Second)
+	hostname := fmt.Sprintf("stockyard-%s", cfg.ID)
+	ip, _ := waitForIP(hostname, mac, 30*time.Second)
 
 	return &VMInfo{
 		ID:        cfg.ID,
@@ -249,16 +250,20 @@ func writeCloudInit(vmDir string, cfg *VMConfig) error {
 	return os.WriteFile(filepath.Join(vmDir, "user-data"), []byte(userData.String()), 0644)
 }
 
-func waitForIP(mac string, timeout time.Duration) (string, error) {
+func waitForIP(hostname, mac string, timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		ip, err := FindIPByMAC(macOSLeaseFile, mac)
-		if err == nil {
+		// Try hostname first (more reliable — macOS lease file MACs can be non-standard)
+		if ip, err := FindIPByName(macOSLeaseFile, hostname); err == nil {
+			return ip, nil
+		}
+		// Fall back to MAC
+		if ip, err := FindIPByMAC(macOSLeaseFile, mac); err == nil {
 			return ip, nil
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	return "", fmt.Errorf("timeout waiting for IP for MAC %s", mac)
+	return "", fmt.Errorf("timeout waiting for IP for %s (mac %s)", hostname, mac)
 }
 
 func generateMAC() string {

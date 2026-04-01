@@ -72,6 +72,31 @@ func TestParseLeaseFile_EmptyFile(t *testing.T) {
 	}
 }
 
+func TestFindIPByName(t *testing.T) {
+	tmpDir := t.TempDir()
+	leasePath := filepath.Join(tmpDir, "dhcpd_leases")
+	os.WriteFile(leasePath, []byte(testLeaseData), 0644)
+
+	ip, err := FindIPByName(leasePath, "vm-two")
+	if err != nil {
+		t.Fatalf("FindIPByName failed: %v", err)
+	}
+	if ip != "192.168.64.3" {
+		t.Errorf("expected 192.168.64.3, got %s", ip)
+	}
+}
+
+func TestFindIPByName_NotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	leasePath := filepath.Join(tmpDir, "dhcpd_leases")
+	os.WriteFile(leasePath, []byte(testLeaseData), 0644)
+
+	_, err := FindIPByName(leasePath, "nonexistent")
+	if err == nil {
+		t.Fatal("expected error for unknown name")
+	}
+}
+
 func TestParseLeaseFile_MissingFile(t *testing.T) {
 	_, err := FindIPByMAC("/nonexistent/path", "02:aa:bb:cc:dd:01")
 	if err == nil {
