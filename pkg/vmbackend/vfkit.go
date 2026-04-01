@@ -22,6 +22,7 @@ const macOSLeaseFile = "/var/db/dhcpd_leases"
 type VfkitConfig struct {
 	VfkitBin   string
 	KernelPath string
+	InitrdPath string
 	StateDir   string
 }
 
@@ -203,12 +204,14 @@ func (b *VfkitBackend) buildArgs(cfg *VMConfig, vmDir, mac string) []string {
 		kernelPath = b.cfg.KernelPath
 	}
 
-	cmdline := `"console=hvc0 root=/dev/vda rw"`
+	initrdPath := b.cfg.InitrdPath
 
 	args := []string{
 		"--cpus", strconv.Itoa(int(cfg.VCPU)),
 		"--memory", strconv.Itoa(int(cfg.MemoryMB)),
-		"--bootloader", fmt.Sprintf("linux,kernel=%s,cmdline=%s", kernelPath, cmdline),
+		"--kernel", kernelPath,
+		"--initrd", initrdPath,
+		"--kernel-cmdline", "console=hvc0 root=/dev/vda1 rw",
 		"--device", fmt.Sprintf("virtio-blk,path=%s", cfg.RootfsPath),
 		"--device", fmt.Sprintf("virtio-net,nat,mac=%s", mac),
 		"--device", "virtio-rng",

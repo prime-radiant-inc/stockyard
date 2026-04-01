@@ -27,6 +27,7 @@ func TestVfkitBackend_BuildArgs(t *testing.T) {
 		cfg: VfkitConfig{
 			VfkitBin:   "/opt/homebrew/bin/vfkit",
 			KernelPath: "/path/to/vmlinux",
+			InitrdPath: "/path/to/initrd.img",
 			StateDir:   tmpDir,
 		},
 		procs: make(map[string]*vfkitProc),
@@ -41,7 +42,7 @@ func TestVfkitBackend_BuildArgs(t *testing.T) {
 
 	joined := strings.Join(args, " ")
 
-	checks := []string{"--cpus", "--memory", "virtio-blk", "virtio-net", "nat", "02:aa:bb:cc:dd:ee", "vmlinux", "rootfs.img"}
+	checks := []string{"--cpus", "--memory", "--kernel", "--initrd", "--kernel-cmdline", "virtio-blk", "virtio-net", "nat", "02:aa:bb:cc:dd:ee", "vmlinux", "rootfs.img"}
 	for _, check := range checks {
 		if !strings.Contains(joined, check) {
 			t.Errorf("expected args to contain %q, got: %s", check, joined)
