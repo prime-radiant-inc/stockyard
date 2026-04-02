@@ -153,20 +153,9 @@ func (b *VfkitBackend) StopVM(ctx context.Context, id string) error {
 		return nil
 	}
 
-	proc.cmd.Process.Signal(syscall.SIGTERM)
-
-	done := make(chan struct{})
-	go func() {
-		proc.cmd.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		proc.cmd.Process.Kill()
-		<-done
-	}
+	// Ephemeral VMs — no graceful shutdown needed, just kill.
+	proc.cmd.Process.Kill()
+	proc.cmd.Wait()
 
 	return nil
 }
