@@ -34,7 +34,7 @@ error() { echo -e "${RED}==>${NC} $*" >&2; }
 check_prereqs() {
     local missing=()
     command -v vfkit    >/dev/null 2>&1 || missing+=("vfkit (brew install vfkit)")
-    command -v qemu-img >/dev/null 2>&1 || missing+=("qemu (brew install qemu)")
+    command -v docker   >/dev/null 2>&1 || missing+=("docker (OrbStack or Docker Desktop)")
     command -v curl     >/dev/null 2>&1 || missing+=("curl")
 
     if [ ${#missing[@]} -gt 0 ]; then
