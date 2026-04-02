@@ -133,6 +133,10 @@ func (s *grpcServer) DestroyTask(ctx context.Context, req *pb.DestroyTaskRequest
 }
 
 func (s *grpcServer) CreateSnapshot(ctx context.Context, req *pb.CreateSnapshotRequest) (*pb.CreateSnapshotResponse, error) {
+	if s.daemon.zfs == nil {
+		return nil, status.Error(codes.Unavailable, "snapshots require ZFS (not available on this backend)")
+	}
+
 	// Sync filesystem first
 	if err := s.daemon.zfs.Sync(ctx, req.TaskId); err != nil {
 		fmt.Printf("Warning: sync failed: %v\n", err)
@@ -152,6 +156,10 @@ func (s *grpcServer) CreateSnapshot(ctx context.Context, req *pb.CreateSnapshotR
 }
 
 func (s *grpcServer) ListSnapshots(ctx context.Context, req *pb.ListSnapshotsRequest) (*pb.ListSnapshotsResponse, error) {
+	if s.daemon.zfs == nil {
+		return nil, status.Error(codes.Unavailable, "snapshots require ZFS (not available on this backend)")
+	}
+
 	snapshots, err := s.daemon.zfs.ListSnapshots(ctx, req.TaskId)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list snapshots: %v", err)
@@ -166,6 +174,10 @@ func (s *grpcServer) ListSnapshots(ctx context.Context, req *pb.ListSnapshotsReq
 }
 
 func (s *grpcServer) RestoreSnapshot(ctx context.Context, req *pb.RestoreSnapshotRequest) (*pb.RestoreSnapshotResponse, error) {
+	if s.daemon.zfs == nil {
+		return nil, status.Error(codes.Unavailable, "snapshots require ZFS (not available on this backend)")
+	}
+
 	if err := s.daemon.zfs.RollbackSnapshot(ctx, req.TaskId, req.SnapshotName); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to restore snapshot: %v", err)
 	}

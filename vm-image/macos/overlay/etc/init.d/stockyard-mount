@@ -8,9 +8,12 @@ depend() {
 
 start() {
     ebegin "Mounting stockyard VirtioFS"
-    # Fix /var/empty permissions (mkfs.ext4 -d on macOS can't preserve root ownership)
-    chown root:root /var/empty 2>/dev/null
+    # Fix critical file ownership (mkfs.ext4 -d on macOS can't preserve root ownership)
+    chown root:root /var/empty /etc/ssh /etc/shadow 2>/dev/null
+    chown root:root /etc/ssh/ssh_host_* 2>/dev/null
+    chmod 600 /etc/ssh/ssh_host_*_key 2>/dev/null
     chmod 755 /var/empty 2>/dev/null
+    chmod 640 /etc/shadow 2>/dev/null
     # Mount shared directory
     mkdir -p /mnt/stockyard
     mount -t virtiofs stockyard /mnt/stockyard 2>/dev/null || true

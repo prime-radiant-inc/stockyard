@@ -9,8 +9,7 @@ RUN apk add --no-cache \
     curl \
     git \
     bash \
-    sudo \
-    dhcpcd
+    sudo
 
 # Install development tools
 RUN apk add --no-cache \
@@ -18,10 +17,8 @@ RUN apk add --no-cache \
     npm \
     go
 
-# Create stockyard user with sudo and password
+# Create stockyard user with sudo (no password — SSH key auth only)
 RUN adduser -D -s /bin/bash stockyard && \
-    echo 'stockyard:stockyard' | chpasswd && \
-    echo 'root:root' | chpasswd && \
     echo 'stockyard ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/stockyard
 
 # Generate SSH host keys (baked into image — instant sshd start)

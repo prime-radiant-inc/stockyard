@@ -5,16 +5,24 @@ import (
 	"testing"
 )
 
-func TestZFSProvisioner_Clone_NilManager(t *testing.T) {
-	p := NewZFSProvisioner(nil, "", "", "")
+func TestZFSProvisioner_Clone_EmptyPool(t *testing.T) {
+	p := NewZFSProvisioner("", "", "")
 	_, err := p.Clone(context.Background(), "test-vm")
 	if err == nil {
-		t.Fatal("expected error with nil ZFS manager")
+		t.Fatal("expected error with empty pool")
+	}
+}
+
+func TestZFSProvisioner_Destroy_EmptyPool(t *testing.T) {
+	p := NewZFSProvisioner("", "", "")
+	err := p.Destroy(context.Background(), "test-vm")
+	if err == nil {
+		t.Fatal("expected error with empty pool")
 	}
 }
 
 func TestZFSProvisioner_Fields(t *testing.T) {
-	p := NewZFSProvisioner(nil, "tank", "stockyard/images", "stockyard/vms")
+	p := NewZFSProvisioner("tank", "stockyard/images", "stockyard/vms")
 	zp := p.(*ZFSProvisioner)
 	if zp.pool != "tank" {
 		t.Errorf("expected pool 'tank', got %q", zp.pool)

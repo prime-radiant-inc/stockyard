@@ -252,6 +252,9 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 		vm, err := tm.backend.CreateVM(ctx, vmCfg)
 		if err != nil {
+			if tm.daemon.RootfsProvisioner() != nil {
+				tm.daemon.RootfsProvisioner().Destroy(ctx, taskID)
+			}
 			if tm.daemon.zfs != nil {
 				tm.daemon.zfs.DestroyDataset(ctx, taskID)
 			}
@@ -291,9 +294,12 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		if tm.backend != nil && vmID != "" {
 			tm.backend.DeleteVM(ctx, vmID)
 		}
+		if tm.daemon.RootfsProvisioner() != nil {
+			tm.daemon.RootfsProvisioner().Destroy(ctx, taskID)
+		}
 		if tm.daemon.zfs != nil {
-				tm.daemon.zfs.DestroyDataset(ctx, taskID)
-			}
+			tm.daemon.zfs.DestroyDataset(ctx, taskID)
+		}
 		if tm.daemon.IPPool() != nil {
 			tm.daemon.IPPool().Release(taskID)
 		}
@@ -312,7 +318,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 	// Start log tailing if dashboard is enabled
 	if tm.daemon.logTailer != nil && vmID != "" {
-		vmDir := filepath.Join(tm.daemon.cfg.ZFS.VMsPath, vmID)
+		vmDir := filepath.Join(tm.daemon.cfg.Daemon.DataDir, "vms", "stockyard", vmID)
 		tm.daemon.logTailer.TailFile(taskID, "stdout", filepath.Join(vmDir, "stdout.log"))
 		tm.daemon.logTailer.TailFile(taskID, "stderr", filepath.Join(vmDir, "stderr.log"))
 	}
@@ -359,7 +365,7 @@ func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
 		return err
 	}
 
-	// Store the VM's CID and vsock path for terminal access
+	// Store the VM's connection info
 	if vmInfo != nil {
 		if vmInfo.CID != 0 {
 			if err := tm.daemon.state.UpdateTaskCID(taskID, vmInfo.CID); err != nil {
@@ -371,11 +377,17 @@ func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
 				log.Printf("Warning: failed to store vsock path for task %s: %v", taskID, err)
 			}
 		}
+		if vmInfo.IP != "" {
+			if err := tm.daemon.state.UpdateTaskIP(taskID, vmInfo.IP); err != nil {
+				log.Printf("Warning: failed to store IP for task %s: %v", taskID, err)
+			}
+		}
 	}
 
 	// Start log tailing if dashboard is enabled
 	if tm.daemon.logTailer != nil && task.VMID != "" {
-		vmDir := filepath.Join(tm.daemon.cfg.ZFS.VMsPath, task.VMID)
+		// VM logs are in the backend's state directory
+		vmDir := filepath.Join(tm.daemon.cfg.Daemon.DataDir, "vms", "stockyard", task.VMID)
 		tm.daemon.logTailer.TailFile(taskID, "stdout", filepath.Join(vmDir, "stdout.log"))
 		tm.daemon.logTailer.TailFile(taskID, "stderr", filepath.Join(vmDir, "stderr.log"))
 	}

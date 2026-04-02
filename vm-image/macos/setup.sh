@@ -3,32 +3,24 @@ set -euo pipefail
 
 # Stockyard macOS VM Image Setup
 #
-# Downloads and prepares an arm64 Linux kernel + rootfs for use with
-# the vfkit backend on Apple Silicon Macs.
+# Downloads the Kata Containers arm64 kernel and builds an Alpine rootfs
+# for use with the vfkit backend on Apple Silicon Macs.
 #
-# Kernel: Ubuntu arm64 cloud kernel (uncompressed from cloud-images)
-# Initrd: Matching Ubuntu initrd (required for module loading)
-# Rootfs: Ubuntu 24.04 arm64 cloud image (converted from qcow2 to raw)
-#
-# Prerequisites: brew install vfkit qemu
+# Prerequisites: brew install vfkit e2fsprogs; Docker (OrbStack or Docker Desktop)
 #
 # Usage:
-#   ./setup.sh              # Download everything to ./output/
-#   ./setup.sh /some/path   # Download to a custom directory
+#   ./setup.sh              # Build everything in ./output/
+#   ./setup.sh /some/path   # Build to a custom directory
 
-OUTPUT_DIR="${1:-$(dirname "$0")/output}"
-UBUNTU_RELEASE="noble"
-UBUNTU_VERSION="24.04"
-ROOTFS_SIZE="10G"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+OUTPUT_DIR="${1:-$SCRIPT_DIR/output}"
+KATA_VERSION="3.12.0"
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
 NC='\033[0m'
 
 info()  { echo -e "${GREEN}==>${NC} $*"; }
-warn()  { echo -e "${YELLOW}==>${NC} $*"; }
 error() { echo -e "${RED}==>${NC} $*" >&2; }
 
 check_prereqs() {
@@ -36,6 +28,13 @@ check_prereqs() {
     command -v vfkit    >/dev/null 2>&1 || missing+=("vfkit (brew install vfkit)")
     command -v docker   >/dev/null 2>&1 || missing+=("docker (OrbStack or Docker Desktop)")
     command -v curl     >/dev/null 2>&1 || missing+=("curl")
+
+    # Check for e2fsprogs (keg-only on macOS)
+    local mkfs
+    mkfs="$(brew --prefix e2fsprogs 2>/dev/null)/sbin/mkfs.ext4" 2>/dev/null || true
+    if [ ! -x "$mkfs" ]; then
+        missing+=("e2fsprogs (brew install e2fsprogs)")
+    fi
 
     if [ ${#missing[@]} -gt 0 ]; then
         error "Missing prerequisites:"
@@ -54,115 +53,77 @@ download_kernel() {
         return
     fi
 
-    info "Downloading Ubuntu ${UBUNTU_VERSION} arm64 kernel..."
+    info "Downloading Kata Containers arm64 kernel (v${KATA_VERSION})..."
 
-    local url="https://cloud-images.ubuntu.com/releases/${UBUNTU_RELEASE}/release/unpacked/ubuntu-${UBUNTU_VERSION}-server-cloudimg-arm64-vmlinuz-generic"
+    local kata_url="https://github.com/kata-containers/kata-containers/releases/download/${KATA_VERSION}/kata-static-${KATA_VERSION}-arm64.tar.xz"
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
 
-    curl -L --progress-bar -o "$kernel_path.gz" "$url"
+    curl -L --progress-bar -o "$tmp_dir/kata-static.tar.xz" "$kata_url"
 
-    info "Decompressing kernel..."
-    gunzip "$kernel_path.gz"
+    info "Extracting kernel..."
+    tar xf "$tmp_dir/kata-static.tar.xz" -C "$tmp_dir" \
+        --include='*/vmlinux.container' --include='*/vmlinux-*' 2>/dev/null || true
 
-    local filetype
-    filetype=$(file "$kernel_path")
-    if echo "$filetype" | grep -q "ARM64"; then
-        info "Kernel verified: ARM64 boot executable Image"
-    else
-        warn "Kernel file type: $filetype"
+    local vmlinux
+    vmlinux=$(find "$tmp_dir" -name 'vmlinux.container' -o -name 'vmlinux-*' 2>/dev/null | head -1)
+
+    if [ -z "$vmlinux" ] || [ ! -f "$vmlinux" ]; then
+        error "Could not find kernel in Kata archive"
+        rm -rf "$tmp_dir"
+        exit 1
     fi
+
+    cp "$vmlinux" "$kernel_path"
+    rm -rf "$tmp_dir"
 
     info "Kernel: $kernel_path ($(du -h "$kernel_path" | cut -f1))"
+    info "$(file "$kernel_path")"
 }
 
-download_initrd() {
-    local initrd_path="$OUTPUT_DIR/initrd.img"
+build_rootfs() {
+    local rootfs_path="$OUTPUT_DIR/alpine-rootfs.raw"
 
-    if [ -f "$initrd_path" ]; then
-        info "Initrd already exists at $initrd_path"
+    if [ -f "$rootfs_path" ]; then
+        info "Rootfs already exists at $rootfs_path"
         return
     fi
 
-    info "Downloading Ubuntu ${UBUNTU_VERSION} arm64 initrd..."
-
-    local url="https://cloud-images.ubuntu.com/releases/${UBUNTU_RELEASE}/release/unpacked/ubuntu-${UBUNTU_VERSION}-server-cloudimg-arm64-initrd-generic"
-
-    curl -L --progress-bar -o "$initrd_path" "$url"
-
-    info "Initrd: $initrd_path ($(du -h "$initrd_path" | cut -f1))"
-}
-
-download_rootfs() {
-    local raw_path="$OUTPUT_DIR/rootfs.raw"
-
-    if [ -f "$raw_path" ]; then
-        info "Rootfs already exists at $raw_path"
-        return
-    fi
-
-    local qcow2_path="$OUTPUT_DIR/rootfs.qcow2"
-
-    if [ ! -f "$qcow2_path" ]; then
-        info "Downloading Ubuntu ${UBUNTU_VERSION} arm64 cloud image..."
-
-        local url="https://cloud-images.ubuntu.com/releases/${UBUNTU_RELEASE}/release/ubuntu-${UBUNTU_VERSION}-server-cloudimg-arm64.img"
-        curl -L --progress-bar -o "$qcow2_path" "$url"
-    fi
-
-    info "Converting qcow2 to raw (vfkit requires raw images)..."
-    qemu-img convert -f qcow2 -O raw "$qcow2_path" "$raw_path"
-
-    info "Resizing to ${ROOTFS_SIZE}..."
-    qemu-img resize -f raw "$raw_path" "$ROOTFS_SIZE"
-
-    # Clean up qcow2
-    rm -f "$qcow2_path"
-
-    info "Rootfs: $raw_path ($(du -h "$raw_path" | cut -f1))"
+    info "Building Alpine rootfs..."
+    "$SCRIPT_DIR/build-rootfs.sh" "$OUTPUT_DIR"
 }
 
 print_summary() {
     local kernel_path="$OUTPUT_DIR/vmlinux"
-    local initrd_path="$OUTPUT_DIR/initrd.img"
-    local rootfs_path="$OUTPUT_DIR/rootfs.raw"
+    local rootfs_path="$OUTPUT_DIR/alpine-rootfs.raw"
+    local abs_output
+    abs_output="$(cd "$OUTPUT_DIR" && pwd)"
 
     echo ""
     info "Setup complete!"
     echo ""
     echo "Files:"
     echo "  Kernel: $kernel_path ($(du -h "$kernel_path" | cut -f1))"
-    echo "  Initrd: $initrd_path ($(du -h "$initrd_path" | cut -f1))"
     echo "  Rootfs: $rootfs_path ($(du -h "$rootfs_path" | cut -f1))"
     echo ""
-    echo "Stockyard config.json:"
+    echo "Example config.json:"
     echo ""
     cat <<EOF
 {
+  "instance_id": "my-mac",
   "backend": "vfkit",
   "vfkit": {
-    "kernel_path": "$(cd "$OUTPUT_DIR" && pwd)/vmlinux",
-    "rootfs_path": "$(cd "$OUTPUT_DIR" && pwd)/rootfs.raw"
+    "kernel_path": "$abs_output/vmlinux",
+    "rootfs_path": "$abs_output/alpine-rootfs.raw"
   },
   "rootfs": {
     "provider": "apfs",
-    "base_image": "$(cd "$OUTPUT_DIR" && pwd)/rootfs.raw",
-    "vms_dir": "$(cd "$OUTPUT_DIR" && pwd)/vms"
+    "base_image": "$abs_output/alpine-rootfs.raw",
+    "vms_dir": "$abs_output/vms"
   },
-  "vm": {
-    "user": "ubuntu"
-  }
+  "vm": { "user": "stockyard" }
 }
 EOF
-    echo ""
-    echo "Quick test:"
-    echo "  vfkit --cpus 2 --memory 2048 \\"
-    echo "    --kernel $(cd "$OUTPUT_DIR" && pwd)/vmlinux \\"
-    echo "    --initrd $(cd "$OUTPUT_DIR" && pwd)/initrd.img \\"
-    echo "    --kernel-cmdline 'console=hvc0 root=/dev/vda1 rw' \\"
-    echo "    --device virtio-blk,path=$(cd "$OUTPUT_DIR" && pwd)/rootfs.raw \\"
-    echo "    --device virtio-net,nat \\"
-    echo "    --device virtio-rng \\"
-    echo "    --device virtio-serial,logFilePath=$(cd "$OUTPUT_DIR" && pwd)/console.log \\"
-    echo "    --cloud-init <user-data>,<meta-data>"
 }
 
 main() {
@@ -174,9 +135,7 @@ main() {
 
     download_kernel
     echo ""
-    download_initrd
-    echo ""
-    download_rootfs
+    build_rootfs
 
     print_summary
 }

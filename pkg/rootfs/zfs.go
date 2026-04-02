@@ -6,20 +6,18 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/obra/stockyard/pkg/zfs"
 )
 
+// ZFSProvisioner uses ZFS clone for copy-on-write rootfs provisioning.
 type ZFSProvisioner struct {
-	zfsMgr     *zfs.Manager
 	pool       string
 	imagesPath string
 	vmsPath    string
 }
 
-func NewZFSProvisioner(zfsMgr *zfs.Manager, pool, imagesPath, vmsPath string) Provisioner {
+// NewZFSProvisioner creates a provisioner that clones rootfs images via ZFS.
+func NewZFSProvisioner(pool, imagesPath, vmsPath string) Provisioner {
 	return &ZFSProvisioner{
-		zfsMgr:     zfsMgr,
 		pool:       pool,
 		imagesPath: imagesPath,
 		vmsPath:    vmsPath,
@@ -27,8 +25,8 @@ func NewZFSProvisioner(zfsMgr *zfs.Manager, pool, imagesPath, vmsPath string) Pr
 }
 
 func (p *ZFSProvisioner) Clone(ctx context.Context, vmID string) (string, error) {
-	if p.zfsMgr == nil {
-		return "", fmt.Errorf("ZFS manager not available")
+	if p.pool == "" {
+		return "", fmt.Errorf("ZFS pool not configured")
 	}
 
 	snapshotPath := fmt.Sprintf("%s/%s/rootfs@base", p.pool, p.imagesPath)
@@ -54,8 +52,8 @@ func (p *ZFSProvisioner) Clone(ctx context.Context, vmID string) (string, error)
 }
 
 func (p *ZFSProvisioner) Destroy(ctx context.Context, vmID string) error {
-	if p.zfsMgr == nil {
-		return nil
+	if p.pool == "" {
+		return fmt.Errorf("ZFS pool not configured")
 	}
 	vmDatasetPath := fmt.Sprintf("%s/%s/%s", p.pool, p.vmsPath, vmID)
 	cmd := exec.CommandContext(ctx, "zfs", "destroy", "-r", vmDatasetPath)

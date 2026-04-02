@@ -29,6 +29,7 @@ func findIPInLeases(leasePath, matchField, matchValue string) (string, error) {
 	searchValue := strings.ToLower(matchValue)
 
 	var currentIP string
+	var lastIP string
 	var matched bool
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -52,12 +53,17 @@ func findIPInLeases(leasePath, matchField, matchValue string) (string, error) {
 
 		if line == "}" {
 			if matched && currentIP != "" {
-				return currentIP, nil
+				// Don't return immediately — keep scanning for newer entries
+				// (macOS appends renewed leases, so the last match is freshest)
+				lastIP = currentIP
 			}
 			currentIP = ""
 			matched = false
 		}
 	}
 
+	if lastIP != "" {
+		return lastIP, nil
+	}
 	return "", fmt.Errorf("no lease found for %s=%s", matchField, matchValue)
 }

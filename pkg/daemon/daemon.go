@@ -80,7 +80,11 @@ func (s *dashboardMetricsSink) SendMetrics(taskID string, metrics dashboard.VMMe
 
 // New creates a new Daemon instance with the given configuration and secrets provider.
 func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) {
-	zfsMgr := zfs.NewManager(cfg.ZFS.Pool, cfg.ZFS.BasePath)
+	// Only create ZFS manager for Firecracker backend (ZFS doesn't exist on macOS)
+	var zfsMgr *zfs.Manager
+	if cfg.Backend == "" || cfg.Backend == "firecracker" {
+		zfsMgr = zfs.NewManager(cfg.ZFS.Pool, cfg.ZFS.BasePath)
+	}
 
 	state, err := NewState(cfg.Daemon.DataDir)
 	if err != nil {

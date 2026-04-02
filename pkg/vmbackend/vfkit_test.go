@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 )
 
@@ -39,7 +37,7 @@ func TestVfkitBackend_BuildArgs(t *testing.T) {
 		VCPU:       2,
 		MemoryMB:   1024,
 		RootfsPath: "/path/to/rootfs.img",
-	}, tmpDir, "02:aa:bb:cc:dd:ee", "192.168.64.5")
+	}, tmpDir, "02:aa:bb:cc:dd:ee")
 
 	joined := strings.Join(args, " ")
 
@@ -137,50 +135,3 @@ func TestWriteAuthorizedKeys_NoKeys(t *testing.T) {
 	}
 }
 
-func TestAllocateIP(t *testing.T) {
-	// Reset the counter for this test
-	old := atomic.LoadUint32(&nextIP)
-	atomic.StoreUint32(&nextIP, 10)
-	defer atomic.StoreUint32(&nextIP, old)
-
-	ip1 := allocateIP()
-	ip2 := allocateIP()
-	ip3 := allocateIP()
-
-	if ip1 != "192.168.64.10" {
-		t.Errorf("expected 192.168.64.10, got %s", ip1)
-	}
-	if ip2 != "192.168.64.11" {
-		t.Errorf("expected 192.168.64.11, got %s", ip2)
-	}
-	if ip3 != "192.168.64.12" {
-		t.Errorf("expected 192.168.64.12, got %s", ip3)
-	}
-}
-
-func TestAllocateIP_Concurrent(t *testing.T) {
-	atomic.StoreUint32(&nextIP, 100)
-
-	var wg sync.WaitGroup
-	ips := make([]string, 10)
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			ips[idx] = allocateIP()
-		}(i)
-	}
-	wg.Wait()
-
-	// All IPs should be unique
-	seen := make(map[string]bool)
-	for _, ip := range ips {
-		if seen[ip] {
-			t.Errorf("duplicate IP allocated: %s", ip)
-		}
-		seen[ip] = true
-		if !strings.HasPrefix(ip, "192.168.64.") {
-			t.Errorf("IP not in expected range: %s", ip)
-		}
-	}
-}

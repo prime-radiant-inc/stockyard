@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -28,13 +27,6 @@ type VfkitConfig struct {
 	VfkitBin   string
 	KernelPath string
 	StateDir   string
-}
-
-var nextIP uint32 = 2 // Start at 192.168.64.2 (gateway is .1)
-
-func allocateIP() string {
-	ip := atomic.AddUint32(&nextIP, 1) - 1
-	return fmt.Sprintf("192.168.64.%d", ip)
 }
 
 type vfkitProc struct {
@@ -69,14 +61,12 @@ func (b *VfkitBackend) CreateVM(ctx context.Context, cfg *VMConfig) (*VMInfo, er
 	mac := generateMAC()
 	os.WriteFile(filepath.Join(vmDir, "mac_addr"), []byte(mac), 0644)
 
-	ip := allocateIP()
-
 	if err := writeAuthorizedKeys(vmDir, cfg); err != nil {
 		os.RemoveAll(vmDir)
 		return nil, fmt.Errorf("write authorized_keys: %w", err)
 	}
 
-	args := b.buildArgs(cfg, vmDir, mac, ip)
+	args := b.buildArgs(cfg, vmDir, mac)
 
 	cmd := exec.Command(b.cfg.VfkitBin, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -154,8 +144,9 @@ func (b *VfkitBackend) StopVM(ctx context.Context, id string) error {
 	}
 
 	// Ephemeral VMs — no graceful shutdown needed, just kill.
+	// Don't call cmd.Wait() here — the reaper goroutine from CreateVM handles that.
+	// Calling Wait twice on the same Cmd is undefined behavior in Go.
 	proc.cmd.Process.Kill()
-	proc.cmd.Wait()
 
 	return nil
 }
@@ -211,7 +202,7 @@ func (b *VfkitBackend) Close() error {
 	return nil
 }
 
-func (b *VfkitBackend) buildArgs(cfg *VMConfig, vmDir, mac, ip string) []string {
+func (b *VfkitBackend) buildArgs(cfg *VMConfig, vmDir, mac string) []string {
 	kernelPath := cfg.KernelPath
 	if kernelPath == "" {
 		kernelPath = b.cfg.KernelPath
