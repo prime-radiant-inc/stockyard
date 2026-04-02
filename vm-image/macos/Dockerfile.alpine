@@ -47,6 +47,10 @@ RUN printf 'auto lo\niface lo inet loopback\n\nauto eth0\niface eth0 inet manual
 # Set hostname
 RUN echo 'stockyard' > /etc/hostname
 
+# Install stockyard guest binaries (built externally, copied in)
+COPY stockyard-shell-arm64 /usr/local/bin/stockyard-shell
+COPY stockyard-snapshot-arm64 /usr/local/bin/stockyard-snapshot
+
 # Remove Docker marker so OpenRC doesn't run in container mode
 RUN rm -f /.dockerenv
 

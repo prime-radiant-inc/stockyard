@@ -229,6 +229,9 @@ func (b *VfkitBackend) buildArgs(cfg *VMConfig, vmDir, mac string) []string {
 		"--device", "virtio-rng",
 		"--device", fmt.Sprintf("virtio-serial,logFilePath=%s", filepath.Join(vmDir, "console.log")),
 		"--device", fmt.Sprintf("virtio-fs,sharedDir=%s,mountTag=stockyard", sharedDir),
+		// vsock ports for guest services (stockyard-shell on 52, stockyard-snapshot on 52000)
+		"--device", fmt.Sprintf("virtio-vsock,port=52,socketURL=%s,listen", filepath.Join(vmDir, "vsock-52.sock")),
+		"--device", fmt.Sprintf("virtio-vsock,port=52000,socketURL=%s,listen", filepath.Join(vmDir, "vsock-52000.sock")),
 		"--restful-uri", fmt.Sprintf("unix://%s", filepath.Join(vmDir, "vfkit-rest.sock")),
 	}
 

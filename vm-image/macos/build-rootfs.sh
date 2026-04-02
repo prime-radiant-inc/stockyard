@@ -19,8 +19,14 @@ if [ ! -x "$MKFS" ]; then
     exit 1
 fi
 
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 mkdir -p "$OUTPUT_DIR"
 
+# Build arm64 guest binaries
+info "Building arm64 guest binaries..."
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o "$SCRIPT_DIR/stockyard-shell-arm64" "$REPO_ROOT/cmd/stockyard-shell"
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o "$SCRIPT_DIR/stockyard-snapshot-arm64" "$REPO_ROOT/cmd/stockyard-snapshot"
 info "Building Alpine VM image..."
 docker build --platform linux/arm64 -t "$IMAGE_NAME" -f "$SCRIPT_DIR/Dockerfile.alpine" "$SCRIPT_DIR"
 
@@ -33,7 +39,7 @@ info "Creating ext4 image (${ROOTFS_SIZE})..."
 ROOTFS_PATH="$OUTPUT_DIR/alpine-rootfs.raw"
 
 TMPDIR=$(mktemp -d)
-trap "rm -rf $TMPDIR $OUTPUT_DIR/rootfs.tar" EXIT
+trap "rm -rf $TMPDIR $OUTPUT_DIR/rootfs.tar $SCRIPT_DIR/stockyard-shell-arm64 $SCRIPT_DIR/stockyard-snapshot-arm64" EXIT
 
 tar xf "$OUTPUT_DIR/rootfs.tar" -C "$TMPDIR"
 
