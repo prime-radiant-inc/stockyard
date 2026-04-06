@@ -145,13 +145,31 @@ func (a *APIClient) SendCtrlAltDel(ctx context.Context) error {
 
 // WaitForSocket waits for the API socket to become available.
 func (a *APIClient) WaitForSocket(ctx context.Context) error {
-	ticker := time.NewTicker(50 * time.Millisecond)
+	return a.WaitForSocketOrDeath(ctx, nil)
+}
+
+// errProcessDied is returned when the Firecracker process exits before the
+// API socket becomes available.
+var errProcessDied = fmt.Errorf("firecracker process died")
+
+// isProcessDeath checks whether an error is due to the Firecracker process dying.
+func isProcessDeath(err error) bool {
+	return err == errProcessDied
+}
+
+// WaitForSocketOrDeath waits for the API socket to become available, but
+// returns immediately if the Firecracker process dies (procDone closes).
+// This replaces the old sleep-then-check pattern with a proper race.
+func (a *APIClient) WaitForSocketOrDeath(ctx context.Context, procDone <-chan struct{}) error {
+	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("timeout waiting for socket %s: %w", a.socketPath, ctx.Err())
+		case <-procDone:
+			return errProcessDied
 		case <-ticker.C:
 			conn, err := net.Dial("unix", a.socketPath)
 			if err == nil {
