@@ -8,7 +8,7 @@
 #   make clean    - Remove build artifacts
 #   make help     - Show this help
 
-.PHONY: all build-deps docker rootfs deploy clean help
+.PHONY: all build-deps docker rootfs deploy clean help docker-alpine rootfs-alpine deploy-alpine
 
 # Deployment paths
 INSTALL_DIR := /var/lib/stockyard
@@ -70,6 +70,61 @@ deploy: rootfs
 	fi
 	@echo ""
 	@echo "=== Deployment Complete ==="
+
+# ============================================================================
+# Alpine variant targets
+# ============================================================================
+
+# Build Alpine Docker image
+docker-alpine:
+	@VARIANT=alpine ./build.sh
+
+# Convert Alpine image to Firecracker rootfs (depends on docker image)
+rootfs-alpine: docker-alpine
+	@sudo IMAGE_TAG=alpine ./convert-to-rootfs.sh
+
+# Full Alpine deployment pipeline (requires sudo)
+deploy-alpine: rootfs-alpine
+	@echo ""
+	@echo "=== Deploying Alpine image to $(INSTALL_DIR) ==="
+	@echo ""
+	@echo "Step 1: Stopping stockyardd daemon..."
+	sudo systemctl stop stockyardd
+	@echo ""
+	@echo "Step 2: Killing any remaining firecracker processes..."
+	@sudo pkill -9 firecracker 2>/dev/null || true
+	@sleep 1
+	@echo ""
+	@echo "Step 3: Copying rootfs.ext4..."
+	sudo cp output/rootfs.ext4 $(INSTALL_DIR)/rootfs.ext4
+	@echo ""
+	@echo "Step 4: Copying vmlinux.bin..."
+	sudo cp output/vmlinux.bin $(INSTALL_DIR)/vmlinux.bin
+	@echo ""
+	@echo "Step 5: Destroying ZFS base snapshot and VM clones..."
+	@if sudo zfs list -t snapshot $(ZFS_SNAPSHOT) >/dev/null 2>&1; then \
+		echo "Destroying $(ZFS_SNAPSHOT) and dependent clones..."; \
+		sudo zfs destroy -R $(ZFS_SNAPSHOT) && echo "Destroyed $(ZFS_SNAPSHOT)" || \
+		echo "WARNING: Failed to destroy snapshot (may have active mounts)"; \
+	else \
+		echo "Snapshot $(ZFS_SNAPSHOT) does not exist, skipping destroy"; \
+	fi
+	@echo ""
+	@echo "Step 6: Restarting stockyardd daemon..."
+	sudo systemctl start stockyardd
+	@sleep 2
+	@echo ""
+	@echo "Step 7: Verifying daemon is running..."
+	@if systemctl is-active --quiet stockyardd; then \
+		echo "stockyardd is running"; \
+		systemctl status stockyardd --no-pager | head -5; \
+	else \
+		echo "ERROR: stockyardd failed to start!"; \
+		systemctl status stockyardd --no-pager; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "=== Alpine Deployment Complete ==="
 
 # Remove build artifacts
 clean:

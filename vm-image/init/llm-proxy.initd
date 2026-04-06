@@ -1,0 +1,22 @@
+#!/sbin/openrc-run
+# OpenRC init script for llm-proxy (LLM API logging proxy)
+
+description="LLM API Logging Proxy"
+
+# Use supervise-daemon for automatic restart on failure
+supervisor=supervise-daemon
+
+command="/usr/local/bin/llm-proxy"
+command_args="--port 12071"
+command_user="${VM_USER:-mooby}"
+pidfile="/run/llm-proxy.pid"
+directory="/home/${VM_USER:-mooby}"
+respawn_delay=3
+respawn_max=0
+
+output_log="/var/log/stockyard/llm-proxy.log"
+error_log="/var/log/stockyard/llm-proxy.log"
+
+start_pre() {
+    mkdir -p /var/log/stockyard
+}

@@ -1,0 +1,18 @@
+#!/sbin/openrc-run
+# OpenRC init script for stockyard VM initialization
+# Runs early in boot to configure the VM from MMDS metadata
+
+description="Stockyard VM Initialization"
+
+command="/usr/local/bin/stockyard-init.sh"
+
+# oneshot — runs once at boot, does not stay running
+command_background=false
+
+depend() {
+    # We need basic networking (kernel provides it via boot args)
+    # Run before sshd so SSH keys are in place
+    before sshd
+    before stockyard-shell
+    before llm-proxy
+}

@@ -1,0 +1,275 @@
+# Stockyard VM Image (Alpine)
+# Alpine 3.21 with development tools for Claude Code sessions
+#
+# This image is designed to be converted to a Firecracker rootfs.
+# Build with: VARIANT=alpine ./build.sh
+# Convert with: IMAGE_TAG=alpine ./convert-to-rootfs.sh
+
+FROM alpine:3.21
+
+LABEL maintainer="Stockyard Project"
+LABEL description="Alpine development VM image for Claude Code sessions with Firecracker"
+
+# Configurable VM user (default: mooby)
+ARG VM_USER=mooby
+
+# ============================================================================
+# Section 1: Base System
+# ============================================================================
+
+# Enable community repository for packages like github-cli, yq, tailscale
+RUN sed -i 's|^#\(.*community\)$|\1|' /etc/apk/repositories
+
+RUN apk add --no-cache \
+    # Essential tools
+    bash \
+    curl \
+    wget \
+    git \
+    jq \
+    yq \
+    unzip \
+    gnupg \
+    ca-certificates \
+    # SSH server
+    openssh \
+    # Build essentials
+    build-base \
+    pkgconf \
+    cmake \
+    # C/C++ tools
+    clang \
+    clang-extra-tools \
+    # Networking tools
+    iproute2 \
+    iptables \
+    bind-tools \
+    iputils \
+    # System utilities
+    sudo \
+    vim \
+    less \
+    tmux \
+    bc \
+    rsync \
+    ripgrep \
+    # Init system
+    openrc \
+    # glibc compatibility for AWS CLI, Azure CLI, gcloud, etc.
+    gcompat \
+    # Needed by various tools
+    libstdc++ \
+    # Shadow for useradd-compatible user management
+    shadow
+
+# ============================================================================
+# Section 2: Programming Languages
+# ============================================================================
+
+# Python 3
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    python3-dev \
+    py3-setuptools
+
+# uv - modern Python package manager (much faster than pip)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Node.js 24
+RUN apk add --no-cache nodejs npm
+
+# Go 1.26
+RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xzf - \
+    && ln -s /usr/local/go/bin/go /usr/local/bin/go \
+    && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+
+# Rust (minimal system-wide install for symlinks; full user install below)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal \
+    && ln -s /root/.cargo/bin/rustc /usr/local/bin/rustc \
+    && ln -s /root/.cargo/bin/cargo /usr/local/bin/cargo \
+    && ln -s /root/.cargo/bin/rustup /usr/local/bin/rustup
+
+# ============================================================================
+# Section 3: Developer Tools
+# ============================================================================
+
+# GitHub CLI
+RUN apk add --no-cache github-cli
+
+# AWS CLI v2 — the bundled installer ships glibc-linked Python and will not
+# work under gcompat. Use pip install instead, which builds against musl.
+RUN pip install --break-system-packages awscli 2>/dev/null \
+    || pip install awscli
+
+# Azure CLI — pip install avoids glibc binary issues
+RUN pip install --break-system-packages azure-cli 2>/dev/null \
+    || pip install azure-cli
+
+# Google Cloud CLI (standalone archive)
+RUN curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz | tar -xzf - -C /usr/local \
+    && /usr/local/google-cloud-sdk/install.sh --quiet --path-update=false \
+    && ln -s /usr/local/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud \
+    && ln -s /usr/local/google-cloud-sdk/bin/gsutil /usr/local/bin/gsutil \
+    && ln -s /usr/local/google-cloud-sdk/bin/bq /usr/local/bin/bq
+
+# Tailscale (for secure networking)
+RUN apk add --no-cache tailscale
+
+# dotenvx (dotenv CLI tool)
+RUN curl -sfS https://dotenvx.sh | sh
+
+# llm-proxy (LLM API logging proxy)
+ARG LLM_PROXY_VERSION=v0.7.1
+ARG TARGETARCH=amd64
+RUN curl -fsSL "https://github.com/prime-radiant-inc/llm-proxy/releases/download/${LLM_PROXY_VERSION}/llm-proxy-linux-${TARGETARCH}" \
+    -o /usr/local/bin/llm-proxy \
+    && chmod +x /usr/local/bin/llm-proxy
+
+# ============================================================================
+# Section 4: Coding Agents & Linters
+# ============================================================================
+
+# Go linter (golangci-lint)
+RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin
+
+# Python linter/formatter (ruff - extremely fast)
+RUN /usr/local/bin/uv tool install ruff \
+    && ln -s /root/.local/bin/ruff /usr/local/bin/ruff
+
+# JavaScript/TypeScript linters and formatters
+RUN npm install -g eslint prettier typescript
+
+# ============================================================================
+# Section 5: User Setup
+# ============================================================================
+
+# Create VM user with sudo privileges
+RUN adduser -D -s /bin/bash ${VM_USER} \
+    && adduser ${VM_USER} wheel \
+    && echo "${VM_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/${VM_USER} \
+    && chmod 0440 /etc/sudoers.d/${VM_USER}
+
+# Set up Rust for VM user
+RUN su - ${VM_USER} -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y" \
+    && su - ${VM_USER} -c "rustup component remove rust-docs 2>/dev/null || true"
+
+# Coding agents (installed after user creation since Claude Code uses ~/.local/bin/)
+RUN su - ${VM_USER} -c "curl -fsSL https://claude.ai/install.sh | bash"
+RUN npm install -g @openai/codex
+
+# Create workspace directory
+RUN mkdir -p /workspace && chown ${VM_USER}:${VM_USER} /workspace
+
+# ============================================================================
+# Section 6: SSH Configuration
+# ============================================================================
+
+RUN mkdir -p /var/run/sshd \
+    && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config \
+    && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config \
+    && sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+
+# Generate SSH host keys (Alpine doesn't auto-generate them)
+RUN ssh-keygen -A
+
+# ============================================================================
+# Section 7: Stockyard Integration (OpenRC)
+# ============================================================================
+
+# Create stockyard directories
+RUN mkdir -p /etc/stockyard /var/log/stockyard /run/stockyard
+
+# OpenRC init scripts for stockyard services
+COPY init/stockyard-shell.initd /etc/init.d/stockyard-shell
+RUN chmod +x /etc/init.d/stockyard-shell \
+    && rc-update add stockyard-shell default
+
+COPY init/llm-proxy.initd /etc/init.d/llm-proxy
+RUN chmod +x /etc/init.d/llm-proxy \
+    && rc-update add llm-proxy default
+
+COPY init/stockyard-init-alpine.sh /usr/local/bin/stockyard-init.sh
+RUN chmod +x /usr/local/bin/stockyard-init.sh
+
+COPY init/stockyard-init.initd /etc/init.d/stockyard-init
+RUN chmod +x /etc/init.d/stockyard-init \
+    && rc-update add stockyard-init boot
+
+# Copy Claude Code hooks setup script
+COPY scripts/setup-claude-hooks.sh /usr/local/bin/setup-claude-hooks.sh
+RUN chmod +x /usr/local/bin/setup-claude-hooks.sh
+
+# Disable tailscaled auto-start — stockyard-init.sh starts it after DNS is ready
+RUN rc-update del tailscale default 2>/dev/null || true
+
+# Enable sshd
+RUN rc-update add sshd default
+
+# ============================================================================
+# Section 7b: Networking
+# ============================================================================
+
+# Static IP is configured by kernel boot args (ip=...),
+# so we don't need ifupdown or networkmanager.
+# DNS is set up by stockyard-init.sh.
+# MMDS route is added by stockyard-init.sh.
+
+# ============================================================================
+# Section 7c: Disable unnecessary services for fast boot
+# ============================================================================
+
+# Alpine starts very little by default, but remove what we don't need
+RUN rc-update del crond default 2>/dev/null || true \
+    && rc-update del acpid default 2>/dev/null || true
+
+# OpenRC configuration for fast boot in Firecracker
+# - No hardware clock
+# - No cgroups (Firecracker handles resource limits)
+# - No swap
+RUN sed -i 's/^#rc_sys=.*/rc_sys=""/' /etc/rc.conf 2>/dev/null || true
+
+# ============================================================================
+# Section 8: MicroVM Kernel (built from source)
+# ============================================================================
+# Custom kernel with CONFIG_TUN=y and CONFIG_NF_TABLES=y for native Tailscale
+# networking. Kernel is extracted by convert-to-rootfs.sh for host-side use.
+
+ARG KERNEL_VERSION=6.1.155
+RUN apk add --no-cache \
+    ncurses-dev flex bison openssl-dev elfutils-dev bc perl linux-headers
+RUN curl -fsSL https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${KERNEL_VERSION}.tar.xz \
+    | tar -xJf - -C /tmp
+COPY kernel.config /tmp/linux-${KERNEL_VERSION}/.config
+RUN cd /tmp/linux-${KERNEL_VERSION} \
+    && make olddefconfig \
+    && make -j$(nproc) vmlinux \
+    && cp vmlinux /boot/vmlinuz \
+    && rm -rf /tmp/linux-${KERNEL_VERSION}
+
+# ============================================================================
+# Section 9: Finalize
+# ============================================================================
+
+# LLM proxy environment — routes agent CLI traffic through local logging proxy
+RUN sed -i '1i export OPENAI_BASE_URL="http://localhost:12071/openai/api.openai.com"' /home/${VM_USER}/.bashrc \
+    && sed -i '1i export ANTHROPIC_BASE_URL="http://localhost:12071/anthropic/api.anthropic.com"' /home/${VM_USER}/.bashrc
+
+# Persist VM_USER for runtime scripts
+ENV VM_USER=${VM_USER}
+
+# Set environment variables
+ENV GOPATH=/home/${VM_USER}/go
+ENV PATH="/home/${VM_USER}/.local/bin:/home/${VM_USER}/.cargo/bin:/usr/local/go/bin:${PATH}"
+
+# Default working directory
+WORKDIR /home/${VM_USER}
+
+# Expose SSH port
+EXPOSE 22
+
+# OpenRC needs /run/openrc to exist
+RUN mkdir -p /run/openrc && touch /run/openrc/softlevel
+
+# Default command
+CMD ["/sbin/init"]
