@@ -53,6 +53,7 @@ RUN apk add --no-cache \
     bc \
     rsync \
     ripgrep \
+    coreutils \
     # Init system
     openrc \
     # glibc compatibility for AWS CLI, Azure CLI, gcloud, etc.
@@ -155,7 +156,16 @@ RUN su - ${VM_USER} -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.r
     && su - ${VM_USER} -c "rustup component remove rust-docs 2>/dev/null || true"
 
 # Coding agents (installed after user creation since Claude Code uses ~/.local/bin/)
-RUN su - ${VM_USER} -c "curl -fsSL https://claude.ai/install.sh | bash"
+# Claude Code's musl binary is broken (posix_getdents symbol missing).
+# Download the glibc variant manually and rely on gcompat for runtime.
+RUN GCS_BUCKET="https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases" \
+    && CLAUDE_VERSION=$(curl -sf "$GCS_BUCKET/latest") \
+    && mkdir -p /home/${VM_USER}/.claude/downloads /home/${VM_USER}/.local/bin \
+    && curl -fsSL "$GCS_BUCKET/$CLAUDE_VERSION/linux-x64/claude" \
+       -o /home/${VM_USER}/.local/bin/claude \
+    && chmod +x /home/${VM_USER}/.local/bin/claude \
+    && chown -R ${VM_USER}:${VM_USER} /home/${VM_USER}/.local /home/${VM_USER}/.claude \
+    && echo "Installed Claude Code $CLAUDE_VERSION (glibc variant + gcompat)"
 RUN npm install -g @openai/codex
 
 # Create workspace directory
@@ -241,7 +251,8 @@ RUN apk add --no-cache \
 RUN curl -fsSL https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${KERNEL_VERSION}.tar.xz \
     | tar -xJf - -C /tmp
 COPY kernel.config /tmp/linux-${KERNEL_VERSION}/.config
-RUN cd /tmp/linux-${KERNEL_VERSION} \
+RUN mkdir -p /boot \
+    && cd /tmp/linux-${KERNEL_VERSION} \
     && make olddefconfig \
     && make -j$(nproc) vmlinux \
     && cp vmlinux /boot/vmlinuz \
@@ -252,7 +263,9 @@ RUN cd /tmp/linux-${KERNEL_VERSION} \
 # ============================================================================
 
 # LLM proxy environment — routes agent CLI traffic through local logging proxy
-RUN sed -i '1i export OPENAI_BASE_URL="http://localhost:12071/openai/api.openai.com"' /home/${VM_USER}/.bashrc \
+# Alpine doesn't create .bashrc by default, so ensure it exists
+RUN touch /home/${VM_USER}/.bashrc && chown ${VM_USER}:${VM_USER} /home/${VM_USER}/.bashrc \
+    && sed -i '1i export OPENAI_BASE_URL="http://localhost:12071/openai/api.openai.com"' /home/${VM_USER}/.bashrc \
     && sed -i '1i export ANTHROPIC_BASE_URL="http://localhost:12071/anthropic/api.anthropic.com"' /home/${VM_USER}/.bashrc
 
 # Persist VM_USER for runtime scripts
