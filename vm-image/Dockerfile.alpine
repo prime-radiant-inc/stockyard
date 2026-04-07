@@ -59,9 +59,7 @@ RUN apk add --no-cache \
     # glibc compatibility for AWS CLI, Azure CLI, gcloud, etc.
     gcompat \
     # Needed by various tools
-    libstdc++ \
-    # Shadow for useradd-compatible user management
-    shadow
+    libstdc++
 
 # ============================================================================
 # Section 2: Programming Languages
@@ -146,8 +144,12 @@ RUN npm install -g eslint prettier typescript
 # ============================================================================
 
 # Create VM user with sudo privileges
+# passwd -u: Alpine adduser -D locks accounts (! in shadow); unlock for SSH pubkey auth
+# chmod g-s: Alpine adduser sets setgid on home dirs; sshd StrictModes rejects this
 RUN adduser -D -s /bin/bash ${VM_USER} \
     && adduser ${VM_USER} wheel \
+    && passwd -u ${VM_USER} \
+    && chmod g-s /home/${VM_USER} \
     && echo "${VM_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/${VM_USER} \
     && chmod 0440 /etc/sudoers.d/${VM_USER}
 
@@ -224,6 +226,10 @@ RUN rc-update add sshd default
 # so we don't need ifupdown or networkmanager.
 # DNS is set up by stockyard-init.sh.
 # MMDS route is added by stockyard-init.sh.
+
+# Create minimal /etc/network/interfaces so OpenRC networking doesn't fail.
+# The kernel already configured eth0 via boot args — this just keeps OpenRC happy.
+RUN echo -e "auto lo\niface lo inet loopback\n" > /etc/network/interfaces
 
 # ============================================================================
 # Section 7c: Disable unnecessary services for fast boot

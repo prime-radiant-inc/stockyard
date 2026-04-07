@@ -93,6 +93,12 @@ cat > "${MOUNT_POINT}/etc/hosts" <<'HOSTS'
 HOSTS
 echo "Fixed /etc/hosts (Docker export leaves it empty)"
 
+# Remove .dockerenv — Docker creates this in every container, and docker export
+# includes it. OpenRC checks for this file and enters "container mode", skipping
+# networking, hardware init, and other services needed for a real VM boot.
+rm -f "${MOUNT_POINT}/.dockerenv"
+echo "Removed .dockerenv (prevents OpenRC container-mode detection)"
+
 # Unmount
 sync
 umount "${MOUNT_POINT}"
