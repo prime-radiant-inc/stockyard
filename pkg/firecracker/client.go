@@ -319,7 +319,6 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 		SSHAuthorizedKeys: config.SSHAuthorizedKeys,
 		UserData:          config.CloudInitData,
 		NetworkConfig:     config.NetworkMMDS,
-		TailscaleState:    config.TailscaleState,
 		DotEnv:            config.DotEnv,
 	})
 	if err := apiClient.SetMMDSData(ctx, mmdsData); err != nil {
@@ -689,7 +688,6 @@ func (c *Client) StartVM(ctx context.Context, config *VMConfig) (*VMInfo, error)
 		SSHAuthorizedKeys: config.SSHAuthorizedKeys,
 		UserData:          config.CloudInitData,
 		NetworkConfig:     config.NetworkMMDS,
-		TailscaleState:    config.TailscaleState,
 		DotEnv:            config.DotEnv,
 	})
 	if err := apiClient.SetMMDSData(ctx, mmdsData); err != nil {

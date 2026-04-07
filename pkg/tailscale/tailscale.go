@@ -2,7 +2,6 @@
 package tailscale
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/obra/stockyard/pkg/dashboard"
 )
@@ -50,52 +50,69 @@ func (m *Manager) GetAuthKey() string {
 	return m.authKey
 }
 
-// Status represents Tailscale status
-type Status struct {
-	BackendState string
-	Self         *Peer
-	Peers        []Peer
+// tailscaleStatus is the subset of `tailscale status --json` we need.
+type tailscaleStatus struct {
+	Peer map[string]struct {
+		HostName     string   `json:"HostName"`
+		Online       bool     `json:"Online"`
+		TailscaleIPs []string `json:"TailscaleIPs"`
+	} `json:"Peer"`
 }
 
-// Peer represents a Tailscale peer
-type Peer struct {
-	HostName     string
-	DNSName      string
-	TailscaleIPs []string
-	Online       bool
-}
+// WaitForPeer blocks until the given hostname is reachable via Tailscale.
+// It polls `tailscale status --json` for the peer, then probes SSH on the
+// peer's Tailscale IP (not the MagicDNS hostname, which has propagation delay).
+func WaitForPeer(ctx context.Context, hostname string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
 
-// GetStatus gets the status of Tailscale (from host perspective)
-func GetStatus(ctx context.Context) (*Status, error) {
-	cmd := exec.CommandContext(ctx, "tailscale", "status", "--json")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("tailscale status: %w: %s", err, stderr.String())
+	var peerIP string
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if time.Now().After(deadline) {
+				if peerIP == "" {
+					return fmt.Errorf("timeout waiting for Tailscale peer %s after %v", hostname, timeout)
+				}
+				return fmt.Errorf("peer %s (%s) online but SSH not reachable after %v", hostname, peerIP, timeout)
+			}
+			if peerIP == "" {
+				peerIP = getPeerIP(ctx, hostname)
+				if peerIP != "" {
+					log.Printf("Tailscale peer %s has IP %s, waiting for SSH...", hostname, peerIP)
+				}
+			} else {
+				// Peer is online — probe SSH on the Tailscale IP directly
+				conn, err := net.DialTimeout("tcp", peerIP+":22", 500*time.Millisecond)
+				if err == nil {
+					conn.Close()
+					return nil
+				}
+			}
+		}
 	}
-
-	// Note: Full implementation would parse the JSON
-	// For now, return basic status
-	return &Status{
-		BackendState: "Running",
-	}, nil
 }
 
-// WaitForNode waits for a node to appear in Tailscale
-func WaitForNode(ctx context.Context, hostname string, timeout int) error {
-	// In practice, check tailscale status --json for the node
-	// Placeholder for now
-	return nil
-}
-
-// RemoveNode removes a node from the Tailscale network
-// Requires admin API access
-func RemoveNode(ctx context.Context, hostname string) error {
-	// This would use the Tailscale admin API
-	// Placeholder for now
-	return nil
+// getPeerIP returns the Tailscale IPv4 address for hostname, or "" if not found/online.
+func getPeerIP(ctx context.Context, hostname string) string {
+	cmd := exec.CommandContext(ctx, "tailscale", "status", "--json")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	var status tailscaleStatus
+	if json.Unmarshal(output, &status) != nil {
+		return ""
+	}
+	for _, peer := range status.Peer {
+		if peer.HostName == hostname && peer.Online && len(peer.TailscaleIPs) > 0 {
+			return peer.TailscaleIPs[0]
+		}
+	}
+	return ""
 }
 
 // RemoveDevice attempts to remove a device from the tailnet.

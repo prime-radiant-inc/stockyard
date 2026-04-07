@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/obra/stockyard/pkg/firecracker"
@@ -156,33 +155,6 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		}
 	}
 
-	// Start Tailscale pre-registration in parallel with other operations
-	var tailscaleState []byte
-	var preRegErr error
-	var preRegWg sync.WaitGroup
-
-	if tailscaleAuthKey != "" {
-		preRegWg.Add(1)
-		go func() {
-			defer preRegWg.Done()
-			preReg := tailscale.NewPreRegistrar(
-				tailscaleAuthKey,
-				filepath.Join(tm.daemon.cfg.Daemon.DataDir, "tailscale-prereg"),
-			)
-
-			preRegCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			defer cancel()
-
-			node, err := preReg.PreRegister(preRegCtx, tailscaleHostname)
-			if err != nil {
-				preRegErr = err
-				return
-			}
-			tailscaleState = node.State
-			log.Printf("Pre-registered Tailscale node %s with IP %s", node.Hostname, node.IP)
-		}()
-	}
-
 	// Generate hostname
 	hostname := fmt.Sprintf("stockyard-%s", taskID)
 
@@ -200,13 +172,6 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			tm.daemon.IPPool().Release(taskID)
 		}
 		return nil, fmt.Errorf("failed to generate cloud-init config: %w", err)
-	}
-
-	// Wait for pre-registration to complete before building VMConfig
-	preRegWg.Wait()
-	if preRegErr != nil {
-		log.Printf("Warning: Tailscale pre-registration failed: %v (VM will register at boot)", preRegErr)
-		// Continue without pre-registered state - VM will use auth key
 	}
 
 	// Create VM if firecracker client is available
@@ -233,7 +198,6 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			MemoryMB:          req.MemoryMB,
 			CloudInitData:     cloudInitData,
 			TailscaleAuthKey:  tailscaleAuthKey,
-			TailscaleState:    tailscaleState,
 			SSHAuthorizedKeys: req.SSHAuthorizedKeys,
 			StaticIPArgs:      staticIPArgs,
 			NetworkMMDS:       mmdsNetworkConfig,
@@ -310,6 +274,20 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	if tm.daemon.metricsPoller != nil && vmMetricsPath != "" {
 		memoryBytes := int64(req.MemoryMB) * 1024 * 1024
 		tm.daemon.metricsPoller.StartTaskMetrics(taskID, vmMetricsPath, memoryBytes)
+	}
+
+	// Wait for Tailscale peer to come online before returning.
+	// This ensures the caller can SSH to the Tailscale hostname immediately.
+	if tailscaleHostname != "" {
+		log.Printf("Waiting for Tailscale peer %s...", tailscaleHostname)
+		waitCtx, waitCancel := context.WithTimeout(ctx, 60*time.Second)
+		defer waitCancel()
+		if err := tailscale.WaitForPeer(waitCtx, tailscaleHostname, 60*time.Second); err != nil {
+			log.Printf("Warning: Tailscale peer %s not ready: %v", tailscaleHostname, err)
+			// Don't fail — VM is running and accessible via direct IP
+		} else {
+			log.Printf("Tailscale peer %s is online", tailscaleHostname)
+		}
 	}
 
 	return task, nil
