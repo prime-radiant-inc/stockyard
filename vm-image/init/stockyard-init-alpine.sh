@@ -113,6 +113,8 @@ if [ -n "$SSH_KEYS" ]; then
     chmod 700 "$SSH_DIR"
     chmod 600 "${SSH_DIR}/authorized_keys"
     chown -R "${VM_USER}:${VM_USER}" "$SSH_DIR"
+    # Clear setgid bit — sshd StrictModes rejects .ssh with setgid
+    chmod g-s "$SSH_DIR"
     log_timing "SSH keys installed ($(echo "$SSH_KEYS" | wc -l) keys)"
 else
     log_timing "No SSH authorized keys found in MMDS"
