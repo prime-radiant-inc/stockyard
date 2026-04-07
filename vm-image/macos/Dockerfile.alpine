@@ -1,0 +1,58 @@
+FROM --platform=linux/arm64 alpine:3.21
+
+# Install essentials
+RUN apk add --no-cache \
+    openrc \
+    openssh-server \
+    rsync \
+    ripgrep \
+    curl \
+    git \
+    bash \
+    sudo
+
+# Install development tools
+RUN apk add --no-cache \
+    nodejs \
+    npm \
+    go
+
+# Create stockyard user with sudo (no password — SSH key auth only)
+RUN adduser -D -s /bin/bash stockyard && \
+    echo 'stockyard ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/stockyard
+
+# Generate SSH host keys (baked into image — instant sshd start)
+# /var/empty must be root-owned 755 for sshd privilege separation
+RUN ssh-keygen -A && \
+    mkdir -p /var/empty && \
+    chmod 755 /var/empty && \
+    chown root:root /var/empty
+
+# Configure sshd for VirtioFS key injection
+COPY overlay/etc/ssh/sshd_config.d/stockyard.conf /etc/ssh/sshd_config.d/
+
+# Install VirtioFS mount init script
+COPY overlay/etc/init.d/stockyard-mount /etc/init.d/stockyard-mount
+RUN chmod +x /etc/init.d/stockyard-mount
+
+# Enable services at boot
+RUN rc-update add networking boot && \
+    rc-update add stockyard-mount boot && \
+    rc-update add sshd default
+
+# Configure networking — kernel handles DHCP via ip=dhcp cmdline,
+# so userspace just needs to bring up lo. No dhcpcd needed.
+RUN printf 'auto lo\niface lo inet loopback\n\nauto eth0\niface eth0 inet manual\n' > /etc/network/interfaces
+
+# Set hostname
+RUN echo 'stockyard' > /etc/hostname
+
+# Install stockyard guest binaries (built externally, copied in)
+COPY stockyard-shell-arm64 /usr/local/bin/stockyard-shell
+COPY stockyard-snapshot-arm64 /usr/local/bin/stockyard-snapshot
+
+# Remove Docker marker so OpenRC doesn't run in container mode
+RUN rm -f /.dockerenv
+
+# Ensure init exists
+RUN [ -f /sbin/init ] || ln -sf /sbin/openrc-init /sbin/init

@@ -17,9 +17,12 @@ import (
 
 	"github.com/obra/stockyard/pkg/config"
 	"github.com/obra/stockyard/pkg/dashboard"
+	"github.com/obra/stockyard/pkg/firecracker"
 	"github.com/obra/stockyard/pkg/network"
+	"github.com/obra/stockyard/pkg/rootfs"
 	"github.com/obra/stockyard/pkg/secrets"
 	"github.com/obra/stockyard/pkg/tailscale"
+	"github.com/obra/stockyard/pkg/vmbackend"
 	"github.com/obra/stockyard/pkg/zfs"
 )
 
@@ -34,6 +37,7 @@ type Daemon struct {
 	snapshots    *SnapshotService
 	dhcp      *network.DHCPServer
 	ipPool    *network.IPPool
+	rootfsProvisioner rootfs.Provisioner
 
 	listener     net.Listener
 	grpcListener net.Listener // TCP listener for remote gRPC (optional)
@@ -76,7 +80,11 @@ func (s *dashboardMetricsSink) SendMetrics(taskID string, metrics dashboard.VMMe
 
 // New creates a new Daemon instance with the given configuration and secrets provider.
 func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) {
-	zfsMgr := zfs.NewManager(cfg.ZFS.Pool, cfg.ZFS.BasePath)
+	// Only create ZFS manager for Firecracker backend (ZFS doesn't exist on macOS)
+	var zfsMgr *zfs.Manager
+	if cfg.Backend == "" || cfg.Backend == "firecracker" {
+		zfsMgr = zfs.NewManager(cfg.ZFS.Pool, cfg.ZFS.BasePath)
+	}
 
 	state, err := NewState(cfg.Daemon.DataDir)
 	if err != nil {
@@ -90,49 +98,70 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 		state:   state,
 	}
 
-	// Initialize task manager with firecracker configuration
-	var fcConfig *FirecrackerConfig
-	if cfg.Firecracker.KernelPath != "" && cfg.Firecracker.RootfsPath != "" {
-		fcConfig = &FirecrackerConfig{
-			KernelPath: cfg.Firecracker.KernelPath,
-			RootfsPath: cfg.Firecracker.RootfsPath,
-			BridgeName: cfg.Firecracker.BridgeName,
-			ImagesPath: cfg.ZFS.ImagesPath,
-			VMsPath:    cfg.ZFS.VMsPath,
+	// Initialize task manager with VM backend
+	var backend vmbackend.Backend
+	switch cfg.Backend {
+	case "", "firecracker":
+		if cfg.Firecracker.KernelPath != "" && cfg.Firecracker.RootfsPath != "" {
+			fcCfg := firecracker.ClientConfig{
+				KernelPath: cfg.Firecracker.KernelPath,
+				RootfsPath: cfg.Firecracker.RootfsPath,
+				BridgeName: cfg.Firecracker.BridgeName,
+				ImagesPath: cfg.ZFS.ImagesPath,
+				VMsPath:    cfg.ZFS.VMsPath,
+			}
+			client, err := firecracker.NewClient(fcCfg, d.zfs)
+			if err != nil {
+				fmt.Printf("Warning: failed to create firecracker client: %v\n", err)
+			} else {
+				backend = vmbackend.NewFirecrackerBackend(client)
+			}
 		}
+	case "vfkit":
+		var err error
+		backend, err = createVfkitBackend(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create vfkit backend: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("unknown backend: %s", cfg.Backend)
 	}
-	d.tasks = NewTaskManager(d, fcConfig)
+	d.tasks = NewTaskManager(d, backend)
+	d.rootfsProvisioner = createRootfsProvisioner(cfg)
 	d.queueManager = NewQueueManager(state, cfg)
 
-	// Initialize DHCP server
-	dhcpConfig := network.DHCPConfig{
-		Bridge:     cfg.Firecracker.BridgeName,
-		Gateway:    cfg.Firecracker.VMGateway,
-		RangeStart: cfg.Firecracker.DHCPRangeStart,
-		RangeEnd:   cfg.Firecracker.DHCPRangeEnd,
-		Netmask:    "255.255.255.0", // /24
-		LeaseTime:  cfg.Firecracker.DHCPLeaseTime,
-		DNS:        "8.8.8.8",
-	}
-	dhcpServer, err := network.NewDHCPServer(dhcpConfig, cfg.Daemon.DataDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create DHCP server: %w", err)
-	}
-	d.dhcp = dhcpServer
+	// DHCP and IP pool are only needed for Firecracker backend
+	if cfg.Backend == "" || cfg.Backend == "firecracker" {
+		// Initialize DHCP server
+		dhcpConfig := network.DHCPConfig{
+			Bridge:     cfg.Firecracker.BridgeName,
+			Gateway:    cfg.Firecracker.VMGateway,
+			RangeStart: cfg.Firecracker.DHCPRangeStart,
+			RangeEnd:   cfg.Firecracker.DHCPRangeEnd,
+			Netmask:    "255.255.255.0", // /24
+			LeaseTime:  cfg.Firecracker.DHCPLeaseTime,
+			DNS:        "8.8.8.8",
+		}
+		dhcpServer, err := network.NewDHCPServer(dhcpConfig, cfg.Daemon.DataDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create DHCP server: %w", err)
+		}
+		d.dhcp = dhcpServer
 
-	// Initialize IP pool for static VM IPs
-	// Use the gateway and a /24 prefix (standard for VM networks)
-	ipPool, err := network.NewIPPoolFromGateway(cfg.Firecracker.VMGateway, 24)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create IP pool: %w", err)
+		// Initialize IP pool for static VM IPs
+		// Use the gateway and a /24 prefix (standard for VM networks)
+		ipPool, err := network.NewIPPoolFromGateway(cfg.Firecracker.VMGateway, 24)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create IP pool: %w", err)
+		}
+		// Persist allocations to survive daemon restarts
+		ipPool.SetPersistPath(filepath.Join(cfg.Daemon.DataDir, "ip_pool.json"))
+		if err := ipPool.LoadState(); err != nil {
+			// Log warning but continue - fresh state is fine
+			fmt.Printf("Warning: could not load IP pool state: %v\n", err)
+		}
+		d.ipPool = ipPool
 	}
-	// Persist allocations to survive daemon restarts
-	ipPool.SetPersistPath(filepath.Join(cfg.Daemon.DataDir, "ip_pool.json"))
-	if err := ipPool.LoadState(); err != nil {
-		// Log warning but continue - fresh state is fine
-		fmt.Printf("Warning: could not load IP pool state: %v\n", err)
-	}
-	d.ipPool = ipPool
 
 	return d, nil
 }
@@ -153,12 +182,16 @@ func (d *Daemon) reconcileRunningVMs() {
 
 	fmt.Printf("Reconciling %d running task(s)...\n", len(tasks))
 
-	// VM state directory: /var/lib/stockyard/vms/stockyard/<task-id>/
-	const vmStateDir = "/var/lib/stockyard/vms"
+	// VM state directory: <data-dir>/vms/stockyard/<task-id>/
+	vmStateDir := filepath.Join(d.cfg.Daemon.DataDir, "vms")
 	const vmNamespace = "stockyard"
 
 	for _, task := range tasks {
+		// Check for PID file from either backend
 		pidFile := filepath.Join(vmStateDir, vmNamespace, task.ID, "firecracker.pid")
+		if _, err := os.Stat(pidFile); os.IsNotExist(err) {
+			pidFile = filepath.Join(vmStateDir, vmNamespace, task.ID, "vfkit.pid")
+		}
 		pidData, err := os.ReadFile(pidFile)
 		if err != nil {
 			// PID file doesn't exist - VM is definitely not running
@@ -208,17 +241,21 @@ func (d *Daemon) Start(ctx context.Context) error {
 	// Reconcile running VMs - update status for any that died while daemon was stopped
 	d.reconcileRunningVMs()
 
-	// Ensure base rootfs image is available for VM creation
-	if err := d.ensureBaseImage(ctx); err != nil {
-		return fmt.Errorf("failed to ensure base image: %w", err)
+	// Ensure base rootfs image is available for VM creation (Firecracker only — uses ZFS)
+	if d.cfg.Backend == "" || d.cfg.Backend == "firecracker" {
+		if err := d.ensureBaseImage(ctx); err != nil {
+			return fmt.Errorf("failed to ensure base image: %w", err)
+		}
 	}
 
-	// Start DHCP server
-	fmt.Println("Starting DHCP server...")
-	if err := d.dhcp.Start(); err != nil {
-		// Log warning but don't fail - dnsmasq might not be installed
-		fmt.Printf("Warning: Failed to start DHCP server: %v\n", err)
-		fmt.Println("VMs may not receive dynamic IPs. Ensure dnsmasq is installed.")
+	// Start DHCP server (Firecracker backend only)
+	if d.cfg.Backend == "" || d.cfg.Backend == "firecracker" {
+		fmt.Println("Starting DHCP server...")
+		if err := d.dhcp.Start(); err != nil {
+			// Log warning but don't fail - dnsmasq might not be installed
+			fmt.Printf("Warning: Failed to start DHCP server: %v\n", err)
+			fmt.Println("VMs may not receive dynamic IPs. Ensure dnsmasq is installed.")
+		}
 	}
 
 	socketDir := filepath.Dir(d.cfg.Daemon.SocketPath)
@@ -301,8 +338,11 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 		// Metrics collector and poller (with alert checking)
 		d.metricsCollector = dashboard.NewMetricsCollector(hub, d.dashboardServer.AlertChecker())
-		d.metricsPoller = NewMetricsPoller(d, &dashboardMetricsSink{d.metricsCollector}, 5*time.Second)
-		d.metricsPoller.Start()
+		// Only create metrics poller for Firecracker backend (uses FIFO)
+		if d.cfg.Backend == "" || d.cfg.Backend == "firecracker" {
+			d.metricsPoller = NewMetricsPoller(d, &dashboardMetricsSink{d.metricsCollector}, 5*time.Second)
+			d.metricsPoller.Start()
+		}
 
 		// Host metrics collector and polling
 		d.hostMetricsCollector = NewHostMetricsCollector()
@@ -431,6 +471,11 @@ func (d *Daemon) DHCP() *network.DHCPServer {
 // IPPool returns the daemon's IP pool for static VM IP allocation.
 func (d *Daemon) IPPool() *network.IPPool {
 	return d.ipPool
+}
+
+// RootfsProvisioner returns the daemon's rootfs provisioner, or nil if not configured.
+func (d *Daemon) RootfsProvisioner() rootfs.Provisioner {
+	return d.rootfsProvisioner
 }
 
 // ActivityFeed returns the activity feed for recording events.

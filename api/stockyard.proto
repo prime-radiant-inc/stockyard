@@ -126,6 +126,7 @@ message Task {
     string tailscale_hostname = 4;
     string created_at = 5;
     string stopped_at = 6;
+    string ip = 7;
 }
 
 message Snapshot {

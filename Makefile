@@ -12,10 +12,16 @@ build-client:
 build-server: build-client
 	go build -o bin/stockyardd ./cmd/stockyardd
 
-# Guest binaries (static Linux, run inside Firecracker VMs)
-build-guest:
+# Guest binaries (static Linux, run inside VMs)
+build-guest: build-guest-amd64 build-guest-arm64
+
+build-guest-amd64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/stockyard-shell ./cmd/stockyard-shell
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/stockyard-snapshot ./cmd/stockyard-snapshot
+
+build-guest-arm64:
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o bin/stockyard-shell-arm64 ./cmd/stockyard-shell
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o bin/stockyard-snapshot-arm64 ./cmd/stockyard-snapshot
 
 
 proto:

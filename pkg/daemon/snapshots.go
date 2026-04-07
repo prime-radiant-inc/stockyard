@@ -88,5 +88,10 @@ func (ss *SnapshotService) resolveTaskID(vmID string) (string, error) {
 		return task.ID, nil
 	}
 
+	// Direct task ID (for non-Firecracker backends)
+	if _, err := ss.daemon.state.GetTask(vmID); err == nil {
+		return vmID, nil
+	}
+
 	return "", fmt.Errorf("unknown VM ID format: %s", vmID)
 }
