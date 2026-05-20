@@ -14,6 +14,10 @@ start() {
     chmod 600 /etc/ssh/ssh_host_*_key 2>/dev/null
     chmod 755 /var/empty 2>/dev/null
     chmod 640 /etc/shadow 2>/dev/null
+    # Repair sudo — mkfs.ext4 -d on macOS drops root ownership and the setuid bit
+    chown root:root /usr/bin/sudo /etc/sudo.conf /etc/sudoers 2>/dev/null
+    chown -R root:root /etc/sudoers.d 2>/dev/null
+    chmod 4755 /usr/bin/sudo 2>/dev/null
     # Mount shared directory
     mkdir -p /mnt/stockyard
     mount -t virtiofs stockyard /mnt/stockyard 2>/dev/null || true
