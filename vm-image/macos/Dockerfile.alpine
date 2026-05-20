@@ -17,8 +17,14 @@ RUN apk add --no-cache \
     npm \
     go
 
-# Create stockyard user with sudo (no password — SSH key auth only)
+# Create stockyard user for SSH-key-only auth.
+# `adduser -D` leaves the shadow password field as "!" — a *locked* account,
+# not a passwordless one. Alpine's sshd is built without PAM, so its
+# allowed_user() check refuses every login to a locked account — including
+# valid publickey auth. Rewrite the field to "*" (login disabled, not locked)
+# so key-based SSH actually works.
 RUN adduser -D -s /bin/bash stockyard && \
+    sed -i 's/^stockyard:!/stockyard:*/' /etc/shadow && \
     echo 'stockyard ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/stockyard
 
 # Generate SSH host keys (baked into image — instant sshd start)
