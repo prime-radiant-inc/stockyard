@@ -360,12 +360,15 @@ func (d *Daemon) Start(ctx context.Context) error {
 		}()
 	}
 
-	// Start snapshot service
-	go func() {
-		if err := d.snapshots.Start(ctx); err != nil {
-			fmt.Printf("Snapshot service error: %v\n", err)
-		}
-	}()
+	// Start snapshot service (Firecracker backend only — it relies on vsock
+	// and ZFS, neither of which exists on the vfkit/macOS path).
+	if d.cfg.Backend == "" || d.cfg.Backend == "firecracker" {
+		go func() {
+			if err := d.snapshots.Start(ctx); err != nil {
+				fmt.Printf("Snapshot service error: %v\n", err)
+			}
+		}()
+	}
 
 	<-ctx.Done()
 	return d.Stop()
