@@ -1,0 +1,23 @@
+#!/sbin/openrc-run
+# OpenRC service for stockyard-shell — the in-guest vsock command agent
+# that backs `stockyard exec` / the command queue. Mirrors the Firecracker
+# image's vm-image/init/stockyard-shell.initd.
+
+description="Stockyard vsock command agent"
+
+supervisor=supervise-daemon
+command="/usr/local/bin/stockyard-shell"
+pidfile="/run/stockyard-shell.pid"
+respawn_delay=1
+respawn_max=0
+
+output_log="/var/log/stockyard/shell.log"
+error_log="/var/log/stockyard/shell.log"
+
+depend() {
+    need net
+}
+
+start_pre() {
+    mkdir -p /var/log/stockyard
+}

@@ -37,14 +37,20 @@ RUN ssh-keygen -A && \
 # Configure sshd for VirtioFS key injection
 COPY overlay/etc/ssh/sshd_config.d/stockyard.conf /etc/ssh/sshd_config.d/
 
-# Install VirtioFS mount init script
+# Install init scripts
 COPY overlay/etc/init.d/stockyard-mount /etc/init.d/stockyard-mount
-RUN chmod +x /etc/init.d/stockyard-mount
+COPY overlay/etc/init.d/stockyard-shell /etc/init.d/stockyard-shell
+RUN chmod +x /etc/init.d/stockyard-mount /etc/init.d/stockyard-shell
 
-# Enable services at boot
-RUN rc-update add networking boot && \
+# Enable services. A fresh docker-exported rootfs has empty OpenRC runlevels;
+# populate sysinit so devfs/sysfs mount /dev/pts, /dev/shm, /dev/mqueue and
+# /sys (without /dev/pts, sshd can't allocate PTYs — `stockyard attach`).
+RUN rc-update add devfs sysinit && \
+    rc-update add sysfs sysinit && \
+    rc-update add networking boot && \
     rc-update add stockyard-mount boot && \
-    rc-update add sshd default
+    rc-update add sshd default && \
+    rc-update add stockyard-shell default
 
 # Configure networking — kernel handles DHCP via ip=dhcp cmdline,
 # so userspace just needs to bring up lo. No dhcpcd needed.

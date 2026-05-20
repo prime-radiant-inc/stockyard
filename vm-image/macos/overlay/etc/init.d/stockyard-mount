@@ -21,10 +21,6 @@ start() {
     # Mount shared directory
     mkdir -p /mnt/stockyard
     mount -t virtiofs stockyard /mnt/stockyard 2>/dev/null || true
-    # Mount devpts — the image's sysinit runlevel is empty, so /dev/pts is
-    # never created and sshd cannot allocate PTYs (breaks `stockyard attach`).
-    mkdir -p /dev/pts
-    mount -t devpts devpts /dev/pts -o gid=5,mode=620 2>/dev/null || true
     eend 0
 }
 
