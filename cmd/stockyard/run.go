@@ -77,8 +77,8 @@ Use 'stockyard exec' to run commands in the VM after creation.`,
 		fmt.Printf("Task created: %s\n", resp.TaskId)
 		if resp.TailscaleHostname != "" {
 			fmt.Printf("Tailscale hostname: %s\n", resp.TailscaleHostname)
-			fmt.Printf("\nTo attach: stockyard attach %s\n", resp.TaskId)
 		}
+		fmt.Printf("\nTo attach: stockyard attach %s\n", resp.TaskId)
 
 		return nil
 	},

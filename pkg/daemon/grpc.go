@@ -48,14 +48,12 @@ func (s *grpcServer) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) 
 		return nil, status.Errorf(codes.Internal, "failed to create task: %v", err)
 	}
 
-	hostname := ""
-	if !req.NoTailscale {
-		hostname = fmt.Sprintf("stockyard-%s", task.ID)
-	}
-
+	// Report the hostname the task manager actually assigned — non-empty only
+	// when Tailscale was genuinely set up (valid auth key). Do not synthesize
+	// one here; on the vfkit backend there is no Tailscale.
 	return &pb.CreateTaskResponse{
 		TaskId:            task.ID,
-		TailscaleHostname: hostname,
+		TailscaleHostname: task.TailscaleHostname,
 	}, nil
 }
 
