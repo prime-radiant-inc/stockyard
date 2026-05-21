@@ -96,8 +96,10 @@ build_rootfs() {
 print_summary() {
     local kernel_path="$OUTPUT_DIR/vmlinux"
     local rootfs_path="$OUTPUT_DIR/alpine-rootfs.raw"
-    local abs_output
+    local abs_output vfkit_bin data_dir
     abs_output="$(cd "$OUTPUT_DIR" && pwd)"
+    vfkit_bin="$(command -v vfkit)"
+    data_dir="$HOME/.local/share/stockyard"
 
     echo ""
     info "Setup complete!"
@@ -106,24 +108,44 @@ print_summary() {
     echo "  Kernel: $kernel_path ($(du -h "$kernel_path" | cut -f1))"
     echo "  Rootfs: $rootfs_path ($(du -h "$rootfs_path" | cut -f1))"
     echo ""
-    echo "Example config.json:"
+    echo "Next steps (see vm-image/macos/README.md for the full walkthrough):"
+    echo ""
+    echo "  1. Create the data directory:"
+    echo "       mkdir -p $data_dir/secrets"
+    echo ""
+    echo "  2. Write ~/.config/stockyard/config.json:"
     echo ""
     cat <<EOF
 {
   "instance_id": "my-mac",
   "backend": "vfkit",
+  "vm": { "user": "stockyard" },
   "vfkit": {
-    "kernel_path": "$abs_output/vmlinux",
-    "rootfs_path": "$abs_output/alpine-rootfs.raw"
+    "vfkit_bin": "$vfkit_bin",
+    "kernel_path": "$abs_output/vmlinux"
   },
   "rootfs": {
     "provider": "apfs",
     "base_image": "$abs_output/alpine-rootfs.raw",
-    "vms_dir": "$abs_output/vms"
+    "vms_dir": "$data_dir/vms"
   },
-  "vm": { "user": "stockyard" }
+  "secrets": {
+    "provider": "file",
+    "dir": "$data_dir/secrets"
+  },
+  "daemon": {
+    "socket_path": "$data_dir/stockyard.sock",
+    "data_dir": "$data_dir"
+  }
 }
 EOF
+    echo ""
+    echo "  3. Start the daemon and create a VM:"
+    echo "       stockyardd &"
+    echo "       stockyard run --no-tailscale --name test"
+    echo ""
+    echo "  Note: do NOT run 'stockyard init' on macOS — it writes Firecracker"
+    echo "  defaults with /var paths that need root. Write the config above."
 }
 
 main() {
