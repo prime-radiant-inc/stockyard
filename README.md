@@ -2,6 +2,10 @@
 
 Coding agent VM orchestrator. Runs coding agents in isolated Firecracker micro-VMs with ZFS-based audit trail snapshots.
 
+> **On macOS (Apple Silicon)?** Stockyard also runs locally via vfkit — see
+> [vm-image/macos/README.md](vm-image/macos/README.md) for the macOS setup.
+> The Quick Start below is Linux/Firecracker.
+
 ## Quick Start
 
 ```bash
