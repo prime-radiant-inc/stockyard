@@ -15,6 +15,9 @@ set -eu
 TS_AUTHKEY="${TAILSCALE_AUTH_KEY:-${TS_AUTHKEY:-}}"
 if [ -n "${TS_AUTHKEY}" ]; then
     echo "stockyard-container-init: starting tailscaled (userspace networking)"
+    # tailscaled does not create these dirs; the firecracker init path
+    # (stockyard-init.sh) pre-creates them for the same reason.
+    mkdir -p /var/lib/tailscale /var/run/tailscale
     tailscaled \
         --tun=userspace-networking \
         --state=/var/lib/tailscale/tailscaled.state \
@@ -25,6 +28,9 @@ if [ -n "${TS_AUTHKEY}" ]; then
         i=$((i + 1))
         sleep 0.2
     done
+    if [ ! -S /var/run/tailscale/tailscaled.sock ]; then
+        echo "stockyard-container-init: WARNING tailscaled socket never appeared; tailscale up will likely fail"
+    fi
     tailscale up --ssh --authkey="${TS_AUTHKEY}" \
         --hostname="${STOCKYARD_HOSTNAME:-stockyard}" || \
         echo "stockyard-container-init: WARNING tailscale up failed; continuing"
