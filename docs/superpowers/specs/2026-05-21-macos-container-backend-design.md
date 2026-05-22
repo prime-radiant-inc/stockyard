@@ -1,8 +1,10 @@
-# macOS `container` Backend — Design
+# macOS Apple `container` Backend — Design
 
 - **Date:** 2026-05-21
 - **Status:** Approved (design); implementation plan pending
 - **Author:** Pham@6e1fb16f (Opus 4.7)
+- **Revisions:** 2026-05-21 — backend renamed `AppleContainerBackend`; CLI
+  access via `stockyard attach`.
 
 ## Context
 
@@ -18,19 +20,19 @@ runs each container in its own lightweight VM via Virtualization.framework,
 with `vminitd` as PID 1 and an Apple-supplied kernel. It pulls and runs
 standard OCI images directly.
 
-This design adds `container` as a **third VM backend** on macOS. The motivating
-win is image simplification: macOS stops building its own image and kernel and
-instead consumes an OCI image produced by the same Docker build that feeds
-Firecracker.
+This design adds Apple's `container` as a **third VM backend** on macOS. The
+motivating win is image simplification: macOS stops building its own image and
+kernel and instead consumes an OCI image produced by the same Docker build that
+feeds Firecracker.
 
 ## Decisions
 
 These were settled during brainstorming and are recorded so the rationale
 survives:
 
-1. **Additive, not a replacement.** `container` is added as a new
-   `config.backend` value. vfkit and Firecracker are untouched. Whether to
-   later delete vfkit and `vm-image/macos/` is deferred.
+1. **Additive, not a replacement.** Apple's `container` is added as a new
+   `config.backend` value, `"apple-container"`. vfkit and Firecracker are
+   untouched. Whether to later delete vfkit and `vm-image/macos/` is deferred.
 2. **Shared multi-arch image.** `vm-image/Dockerfile` is restructured into a
    multi-stage build with a shared `base` stage and thin `firecracker` and
    `container` targets. The `base` stage becomes arch-clean so the `container`
@@ -49,20 +51,25 @@ survives:
 6. **Go drives the CLI.** Apple exposes no stable API for non-Swift clients.
    The backend shells out to the `container` CLI with `--format json`, the same
    pattern the vfkit backend uses for `vfkit`.
+7. **Named for Apple's tool specifically.** The backend type is
+   `AppleContainerBackend` and the config value is `"apple-container"` — not a
+   generic `Container*` name — so a future, unrelated container runtime can be
+   added without a naming collision.
 
 ## Scope
 
 **In scope**
 
-- A `ContainerBackend` implementing `vmbackend.Backend`.
-- Config and daemon wiring for `config.backend == "container"`.
+- An `AppleContainerBackend` implementing `vmbackend.Backend`.
+- Config and daemon wiring for `config.backend == "apple-container"`.
 - A multi-stage, multi-arch `vm-image/Dockerfile` with a `container` target.
 - A container entrypoint: `llm-proxy` plus opt-in Tailscale.
-- The dashboard web terminal on the `container` path.
+- The dashboard web terminal and `stockyard attach` on the new path.
 
 **Non-goals**
 
-- No changes to the vfkit or Firecracker backends.
+- No changes to the vfkit or Firecracker backends (beyond `stockyard attach`
+  dispatching by backend).
 - No ZFS snapshots on this path (`container` has no copy-on-write fork; macOS
   never had snapshots anyway).
 - No `stockyard exec` queue work — that mechanism is experimental and out of
@@ -72,7 +79,7 @@ survives:
 
 ## Architecture
 
-### 1. `ContainerBackend` — `pkg/vmbackend/container.go`
+### 1. `AppleContainerBackend` — `pkg/vmbackend/apple_container.go`
 
 Implements the existing `vmbackend.Backend` interface (`pkg/vmbackend/backend.go`)
 by shelling out to the `container` CLI.
@@ -108,19 +115,19 @@ Details:
 
 ### 2. Config and daemon wiring
 
-- **`pkg/config`.** Add `ContainerConfig{ ContainerBin string; Image string }`
-  (`pkg/config/container.go`, alongside `vfkit.go`) and a `Container
-  ContainerConfig` field on `Config` (`pkg/config/config.go`). `ContainerBin`
-  defaults to `"container"`.
-- **`pkg/daemon/daemon.go`.** Add `case "container":` to the backend switch
-  (currently handling `""`/`firecracker` and `vfkit`, ~lines 104–129) calling
-  `createContainerBackend(cfg)`.
-- **Build-tagged constructors.** `createContainerBackend` is added to
+- **`pkg/config`.** Add `AppleContainerConfig{ ContainerBin string; Image
+  string }` (`pkg/config/apple_container.go`, alongside `vfkit.go`) and an
+  `AppleContainer AppleContainerConfig` field on `Config`
+  (`pkg/config/config.go`). `ContainerBin` defaults to `"container"`.
+- **`pkg/daemon/daemon.go`.** Add `case "apple-container":` to the backend
+  switch (currently handling `""`/`firecracker` and `vfkit`, ~lines 104–129)
+  calling `createAppleContainerBackend(cfg)`.
+- **Build-tagged constructors.** `createAppleContainerBackend` is added to
   `backend_darwin.go` (real backend) and `backend_other.go` (returns an error:
-  the `container` backend is only available on macOS), matching the existing
-  `createVfkitBackend` split.
-- **No ZFS / DHCP / IP pool.** These stay `nil` for `container`, exactly as for
-  `vfkit` — the relevant guards in `daemon.go` already key on
+  the Apple `container` backend is only available on macOS), matching the
+  existing `createVfkitBackend` split.
+- **No ZFS / DHCP / IP pool.** These stay `nil` for `apple-container`, exactly
+  as for `vfkit` — the relevant guards in `daemon.go` already key on
   `firecracker`/empty backend.
 - **No rootfs provisioner.** `container` owns image layers and the per-container
   writable layer, so `createRootfsProvisioner` (`pkg/daemon/rootfs_darwin.go`)
@@ -149,7 +156,7 @@ Build plumbing:
 
 - `vm-image/build.sh` / `vm-image/Makefile` gain a target that builds the
   `container` target via `container build --target container` (or `docker
-  buildx` followed by `container` import — implementation plan to choose).
+  buildx` followed by `container` import — the implementation plan chooses).
 - `vm-image/macos/` (the Alpine vfkit image) is left untouched; vfkit still
   uses it. It is not part of the `container` path.
 
@@ -169,14 +176,14 @@ On start it:
    via `container exec`.
 
 The Tailscale auth key travels in `VMConfig.Env`, which `CreateTask` already
-populates for the Firecracker path; `ContainerBackend.CreateVM` forwards `Env`
-entries as `--env` flags to `container run`.
+populates for the Firecracker path; `AppleContainerBackend.CreateVM` forwards
+`Env` entries as `--env` flags to `container run`.
 
 ### 5. Dashboard web terminal
 
 `pkg/dashboard/terminal_handler.go` currently bridges the dashboard websocket
 to the in-guest shell over vsock (`VsockSession`, `createVsockSession`). Add a
-second session type for the `container` path:
+second session type for the `apple-container` path:
 
 - **`ContainerExecSession`.** Runs `container exec -t -i <container-id>
   <shell>` under a host PTY (`creack/pty`), bridging the PTY to the websocket.
@@ -185,20 +192,24 @@ second session type for the `container` path:
 - Terminal resize sets the host PTY's window size.
 - The handler selects the session type based on the active backend.
 
-### 6. Commands and file copy
+### 6. CLI access — `stockyard attach`
 
-The daemon surfaces each task's `container` ID in task status. Interactive
-shell access is the dashboard terminal plus a thin `stockyard shell <task>`
-subcommand (`cmd/stockyard/`, following existing command patterns) that runs
-`container exec -t -i`. Ad-hoc commands and file copy use `container exec` and
-`container cp` directly against the surfaced container ID — no new daemon RPC
-surface. This keeps scope tight and matches the agreement that running these by
-hand is acceptable.
+`stockyard attach <task>` provides interactive shell access, dispatching on the
+task's backend:
+
+- **`apple-container`** — wraps `container exec -t -i <container-id> <shell>`.
+- **vfkit / Firecracker** — uses the existing access path (SSH / vsock).
+
+If `stockyard attach` does not already exist in `cmd/stockyard/`, it is added,
+following existing command patterns; if it exists, the `apple-container` branch
+is added to its backend dispatch. The daemon surfaces each task's `container`
+ID in task status so that ad-hoc commands and file copy can use `container
+exec` and `container cp` directly — no new daemon RPC surface.
 
 ## Testing
 
-- **`ContainerBackend` unit tests.** Exercise argument construction and JSON
-  parsing through the injected `commandRunner`; no real `container` daemon
+- **`AppleContainerBackend` unit tests.** Exercise argument construction and
+  JSON parsing through the injected `commandRunner`; no real `container` daemon
   required.
 - **Integration test.** Gated behind an environment flag (set only where
   `container` is installed on macOS 26): real `create` → `exec` → teardown.
@@ -233,8 +244,8 @@ hand is acceptable.
 
 ## Deferred / future work
 
-- Deleting the vfkit backend and `vm-image/macos/` once the `container` path is
-  proven.
+- Deleting the vfkit backend and `vm-image/macos/` once the `apple-container`
+  path is proven.
 - Workspace snapshots on macOS, if ever wanted — would be built host-side on an
   APFS volume bind-mounted into the container, independent of the VM backend,
   not via ZFS.
