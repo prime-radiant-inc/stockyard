@@ -1,14 +1,24 @@
+# syntax=docker/dockerfile:1
+
 # Stockyard VM Image
 # Ubuntu 24.04 with development tools for Claude Code sessions
 #
-# This image is designed to be converted to a Firecracker rootfs.
-# Build with: ./build.sh
-# Convert with: ./convert-to-rootfs.sh
+# Multi-stage build:
+#   base        — arch-independent tools, languages, agents, llm-proxy, Tailscale, user
+#   container   — FROM base + stockyard-container-init entrypoint (Apple container target)
+#   firecracker — FROM base + systemd/cloud-init/network config + kernel build (default target)
+#
+# Build with:
+#   docker build .                              # firecracker (default)
+#   docker build --target firecracker .         # explicit firecracker
+#   TARGET=container ./build.sh                 # container (arm64)
 
-FROM ubuntu:24.04
+# ============================================================================
+# Stage: base — architecture-independent. Shared by firecracker and container.
+# ============================================================================
+FROM ubuntu:24.04 AS base
 
 LABEL maintainer="Stockyard Project"
-LABEL description="Development VM image for Claude Code sessions with Firecracker"
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -146,7 +156,6 @@ RUN systemctl disable tailscaled.service 2>/dev/null || true
 
 # llm-proxy (LLM API logging proxy)
 ARG LLM_PROXY_VERSION=v0.7.1
-ARG TARGETARCH=amd64
 RUN curl -fsSL "https://github.com/prime-radiant-inc/llm-proxy/releases/download/${LLM_PROXY_VERSION}/llm-proxy-linux-${TARGETARCH}" \
     -o /usr/local/bin/llm-proxy \
     && chmod +x /usr/local/bin/llm-proxy
@@ -188,6 +197,43 @@ RUN npm install -g @openai/codex
 
 # Create workspace directory
 RUN mkdir -p /workspace && chown ${VM_USER}:${VM_USER} /workspace
+
+# ============================================================================
+# Section 9: Finalize (base-level ENV/WORKDIR shared by all targets)
+# ============================================================================
+
+# LLM proxy environment — routes agent CLI traffic through local logging proxy
+# Prepended before the non-interactive guard so it's available to ssh host "cmd"
+RUN sed -i '1i export OPENAI_BASE_URL="http://localhost:12071/openai/api.openai.com"' /home/${VM_USER}/.bashrc \
+    && sed -i '1i export ANTHROPIC_BASE_URL="http://localhost:12071/anthropic/api.anthropic.com"' /home/${VM_USER}/.bashrc
+
+# Persist VM_USER for runtime scripts
+ENV VM_USER=${VM_USER}
+
+# Set environment variables
+ENV GOPATH=/home/${VM_USER}/go
+ENV PATH="/home/${VM_USER}/.local/bin:/home/${VM_USER}/.cargo/bin:/usr/local/go/bin:${PATH}"
+
+# Default working directory
+WORKDIR /home/${VM_USER}
+
+# ============================================================================
+# Stage: container — Apple `container` image. FROM base + entrypoint.
+# ============================================================================
+FROM base AS container
+ARG VM_USER=mooby
+
+COPY init/stockyard-container-init.sh /usr/local/bin/stockyard-container-init.sh
+RUN chmod +x /usr/local/bin/stockyard-container-init.sh
+
+ENTRYPOINT ["/usr/local/bin/stockyard-container-init.sh"]
+
+# ============================================================================
+# Stage: firecracker — Firecracker rootfs image. FROM base + init + kernel.
+# Default build target (last stage = docker build default).
+# ============================================================================
+FROM base AS firecracker
+ARG VM_USER=mooby
 
 # ============================================================================
 # Section 6: SSH Configuration
@@ -325,26 +371,6 @@ RUN cd /tmp/linux-${KERNEL_VERSION} \
     && cp vmlinux /boot/vmlinuz \
     && rm -rf /tmp/linux-${KERNEL_VERSION}
 
-# ============================================================================
-# Section 9: Finalize
-# ============================================================================
-
-# LLM proxy environment — routes agent CLI traffic through local logging proxy
-# Prepended before the non-interactive guard so it's available to ssh host "cmd"
-RUN sed -i '1i export OPENAI_BASE_URL="http://localhost:12071/openai/api.openai.com"' /home/${VM_USER}/.bashrc \
-    && sed -i '1i export ANTHROPIC_BASE_URL="http://localhost:12071/anthropic/api.anthropic.com"' /home/${VM_USER}/.bashrc
-
-# Persist VM_USER for runtime scripts
-ENV VM_USER=${VM_USER}
-
-# Set environment variables
-ENV GOPATH=/home/${VM_USER}/go
-ENV PATH="/home/${VM_USER}/.local/bin:/home/${VM_USER}/.cargo/bin:/usr/local/go/bin:${PATH}"
-
-# Default working directory
-WORKDIR /home/${VM_USER}
-
-# Expose SSH port
 EXPOSE 22
 
 # Default command (will be overridden by cloud-init/systemd in VM)
