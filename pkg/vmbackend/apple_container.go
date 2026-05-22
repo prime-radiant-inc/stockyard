@@ -9,7 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"sync"
+	"time"
 )
 
 // AppleContainerConfig configures the Apple `container` backend.
@@ -72,7 +74,112 @@ func NewAppleContainerBackend(cfg AppleContainerConfig) *AppleContainerBackend {
 var errNotImplemented = errors.New("apple-container backend: not implemented")
 
 func (b *AppleContainerBackend) CreateVM(ctx context.Context, cfg *VMConfig) (*VMInfo, error) {
-	return nil, errNotImplemented
+	stateDir, err := b.ensureStateDir(cfg.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	args := b.buildRunArgs(cfg)
+	if _, err := b.run(ctx, b.cfg.ContainerBin, args...); err != nil {
+		os.RemoveAll(stateDir)
+		return nil, fmt.Errorf("container run: %w", err)
+	}
+
+	if !b.skipLogFollower {
+		if err := b.startLogFollower(cfg.ID); err != nil {
+			// Non-fatal: the container is running; logs just won't be captured.
+			fmt.Printf("Warning: apple-container log follower for %s: %v\n", cfg.ID, err)
+		}
+	}
+
+	ip, _ := b.inspectIP(ctx, cfg.ID) // best-effort; empty IP is acceptable
+
+	return &VMInfo{
+		ID:        cfg.ID,
+		PID:       0, // container manages the workload; no meaningful hypervisor PID
+		IP:        ip,
+		StateDir:  stateDir,
+		State:     "running",
+		CreatedAt: time.Now(),
+	}, nil
+}
+
+// buildRunArgs constructs the `container run -d ...` argument vector.
+func (b *AppleContainerBackend) buildRunArgs(cfg *VMConfig) []string {
+	args := []string{
+		"run", "-d",
+		"--name", containerName(cfg.ID),
+		"--cpus", fmt.Sprintf("%d", cfg.VCPU),
+		"--memory", fmt.Sprintf("%dM", cfg.MemoryMB),
+	}
+	// Deterministic ordering so tests and diffs are stable.
+	envKeys := make([]string, 0, len(cfg.Env))
+	for k := range cfg.Env {
+		envKeys = append(envKeys, k)
+	}
+	sort.Strings(envKeys)
+	for _, k := range envKeys {
+		args = append(args, "--env", k+"="+cfg.Env[k])
+	}
+	metaKeys := make([]string, 0, len(cfg.Metadata))
+	for k := range cfg.Metadata {
+		metaKeys = append(metaKeys, k)
+	}
+	sort.Strings(metaKeys)
+	for _, k := range metaKeys {
+		args = append(args, "--label", k+"="+cfg.Metadata[k])
+	}
+	args = append(args, b.cfg.Image)
+	return args
+}
+
+// startLogFollower spawns `container logs -f` redirecting into the per-VM
+// stdout.log / stderr.log so the daemon's logTailer works unchanged.
+func (b *AppleContainerBackend) startLogFollower(id string) error {
+	dir := b.vmStateDir(id)
+	stdoutF, err := os.Create(filepath.Join(dir, "stdout.log"))
+	if err != nil {
+		return fmt.Errorf("create stdout.log: %w", err)
+	}
+	stderrF, err := os.Create(filepath.Join(dir, "stderr.log"))
+	if err != nil {
+		stdoutF.Close()
+		return fmt.Errorf("create stderr.log: %w", err)
+	}
+	cmd := exec.Command(b.cfg.ContainerBin, "logs", "-f", containerName(id))
+	cmd.Stdout = stdoutF
+	cmd.Stderr = stderrF
+	if err := cmd.Start(); err != nil {
+		stdoutF.Close()
+		stderrF.Close()
+		return fmt.Errorf("start log follower: %w", err)
+	}
+	go func() {
+		cmd.Wait()
+		stdoutF.Close()
+		stderrF.Close()
+	}()
+	b.mu.Lock()
+	b.followers[id] = &logFollower{cmd: cmd}
+	b.mu.Unlock()
+	return nil
+}
+
+// stopLogFollower kills and forgets the log follower for a VM, if any.
+func (b *AppleContainerBackend) stopLogFollower(id string) {
+	b.mu.Lock()
+	f, ok := b.followers[id]
+	delete(b.followers, id)
+	b.mu.Unlock()
+	if ok && f.cmd.Process != nil {
+		f.cmd.Process.Kill()
+	}
+}
+
+// inspectIP reads the container's IP from `container inspect --format json`.
+// Defined fully in Task 1.6; a stub here keeps CreateVM compiling.
+func (b *AppleContainerBackend) inspectIP(ctx context.Context, id string) (string, error) {
+	return "", nil
 }
 
 func (b *AppleContainerBackend) StartVM(ctx context.Context, cfg *VMConfig) (*VMInfo, error) {

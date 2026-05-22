@@ -4,6 +4,7 @@ package vmbackend
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -38,5 +39,46 @@ func TestAppleContainerBackend_NewSetsDefaults(t *testing.T) {
 	b := newAppleContainerBackendWithRunner(AppleContainerConfig{}, newFakeRunner().run)
 	if b.cfg.ContainerBin != "container" {
 		t.Errorf("expected default ContainerBin %q, got %q", "container", b.cfg.ContainerBin)
+	}
+}
+
+func TestAppleContainerBackend_CreateVM_BuildsRunArgs(t *testing.T) {
+	fr := newFakeRunner()
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{
+		Image:    "stockyard-vm:container",
+		StateDir: t.TempDir(),
+	}, fr.run)
+	// Avoid spawning a real log follower in unit tests.
+	b.skipLogFollower = true
+
+	info, err := b.CreateVM(context.Background(), &VMConfig{
+		ID:       "abc12345",
+		VCPU:     4,
+		MemoryMB: 2048,
+		Env:      map[string]string{"FOO": "bar"},
+		Metadata: map[string]string{"task-id": "abc12345"},
+	})
+	if err != nil {
+		t.Fatalf("CreateVM: %v", err)
+	}
+	if info.ID != "abc12345" {
+		t.Errorf("expected ID abc12345, got %q", info.ID)
+	}
+	if len(fr.calls) == 0 {
+		t.Fatal("expected at least one container call")
+	}
+	joined := strings.Join(fr.calls[0], " ")
+	for _, want := range []string{
+		"run", "-d",
+		"--name stockyard-abc12345",
+		"--cpus 4",
+		"--memory 2048M",
+		"--env FOO=bar",
+		"--label task-id=abc12345",
+		"stockyard-vm:container",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("run args missing %q; got: %s", want, joined)
+		}
 	}
 }
