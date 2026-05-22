@@ -15,6 +15,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Configurable VM user (default: mooby)
 ARG VM_USER=mooby
+# Target architecture, auto-populated by BuildKit (amd64 | arm64).
+# Default keeps non-BuildKit builds working.
+ARG TARGETARCH=amd64
 
 # ============================================================================
 # Section 1: Base System
@@ -60,7 +63,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # yq (YAML processor) - install from GitHub releases
-RUN curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq \
+RUN curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${TARGETARCH} -o /usr/local/bin/yq \
     && chmod +x /usr/local/bin/yq
 
 # ============================================================================
@@ -83,7 +86,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # Go 1.26
-RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xzf - \
+RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-${TARGETARCH}.tar.gz | tar -C /usr/local -xzf - \
     && ln -s /usr/local/go/bin/go /usr/local/bin/go \
     && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
@@ -106,16 +109,18 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && rm -rf /var/lib/apt/lists/*
 
 # AWS CLI v2
-RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
-    && unzip awscliv2.zip \
+RUN AWS_ARCH=$([ "${TARGETARCH}" = "arm64" ] && echo aarch64 || echo x86_64) \
+    && curl "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}.zip" -o "awscliv2.zip" \
+    && unzip -q awscliv2.zip \
     && ./aws/install \
-    && rm -rf aws awscliv2.zip
+    && rm -rf awscliv2.zip aws
 
 # Azure CLI
 RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
 # Google Cloud CLI (standalone archive — apt repo has stale package versions)
-RUN curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz | tar -xzf - -C /usr/local \
+RUN GCLOUD_ARCH=$([ "${TARGETARCH}" = "arm64" ] && echo arm || echo x86_64) \
+    && curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-${GCLOUD_ARCH}.tar.gz | tar -xzf - -C /usr/local \
     && /usr/local/google-cloud-sdk/install.sh --quiet --path-update=false \
     && ln -s /usr/local/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud \
     && ln -s /usr/local/google-cloud-sdk/bin/gsutil /usr/local/bin/gsutil \
