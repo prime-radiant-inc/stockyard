@@ -123,6 +123,12 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 		if err != nil {
 			return nil, fmt.Errorf("failed to create vfkit backend: %w", err)
 		}
+	case "apple-container":
+		var err error
+		backend, err = createAppleContainerBackend(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create apple-container backend: %w", err)
+		}
 	default:
 		return nil, fmt.Errorf("unknown backend: %s", cfg.Backend)
 	}
