@@ -67,7 +67,7 @@ func (s *grpcServer) GetTask(ctx context.Context, req *pb.GetTaskRequest) (*pb.G
 	}
 
 	return &pb.GetTaskResponse{
-		Task: taskToProto(task),
+		Task: taskToProto(task, s.daemon.cfg.Backend),
 	}, nil
 }
 
@@ -79,7 +79,7 @@ func (s *grpcServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) (*
 
 	pbTasks := make([]*pb.Task, len(tasks))
 	for i, t := range tasks {
-		pbTasks[i] = taskToProto(t)
+		pbTasks[i] = taskToProto(t, s.daemon.cfg.Backend)
 	}
 
 	return &pb.ListTasksResponse{Tasks: pbTasks}, nil
@@ -526,13 +526,15 @@ func commandToProto(c *Command) *pb.CommandInfo {
 	return ci
 }
 
-func taskToProto(t *Task) *pb.Task {
+func taskToProto(t *Task, backend string) *pb.Task {
 	pt := &pb.Task{
 		Id:                t.ID,
 		Name:              t.Name,
 		Status:            t.Status,
 		TailscaleHostname: t.TailscaleHostname,
 		Ip:                t.IP,
+		Backend:           backend,
+		VmId:              t.VMID,
 		CreatedAt:         t.CreatedAt.Format(time.RFC3339),
 	}
 	if t.StoppedAt != nil {
