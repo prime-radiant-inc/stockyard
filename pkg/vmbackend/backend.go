@@ -71,3 +71,17 @@ type VMState struct {
 func GenerateVMID() string {
 	return uuid.New().String()[:8]
 }
+
+// LogFollowerEnsurer is implemented by backends that stream container/VM logs
+// via an external follower process (e.g. `container logs -f`). Callers can
+// type-assert a Backend to this interface and call EnsureLogFollower after a
+// daemon restart to re-attach the log stream for any task that is still running.
+//
+// This interface is intentionally platform-neutral: it lives in a non-build-
+// tagged file so that daemon reconciliation code can reference it on all
+// platforms without triggering darwin-only compilation errors.
+type LogFollowerEnsurer interface {
+	// EnsureLogFollower starts a log follower for vmID if one is not already
+	// running. It is a no-op (returns nil) if a follower is already tracked.
+	EnsureLogFollower(vmID string) error
+}

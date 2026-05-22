@@ -65,7 +65,7 @@ func TestTerminalHandler_Integration_CID0(t *testing.T) {
 	}
 
 	manager := NewTerminalManager()
-	handler := NewTerminalHandler(manager, daemon, "mooby")
+	handler := NewTerminalHandler(manager, daemon, "mooby", "")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handler.ServeHTTP(w, r)
@@ -118,7 +118,7 @@ func TestTerminalHandler_AppleContainerBranch_NoVsock503Avoided(t *testing.T) {
 		vsockErr: fmt.Errorf("no vsock for apple-container"),
 	}
 	mgr := NewTerminalManager()
-	h := NewTerminalHandler(mgr, daemon, "mooby")
+	h := NewTerminalHandler(mgr, daemon, "mooby", "")
 
 	srv := httptest.NewServer(h)
 	defer srv.Close()
@@ -160,7 +160,7 @@ func TestTerminalHandler_Integration_TaskNotFound(t *testing.T) {
 	}
 
 	manager := NewTerminalManager()
-	handler := NewTerminalHandler(manager, daemon, "mooby")
+	handler := NewTerminalHandler(manager, daemon, "mooby", "")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handler.ServeHTTP(w, r)

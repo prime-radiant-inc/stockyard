@@ -211,6 +211,13 @@ func (b *AppleContainerBackend) inspectIP(ctx context.Context, id string) (strin
 	return addressToIP(arr[0].Networks[0].Address), nil
 }
 
+// StartVM restarts an existing (stopped) container by name. The container's
+// environment (including TAILSCALE_AUTH_KEY) was baked in at `container run`
+// time and persists across stop/start cycles; tailscaled's node state also
+// lives in the container's writable layer and survives restart. No new env
+// variables need to be injected here. Known limitation: if the container has
+// been stopped longer than Tailscale's node-key expiry the node may require
+// re-authorization — this edge case is not handled automatically.
 func (b *AppleContainerBackend) StartVM(ctx context.Context, cfg *VMConfig) (*VMInfo, error) {
 	stateDir, err := b.ensureStateDir(cfg.ID)
 	if err != nil {
@@ -328,6 +335,25 @@ func (b *AppleContainerBackend) Close() error {
 		b.stopLogFollower(id)
 	}
 	return nil
+}
+
+// EnsureLogFollower starts a log follower for vmID if one is not already
+// tracked. It is a no-op (returns nil) when a follower process is already
+// running for this VM. This is called by reconcileViaBackend after a daemon
+// restart to re-attach the log stream for tasks that stayed running.
+//
+// AppleContainerBackend implements vmbackend.LogFollowerEnsurer.
+func (b *AppleContainerBackend) EnsureLogFollower(vmID string) error {
+	b.mu.Lock()
+	_, exists := b.followers[vmID]
+	b.mu.Unlock()
+	if exists {
+		return nil // already following
+	}
+	if b.skipLogFollower {
+		return nil
+	}
+	return b.startLogFollower(vmID)
 }
 
 // vmStateDir returns the per-VM state directory (holds captured logs).

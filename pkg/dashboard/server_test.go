@@ -12,7 +12,7 @@ import (
 )
 
 func TestServer_HealthEndpoint(t *testing.T) {
-	srv := NewServer(nil, "")
+	srv := NewServer(nil, "", "")
 
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
@@ -33,7 +33,7 @@ func TestServer_WithMockDaemon(t *testing.T) {
 			{ID: "task-1", Name: "test", Status: "running"},
 		},
 	}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	if srv.daemon == nil {
 		t.Error("expected daemon to be set")
@@ -122,7 +122,7 @@ func TestServer_FleetPage(t *testing.T) {
 			{ID: "task-2", Name: "test-vm-2", Status: "stopped"},
 		},
 	}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	req := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
@@ -143,7 +143,7 @@ func TestServer_FleetPage(t *testing.T) {
 }
 
 func TestServer_FleetPage_NotFound(t *testing.T) {
-	srv := NewServer(nil, "")
+	srv := NewServer(nil, "", "")
 
 	req := httptest.NewRequest("GET", "/unknown-path", nil)
 	w := httptest.NewRecorder()
@@ -161,7 +161,7 @@ func TestServer_VMDetailPage(t *testing.T) {
 			{ID: "task-123", Name: "test-vm", Status: "running", TailscaleHost: "vm-123.tail.net"},
 		},
 	}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	req := httptest.NewRequest("GET", "/vm/task-123", nil)
 	w := httptest.NewRecorder()
@@ -183,7 +183,7 @@ func TestServer_VMDetailPage(t *testing.T) {
 
 func TestServer_VMDetailPage_NotFound(t *testing.T) {
 	mock := &MockDaemon{tasks: []Task{}}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	req := httptest.NewRequest("GET", "/vm/nonexistent", nil)
 	w := httptest.NewRecorder()
@@ -201,7 +201,7 @@ func TestServer_VMPreview(t *testing.T) {
 			{ID: "task-123", Name: "test-vm", Status: "running", TailscaleHost: "vm-123.tail.net"},
 		},
 	}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	req := httptest.NewRequest("GET", "/preview/vm/task-123", nil)
 	w := httptest.NewRecorder()
@@ -223,7 +223,7 @@ func TestServer_VMPreview(t *testing.T) {
 
 func TestServer_VMPreview_NotFound(t *testing.T) {
 	mock := &MockDaemon{tasks: []Task{}}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	req := httptest.NewRequest("GET", "/preview/vm/nonexistent", nil)
 	w := httptest.NewRecorder()
@@ -239,7 +239,7 @@ func TestServer_StopVM(t *testing.T) {
 	mock := &MockDaemon{
 		tasks: []Task{{ID: "task-1", Status: "running"}},
 	}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	req := httptest.NewRequest("POST", "/api/vm/task-1/stop", nil)
 	w := httptest.NewRecorder()
@@ -258,7 +258,7 @@ func TestServer_DestroyVM(t *testing.T) {
 	mock := &MockDaemon{
 		tasks: []Task{{ID: "task-1", Status: "running"}},
 	}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	req := httptest.NewRequest("DELETE", "/api/vm/task-1", nil)
 	w := httptest.NewRecorder()
@@ -278,7 +278,7 @@ func TestServer_StopVM_Error(t *testing.T) {
 		tasks: []Task{{ID: "task-1", Status: "running"}},
 		err:   errors.New("stop failed"),
 	}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	req := httptest.NewRequest("POST", "/api/vm/task-1/stop", nil)
 	w := httptest.NewRecorder()
@@ -295,7 +295,7 @@ func TestServer_DestroyVM_Error(t *testing.T) {
 		tasks: []Task{{ID: "task-1", Status: "running"}},
 		err:   errors.New("destroy failed"),
 	}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	req := httptest.NewRequest("DELETE", "/api/vm/task-1", nil)
 	w := httptest.NewRecorder()
@@ -311,7 +311,7 @@ func TestServer_RestartVM(t *testing.T) {
 	mock := &MockDaemon{
 		tasks: []Task{{ID: "task-1", Status: "stopped"}},
 	}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	req := httptest.NewRequest("POST", "/api/vm/task-1/restart", nil)
 	w := httptest.NewRecorder()
@@ -334,7 +334,7 @@ func TestServer_RestartVM_Error(t *testing.T) {
 		tasks: []Task{{ID: "task-1", Status: "stopped"}},
 		err:   errors.New("restart failed"),
 	}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	req := httptest.NewRequest("POST", "/api/vm/task-1/restart", nil)
 	w := httptest.NewRecorder()
@@ -348,7 +348,7 @@ func TestServer_RestartVM_Error(t *testing.T) {
 
 func TestServer_HasWebSocketEndpoint(t *testing.T) {
 	mock := &MockDaemon{}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	// Just verify the route exists - actual WS testing done in websocket_test.go
 	req := httptest.NewRequest("GET", "/ws", nil)
@@ -363,7 +363,7 @@ func TestServer_HasWebSocketEndpoint(t *testing.T) {
 }
 
 func TestServer_LogSearchAPI(t *testing.T) {
-	srv := NewServer(nil, "")
+	srv := NewServer(nil, "", "")
 
 	// Add some log lines
 	srv.LogHistory().AddLine("task-1", "stdout", "starting server")
@@ -389,7 +389,7 @@ func TestServer_LogSearchAPI(t *testing.T) {
 }
 
 func TestServer_LogSearchAPI_FilterByStream(t *testing.T) {
-	srv := NewServer(nil, "")
+	srv := NewServer(nil, "", "")
 
 	srv.LogHistory().AddLine("task-1", "stdout", "normal output")
 	srv.LogHistory().AddLine("task-1", "stderr", "error output")
@@ -412,7 +412,7 @@ func TestServer_LogSearchAPI_FilterByStream(t *testing.T) {
 }
 
 func TestServer_LogSearchAPI_MissingTaskID(t *testing.T) {
-	srv := NewServer(nil, "")
+	srv := NewServer(nil, "", "")
 
 	req := httptest.NewRequest("GET", "/api/vm-logs/", nil)
 	w := httptest.NewRecorder()
@@ -425,7 +425,7 @@ func TestServer_LogSearchAPI_MissingTaskID(t *testing.T) {
 
 func TestServer_CreateVM(t *testing.T) {
 	mock := &MockDaemon{}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	body := `{"cpus": 2, "memory_mb": 4096}`
 	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
@@ -449,7 +449,7 @@ func TestServer_CreateVM(t *testing.T) {
 
 func TestServer_CreateVM_EmptyBody(t *testing.T) {
 	mock := &MockDaemon{}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	body := `{}`
 	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
@@ -465,7 +465,7 @@ func TestServer_CreateVM_EmptyBody(t *testing.T) {
 
 func TestServer_CreateVM_InvalidJSON(t *testing.T) {
 	mock := &MockDaemon{}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	body := `{invalid json}`
 	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
@@ -481,7 +481,7 @@ func TestServer_CreateVM_InvalidJSON(t *testing.T) {
 
 func TestServer_CreateVM_MethodNotAllowed(t *testing.T) {
 	mock := &MockDaemon{}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/vm/create", nil)
 	w := httptest.NewRecorder()
@@ -497,7 +497,7 @@ func TestServer_CreateVM_DaemonError(t *testing.T) {
 	mock := &MockDaemon{
 		err: errors.New("daemon error"),
 	}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	body := `{"name": "test-vm"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
@@ -513,7 +513,7 @@ func TestServer_CreateVM_DaemonError(t *testing.T) {
 
 func TestServer_CreateVM_Defaults(t *testing.T) {
 	mock := &MockDaemon{}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	// Send minimal request - should use defaults for cpus, memory
 	body := `{"name": "test-vm"}`
@@ -534,7 +534,7 @@ func TestServer_CreateVM_Defaults(t *testing.T) {
 }
 
 func TestServer_CreateVM_NoDaemon(t *testing.T) {
-	srv := NewServer(nil, "") // nil daemon
+	srv := NewServer(nil, "", "") // nil daemon
 
 	body := `{"name": "test-vm"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
@@ -550,7 +550,7 @@ func TestServer_CreateVM_NoDaemon(t *testing.T) {
 
 func TestServer_CreateVM_WithEnv(t *testing.T) {
 	mock := &MockDaemon{}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	body := `{"name": "test-vm", "env": {"KEY1": "value1", "KEY2": "value2"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/vm/create", strings.NewReader(body))
@@ -587,7 +587,7 @@ func TestServer_FleetPage_WithAdapter(t *testing.T) {
 	}
 
 	adapter := NewDaemonAdapter(mock)
-	srv := NewServer(adapter, "")
+	srv := NewServer(adapter, "", "")
 
 	req := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()

@@ -123,7 +123,7 @@ func TestServer_ResourcesPage(t *testing.T) {
 			{ID: "task-2", Name: "test-vm-2", Status: "stopped"},
 		},
 	}
-	srv := NewServer(mock, "")
+	srv := NewServer(mock, "", "")
 
 	req := httptest.NewRequest("GET", "/resources", nil)
 	w := httptest.NewRecorder()
@@ -142,7 +142,7 @@ func TestServer_ResourcesPage(t *testing.T) {
 }
 
 func TestServer_ResourcesPage_NoDaemon(t *testing.T) {
-	srv := NewServer(nil, "")
+	srv := NewServer(nil, "", "")
 
 	req := httptest.NewRequest("GET", "/resources", nil)
 	w := httptest.NewRecorder()

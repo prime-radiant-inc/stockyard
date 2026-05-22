@@ -28,7 +28,9 @@ type Server struct {
 // NewServer creates a new dashboard HTTP server.
 // The daemon parameter will be used for API calls (nil allowed for testing).
 // vmUser is the SSH username for terminal connections (defaults to "mooby" if empty).
-func NewServer(daemon DaemonAPI, vmUser string) *Server {
+// containerBin is the path to the `container` binary used by the web terminal
+// for apple-container tasks (defaults to "container" if empty).
+func NewServer(daemon DaemonAPI, vmUser string, containerBin string) *Server {
 	hub := NewHub()
 	go hub.Run()
 
@@ -45,7 +47,7 @@ func NewServer(daemon DaemonAPI, vmUser string) *Server {
 		activityFeed:    NewActivityFeedWithHub(100, hub),
 		alertChecker:    NewAlertChecker(),
 		terminalManager: terminalManager,
-		terminalHandler: NewTerminalHandler(terminalManager, daemon, vmUser),
+		terminalHandler: NewTerminalHandler(terminalManager, daemon, vmUser, containerBin),
 		vmUser:          vmUser,
 	}
 	// Load templates, but don't fail if they're not available (for testing)

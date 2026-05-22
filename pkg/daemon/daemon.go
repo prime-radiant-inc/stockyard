@@ -255,9 +255,18 @@ func (d *Daemon) reconcileViaBackend(tasks []*Task) {
 			running[s.ID] = true
 		}
 	}
+	// Type-assert once; nil if the backend does not implement the interface.
+	logEnsurer, _ := d.tasks.backend.(vmbackend.LogFollowerEnsurer)
+
 	for _, task := range tasks {
 		if running[task.VMID] {
 			fmt.Printf("  Task %s: container still running\n", task.ID)
+			// Re-attach the log follower — it died with the previous daemon process.
+			if logEnsurer != nil && task.VMID != "" {
+				if err := logEnsurer.EnsureLogFollower(task.VMID); err != nil {
+					fmt.Printf("Warning: could not re-attach log follower for task %s: %v\n", task.ID, err)
+				}
+			}
 			continue
 		}
 		fmt.Printf("  Task %s: container not running, marking as stopped\n", task.ID)
@@ -356,7 +365,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 		// Create dashboard facade and adapter
 		facade := NewDashboardFacade(d.state, d.tasks, d.zfs, d.cfg.Backend)
 		adapter := dashboard.NewDaemonAdapter(facade)
-		d.dashboardServer = dashboard.NewServer(adapter, d.cfg.VM.User)
+		d.dashboardServer = dashboard.NewServer(adapter, d.cfg.VM.User, d.cfg.AppleContainer.ContainerBin)
 		tsClient := tailscale.NewLocalClient()
 		handler := dashboard.AuthMiddleware(d.dashboardServer, tsClient)
 

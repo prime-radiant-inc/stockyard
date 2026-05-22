@@ -17,18 +17,25 @@ import (
 
 // TerminalHandler handles WebSocket connections for terminal sessions.
 type TerminalHandler struct {
-	manager     *TerminalManager
-	daemon      DaemonAPI
-	defaultUser string
-	upgrader    websocket.Upgrader
+	manager      *TerminalManager
+	daemon       DaemonAPI
+	defaultUser  string
+	_containerBin string // path to the `container` binary; defaults to "container"
+	upgrader     websocket.Upgrader
 }
 
 // NewTerminalHandler creates a new terminal WebSocket handler.
-func NewTerminalHandler(manager *TerminalManager, daemon DaemonAPI, defaultUser string) *TerminalHandler {
+// containerBin is the path to the `container` binary; pass "" to use the
+// default ("container" on PATH, which is correct for `brew install container`).
+func NewTerminalHandler(manager *TerminalManager, daemon DaemonAPI, defaultUser string, containerBin string) *TerminalHandler {
+	if containerBin == "" {
+		containerBin = "container"
+	}
 	return &TerminalHandler{
-		manager:     manager,
-		daemon:      daemon,
-		defaultUser: defaultUser,
+		manager:      manager,
+		daemon:       daemon,
+		defaultUser:  defaultUser,
+		_containerBin: containerBin,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -37,11 +44,9 @@ func NewTerminalHandler(manager *TerminalManager, daemon DaemonAPI, defaultUser 
 	}
 }
 
-// containerBin returns the `container` binary path (currently the default).
-// A future change can make this configurable; "container" on PATH is correct
-// for the supported `brew install container` setup.
+// containerBin returns the configured path to the `container` binary.
 func (h *TerminalHandler) containerBin() string {
-	return "container"
+	return h._containerBin
 }
 
 // ServeHTTP handles WebSocket upgrade requests for terminal sessions.
@@ -192,12 +197,28 @@ func (h *TerminalHandler) createVsockSession(vsockPath string, user string, cols
 }
 
 // handleVsockSession manages bidirectional I/O between WebSocket and vsock.
+//
+// Lifecycle contract (mirrors bridgeContainerSession):
+//   - When the in-guest shell exits first: session.ReadMessage returns an error
+//     → the reader goroutine calls conn.Close() (I1) → the foreground
+//     conn.ReadMessage unblocks → the loop breaks → session.Close() (I2)
+//     is called before <-done so the reader goroutine is guaranteed to have
+//     returned already.
+//   - When the WebSocket disconnects first: the foreground ReadMessage returns
+//     an error → the loop breaks → session.Close() (I2) closes the vsock
+//     connection → the reader goroutine's blocked ReadMessage unblocks → the
+//     reader goroutine returns → <-done completes.
 func (h *TerminalHandler) handleVsockSession(conn *websocket.Conn, session *VsockSession) {
 	done := make(chan struct{})
 
-	// Read from vsock and send to WebSocket
+	// Read from vsock and send to WebSocket (reader goroutine).
+	//
+	// I1: defer conn.Close() here so that when the in-guest shell exits and
+	// ReadMessage returns an error, the WebSocket connection is closed and the
+	// foreground conn.ReadMessage call unblocks immediately, preventing a leak.
 	go func() {
 		defer close(done)
+		defer conn.Close() // I1: unblock foreground ReadMessage on vsock EOF/exit
 		for {
 			msgType, payload, err := session.ReadMessage()
 			if err != nil {
@@ -293,7 +314,12 @@ func (h *TerminalHandler) handleVsockSession(conn *websocket.Conn, session *Vsoc
 		}
 	}
 
-	// Wait for vsock reader goroutine to complete
+	// I2: close the session *before* waiting for the reader goroutine.
+	// This guarantees that any blocked ReadMessage in the reader goroutine will
+	// be interrupted promptly, so <-done never hangs.
+	// session.Close() is idempotent — safe to call even though ServeHTTP also
+	// defers it.
+	session.Close()
 	<-done
 }
 

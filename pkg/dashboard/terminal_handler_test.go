@@ -15,13 +15,23 @@ import (
 
 func TestTerminalHandler_Creation(t *testing.T) {
 	tm := NewTerminalManager()
-	handler := NewTerminalHandler(tm, nil, "vscode")
+	handler := NewTerminalHandler(tm, nil, "vscode", "")
 
 	if handler == nil {
 		t.Fatal("expected handler to be created")
 	}
 	if handler.defaultUser != "vscode" {
 		t.Errorf("expected vscode, got %s", handler.defaultUser)
+	}
+	// Empty containerBin should default to "container"
+	if handler.containerBin() != "container" {
+		t.Errorf("expected default containerBin 'container', got %q", handler.containerBin())
+	}
+
+	// Custom containerBin should be used as-is
+	handler2 := NewTerminalHandler(tm, nil, "vscode", "/opt/homebrew/bin/container")
+	if handler2.containerBin() != "/opt/homebrew/bin/container" {
+		t.Errorf("expected custom containerBin '/opt/homebrew/bin/container', got %q", handler2.containerBin())
 	}
 }
 
@@ -51,7 +61,7 @@ func TestExtractTaskID(t *testing.T) {
 
 func TestTerminalHandler_MissingTaskID(t *testing.T) {
 	tm := NewTerminalManager()
-	handler := NewTerminalHandler(tm, nil, "vscode")
+	handler := NewTerminalHandler(tm, nil, "vscode", "")
 
 	req := httptest.NewRequest("GET", "/ws/terminal/", nil)
 	w := httptest.NewRecorder()
@@ -65,7 +75,7 @@ func TestTerminalHandler_MissingTaskID(t *testing.T) {
 
 func TestTerminalHandler_InvalidPath(t *testing.T) {
 	tm := NewTerminalManager()
-	handler := NewTerminalHandler(tm, nil, "vscode")
+	handler := NewTerminalHandler(tm, nil, "vscode", "")
 
 	req := httptest.NewRequest("GET", "/invalid/path", nil)
 	w := httptest.NewRecorder()
@@ -79,7 +89,7 @@ func TestTerminalHandler_InvalidPath(t *testing.T) {
 
 func TestTerminalHandler_NoDaemon(t *testing.T) {
 	tm := NewTerminalManager()
-	handler := NewTerminalHandler(tm, nil, "vscode")
+	handler := NewTerminalHandler(tm, nil, "vscode", "")
 
 	req := httptest.NewRequest("GET", "/ws/terminal/task-123", nil)
 	w := httptest.NewRecorder()
@@ -309,5 +319,59 @@ func TestTerminalHandler_handleVsockSession_ExitMessage(t *testing.T) {
 
 	if !strings.Contains(output.Data, "Session ended") {
 		t.Errorf("expected exit message, got %q", output.Data)
+	}
+}
+
+// TestTerminalHandler_handleVsockSession_ShellExitUnblocksHandler verifies the
+// goroutine-leak fix (Fix 1): when the in-guest shell exits (vsock closes)
+// before the WebSocket client disconnects, handleVsockSession must return
+// promptly rather than hanging forever waiting for the client to disconnect.
+func TestTerminalHandler_handleVsockSession_ShellExitUnblocksHandler(t *testing.T) {
+	handler := &TerminalHandler{}
+
+	vmSide, hostSide := net.Pipe()
+
+	session := &VsockSession{
+		ID:   "test-session",
+		conn: hostSide,
+	}
+
+	handlerDone := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upgrader := websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		handler.handleVsockSession(conn, session)
+		close(handlerDone)
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	wsConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+	defer wsConn.Close()
+
+	// Give handler goroutines time to start
+	time.Sleep(50 * time.Millisecond)
+
+	// Simulate the in-guest shell exiting by closing the vsock side.
+	// This makes session.ReadMessage return an error, triggering I1 (conn.Close)
+	// which unblocks the foreground ReadMessage loop so the handler returns.
+	vmSide.Close()
+	hostSide.Close()
+
+	// handleVsockSession must return within a short timeout — not hang forever.
+	select {
+	case <-handlerDone:
+		// Correct: handler returned after vsock closed
+	case <-time.After(2 * time.Second):
+		t.Fatal("handleVsockSession did not return after vsock closed (goroutine leak)")
 	}
 }

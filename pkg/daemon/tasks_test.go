@@ -171,7 +171,7 @@ func TestBuildVMEnvMetadata_AppleContainer(t *testing.T) {
 		"MY_VAR":            "v",
 	}
 	vmEnv, vmMeta := buildVMEnvMetadata("apple-container", "abc12345", "demo",
-		env, "tskey-abc", "stockyard-abc12345", "ip=ignored", nil)
+		env, "tskey-abc", "stockyard-abc12345", "ip=ignored", nil, nil)
 
 	// The real workload environment must be delivered to the container — this is
 	// the bug the C1 fix addresses (apple-container has no cloud-init/MMDS).
@@ -202,7 +202,7 @@ func TestBuildVMEnvMetadata_AppleContainer(t *testing.T) {
 func TestBuildVMEnvMetadata_FirecrackerUnchanged(t *testing.T) {
 	env := map[string]string{"ANTHROPIC_API_KEY": "sk-test"}
 	vmEnv, _ := buildVMEnvMetadata("firecracker", "abc12345", "demo",
-		env, "tskey-abc", "stockyard-abc12345", "ip=1.2.3.4", nil)
+		env, "tskey-abc", "stockyard-abc12345", "ip=1.2.3.4", nil, nil)
 
 	// Firecracker delivers the workload env via cloud-init, not VMConfig.Env —
 	// the env map must NOT be copied into vmEnv on this path.
@@ -219,5 +219,64 @@ func TestBuildVMEnvMetadata_FirecrackerUnchanged(t *testing.T) {
 	// The plain (entrypoint-facing) names must NOT be set on the firecracker path.
 	if _, ok := vmEnv["TAILSCALE_AUTH_KEY"]; ok {
 		t.Error("plain TAILSCALE_AUTH_KEY must not be set on the firecracker path")
+	}
+}
+
+func TestParseDotEnv(t *testing.T) {
+	input := []byte(`# comment
+KEY1=value1
+KEY2=value with spaces
+KEY3="quoted double"
+KEY4='quoted single'
+export KEY5=exported
+KEY6=
+
+BLANK_AFTER_BLANK=yes
+# another comment
+
+KEY7="hello=world"
+=invalid_no_key
+invalid_no_equals
+`)
+	got := parseDotEnv(input)
+
+	cases := []struct{ key, want string }{
+		{"KEY1", "value1"},
+		{"KEY2", "value with spaces"},
+		{"KEY3", "quoted double"},
+		{"KEY4", "quoted single"},
+		{"KEY5", "exported"},
+		{"KEY6", ""},
+		{"BLANK_AFTER_BLANK", "yes"},
+		{"KEY7", "hello=world"},
+	}
+	for _, c := range cases {
+		if got[c.key] != c.want {
+			t.Errorf("parseDotEnv[%q] = %q, want %q", c.key, got[c.key], c.want)
+		}
+	}
+	// Lines without a key should not be present.
+	if _, ok := got[""]; ok {
+		t.Error("parseDotEnv should not produce empty key")
+	}
+	if _, ok := got["invalid_no_equals"]; ok {
+		t.Error("parseDotEnv should not produce key for line without '='")
+	}
+}
+
+func TestBuildVMEnvMetadata_AppleContainer_DotEnvPrecedence(t *testing.T) {
+	// .env file sets FOO=from_dotenv; explicit env sets FOO=from_env.
+	// Explicit env must win (higher precedence).
+	dotEnv := []byte("FOO=from_dotenv\nBAR=only_in_dotenv\n")
+	env := map[string]string{"FOO": "from_env"}
+
+	vmEnv, _ := buildVMEnvMetadata("apple-container", "abc12345", "demo",
+		env, "", "stockyard-abc12345", "", nil, dotEnv)
+
+	if vmEnv["FOO"] != "from_env" {
+		t.Errorf("FOO = %q, want 'from_env' (explicit env must override .env)", vmEnv["FOO"])
+	}
+	if vmEnv["BAR"] != "only_in_dotenv" {
+		t.Errorf("BAR = %q, want 'only_in_dotenv' (.env-only key must be present)", vmEnv["BAR"])
 	}
 }
