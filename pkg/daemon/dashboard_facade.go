@@ -12,17 +12,19 @@ import (
 // DashboardFacade adapts the daemon's State and TaskManager to the dashboard.RealDaemon interface.
 // This provides the dashboard with access to daemon data without import cycles.
 type DashboardFacade struct {
-	state *State
-	tasks *TaskManager
-	zfs   *zfs.Manager
+	state   *State
+	tasks   *TaskManager
+	zfs     *zfs.Manager
+	backend string
 }
 
 // NewDashboardFacade creates a new facade for dashboard access.
-func NewDashboardFacade(state *State, tasks *TaskManager, zfsMgr *zfs.Manager) *DashboardFacade {
+func NewDashboardFacade(state *State, tasks *TaskManager, zfsMgr *zfs.Manager, backend string) *DashboardFacade {
 	return &DashboardFacade{
-		state: state,
-		tasks: tasks,
-		zfs:   zfsMgr,
+		state:   state,
+		tasks:   tasks,
+		zfs:     zfsMgr,
+		backend: backend,
 	}
 }
 
@@ -35,7 +37,7 @@ func (f *DashboardFacade) ListTasks(ctx context.Context, status string) ([]*dash
 
 	result := make([]*dashboard.DaemonTask, len(tasks))
 	for i, t := range tasks {
-		result[i] = convertToDashboardTask(t)
+		result[i] = f.convertToDashboardTask(t)
 	}
 	return result, nil
 }
@@ -50,7 +52,7 @@ func (f *DashboardFacade) GetTask(ctx context.Context, id string) (*dashboard.Da
 		}
 		return nil, err
 	}
-	return convertToDashboardTask(task), nil
+	return f.convertToDashboardTask(task), nil
 }
 
 // CreateTask creates a new task.
@@ -72,7 +74,7 @@ func (f *DashboardFacade) CreateTask(ctx context.Context, req *dashboard.DaemonC
 	if err != nil {
 		return nil, err
 	}
-	return convertToDashboardTask(task), nil
+	return f.convertToDashboardTask(task), nil
 }
 
 // StopTask stops a running task.
@@ -233,13 +235,14 @@ func (f *DashboardFacade) GetVsockPath(ctx context.Context, taskID string) (stri
 }
 
 // convertToDashboardTask converts a daemon Task to a dashboard DaemonTask.
-func convertToDashboardTask(t *Task) *dashboard.DaemonTask {
+func (f *DashboardFacade) convertToDashboardTask(t *Task) *dashboard.DaemonTask {
 	return &dashboard.DaemonTask{
 		ID:                t.ID,
 		Name:              t.Name,
 		Command:           t.Command,
 		Status:            t.Status,
 		VMID:              t.VMID,
+		Backend:           f.backend,
 		TailscaleHostname: t.TailscaleHostname,
 		CreatedAt:         t.CreatedAt,
 		StoppedAt:         t.StoppedAt,

@@ -42,7 +42,7 @@ func TestDashboardFacade_ListTasks(t *testing.T) {
 		t.Fatalf("failed to create task2: %v", err)
 	}
 
-	facade := NewDashboardFacade(state, nil, nil)
+	facade := NewDashboardFacade(state, nil, nil, "")
 
 	// List all tasks
 	tasks, err := facade.ListTasks(context.Background(), "")
@@ -85,7 +85,7 @@ func TestDashboardFacade_GetTask(t *testing.T) {
 		t.Fatalf("failed to create task: %v", err)
 	}
 
-	facade := NewDashboardFacade(state, nil, nil)
+	facade := NewDashboardFacade(state, nil, nil, "")
 
 	// Test found case
 	result, err := facade.GetTask(context.Background(), "task-123")
@@ -130,7 +130,7 @@ func TestDashboardFacade_ListTaskSnapshots(t *testing.T) {
 	state.RecordSnapshot("task-1", "task-1@snap1")
 	state.RecordSnapshot("task-1", "task-1@snap2")
 
-	facade := NewDashboardFacade(state, nil, nil)
+	facade := NewDashboardFacade(state, nil, nil, "")
 
 	snaps, err := facade.ListTaskSnapshots(context.Background(), "task-1")
 	if err != nil {
@@ -159,7 +159,7 @@ func TestDashboardFacade_CreateSnapshot_NoVMID(t *testing.T) {
 		t.Fatalf("failed to create task: %v", err)
 	}
 
-	facade := NewDashboardFacade(state, nil, nil)
+	facade := NewDashboardFacade(state, nil, nil, "")
 
 	_, err = facade.CreateSnapshot(context.Background(), "task-1", "my-label")
 	if err == nil {
@@ -185,7 +185,7 @@ func TestDashboardFacade_CreateSnapshot_NoZFS(t *testing.T) {
 		t.Fatalf("failed to create task: %v", err)
 	}
 
-	facade := NewDashboardFacade(state, nil, nil)
+	facade := NewDashboardFacade(state, nil, nil, "")
 
 	_, err = facade.CreateSnapshot(context.Background(), "task-1", "my-label")
 	if err == nil {
@@ -200,7 +200,7 @@ func TestDashboardFacade_RestoreSnapshot_TaskNotFound(t *testing.T) {
 	}
 	defer state.Close()
 
-	facade := NewDashboardFacade(state, nil, nil)
+	facade := NewDashboardFacade(state, nil, nil, "")
 
 	err = facade.RestoreSnapshot(context.Background(), "nonexistent", "snap1")
 	if err == nil {
@@ -226,7 +226,7 @@ func TestDashboardFacade_RestoreSnapshot_NoVMID(t *testing.T) {
 		t.Fatalf("failed to create task: %v", err)
 	}
 
-	facade := NewDashboardFacade(state, nil, nil)
+	facade := NewDashboardFacade(state, nil, nil, "")
 
 	err = facade.RestoreSnapshot(context.Background(), "task-1", "snap1")
 	if err == nil {
@@ -252,7 +252,7 @@ func TestDashboardFacade_RestoreSnapshot_NoZFS(t *testing.T) {
 		t.Fatalf("failed to create task: %v", err)
 	}
 
-	facade := NewDashboardFacade(state, nil, nil)
+	facade := NewDashboardFacade(state, nil, nil, "")
 
 	err = facade.RestoreSnapshot(context.Background(), "task-1", "snap1")
 	if err == nil {

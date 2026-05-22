@@ -40,9 +40,9 @@ type VMConfig struct {
 	VCPU              int32
 	MemoryMB          int32
 	KernelPath        string
-	RootfsPath        string            // Path to this VM's writable rootfs image
+	RootfsPath        string // Path to this VM's writable rootfs image
 	SSHAuthorizedKeys []string
-	CloudInitData     string            // Base64-encoded cloud-init user-data
+	CloudInitData     string // Base64-encoded cloud-init user-data
 	DotEnv            []byte
 	Env               map[string]string
 	Metadata          map[string]string // Labels (task-id, task-name, etc.)
@@ -51,11 +51,11 @@ type VMConfig struct {
 // VMInfo is returned after a VM is created or started.
 type VMInfo struct {
 	ID        string
-	PID       int       // OS process ID of the hypervisor
-	IP        string    // VM's IP address (may be empty if not yet known)
-	CID       uint32    // vsock Context ID (Firecracker-specific, 0 if unused)
-	VsockPath string    // Path to vsock UDS (Firecracker-specific, empty if unused)
-	StateDir  string    // Directory containing VM state files
+	PID       int    // OS process ID of the hypervisor
+	IP        string // VM's IP address (may be empty if not yet known)
+	CID       uint32 // vsock Context ID (Firecracker-specific, 0 if unused)
+	VsockPath string // Path to vsock UDS (Firecracker-specific, empty if unused)
+	StateDir  string // Directory containing VM state files
 	State     string
 	CreatedAt time.Time
 }
@@ -70,4 +70,18 @@ type VMState struct {
 // GenerateVMID creates a unique 8-character identifier for a new VM.
 func GenerateVMID() string {
 	return uuid.New().String()[:8]
+}
+
+// LogFollowerEnsurer is implemented by backends that stream container/VM logs
+// via an external follower process (e.g. `container logs -f`). Callers can
+// type-assert a Backend to this interface and call EnsureLogFollower after a
+// daemon restart to re-attach the log stream for any task that is still running.
+//
+// This interface is intentionally platform-neutral: it lives in a non-build-
+// tagged file so that daemon reconciliation code can reference it on all
+// platforms without triggering darwin-only compilation errors.
+type LogFollowerEnsurer interface {
+	// EnsureLogFollower starts a log follower for vmID if one is not already
+	// running. It is a no-op (returns nil) if a follower is already tracked.
+	EnsureLogFollower(vmID string) error
 }

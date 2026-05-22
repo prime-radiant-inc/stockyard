@@ -8,6 +8,10 @@ import (
 )
 
 func createRootfsProvisioner(cfg *config.Config) rootfs.Provisioner {
+	// apple-container owns its own rootfs; never provision one.
+	if cfg.Backend == "apple-container" {
+		return nil
+	}
 	switch cfg.Rootfs.Provider {
 	case "apfs":
 		return rootfs.NewAPFSProvisioner(cfg.Rootfs.BaseImage, cfg.Rootfs.VMsDir)

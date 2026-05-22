@@ -1,20 +1,34 @@
+# syntax=docker/dockerfile:1
+
 # Stockyard VM Image
 # Ubuntu 24.04 with development tools for Claude Code sessions
 #
-# This image is designed to be converted to a Firecracker rootfs.
-# Build with: ./build.sh
-# Convert with: ./convert-to-rootfs.sh
+# Multi-stage build:
+#   base        — arch-independent tools, languages, agents, llm-proxy, Tailscale, user
+#   container   — FROM base + stockyard-container-init entrypoint (Apple container target)
+#   firecracker — FROM base + systemd/cloud-init/network config + kernel build (default target)
+#
+# Build with:
+#   docker build .                              # firecracker (default)
+#   docker build --target firecracker .         # explicit firecracker
+#   TARGET=container ./build.sh                 # container (arm64)
 
-FROM ubuntu:24.04
+# ============================================================================
+# Stage: base — architecture-independent. Shared by firecracker and container.
+# ============================================================================
+FROM ubuntu:24.04 AS base
 
 LABEL maintainer="Stockyard Project"
-LABEL description="Development VM image for Claude Code sessions with Firecracker"
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Configurable VM user (default: mooby)
 ARG VM_USER=mooby
+# Target architecture (amd64 | arm64). Declared WITHOUT a default: BuildKit
+# auto-populates predefined platform args, and a default value would shadow the
+# real one — silently pulling amd64 binaries into an arm64 image.
+ARG TARGETARCH
 
 # ============================================================================
 # Section 1: Base System
@@ -60,7 +74,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # yq (YAML processor) - install from GitHub releases
-RUN curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq \
+RUN curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${TARGETARCH} -o /usr/local/bin/yq \
     && chmod +x /usr/local/bin/yq
 
 # ============================================================================
@@ -83,7 +97,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # Go 1.26
-RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xzf - \
+RUN curl -fsSL https://go.dev/dl/go1.26.1.linux-${TARGETARCH}.tar.gz | tar -C /usr/local -xzf - \
     && ln -s /usr/local/go/bin/go /usr/local/bin/go \
     && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
@@ -106,16 +120,18 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && rm -rf /var/lib/apt/lists/*
 
 # AWS CLI v2
-RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
-    && unzip awscliv2.zip \
+RUN AWS_ARCH=$([ "${TARGETARCH}" = "arm64" ] && echo aarch64 || echo x86_64) \
+    && curl "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}.zip" -o "awscliv2.zip" \
+    && unzip -q awscliv2.zip \
     && ./aws/install \
-    && rm -rf aws awscliv2.zip
+    && rm -rf awscliv2.zip aws
 
 # Azure CLI
 RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
 # Google Cloud CLI (standalone archive — apt repo has stale package versions)
-RUN curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz | tar -xzf - -C /usr/local \
+RUN GCLOUD_ARCH=$([ "${TARGETARCH}" = "arm64" ] && echo arm || echo x86_64) \
+    && curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-${GCLOUD_ARCH}.tar.gz | tar -xzf - -C /usr/local \
     && /usr/local/google-cloud-sdk/install.sh --quiet --path-update=false \
     && ln -s /usr/local/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud \
     && ln -s /usr/local/google-cloud-sdk/bin/gsutil /usr/local/bin/gsutil \
@@ -141,7 +157,6 @@ RUN systemctl disable tailscaled.service 2>/dev/null || true
 
 # llm-proxy (LLM API logging proxy)
 ARG LLM_PROXY_VERSION=v0.7.1
-ARG TARGETARCH=amd64
 RUN curl -fsSL "https://github.com/prime-radiant-inc/llm-proxy/releases/download/${LLM_PROXY_VERSION}/llm-proxy-linux-${TARGETARCH}" \
     -o /usr/local/bin/llm-proxy \
     && chmod +x /usr/local/bin/llm-proxy
@@ -154,8 +169,14 @@ RUN curl -fsSL "https://github.com/prime-radiant-inc/llm-proxy/releases/download
 # Section 4b: Linters and Formatters
 # ============================================================================
 
-# Go linter (golangci-lint)
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin
+# Go linter (golangci-lint) — pinned direct download. The upstream `master`
+# install.sh verifies against the wrong release asset (the .sbom.json) and
+# fails the checksum, so fetch and extract the release tarball directly.
+ARG GOLANGCI_LINT_VERSION=2.12.2
+RUN curl -fsSL "https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_LINT_VERSION}/golangci-lint-${GOLANGCI_LINT_VERSION}-linux-${TARGETARCH}.tar.gz" \
+    | tar -xzf - -C /tmp \
+    && mv "/tmp/golangci-lint-${GOLANGCI_LINT_VERSION}-linux-${TARGETARCH}/golangci-lint" /usr/local/bin/golangci-lint \
+    && rm -rf /tmp/golangci-lint-*
 
 # Python linter/formatter (ruff - extremely fast)
 RUN /usr/local/bin/uv tool install ruff \
@@ -183,6 +204,43 @@ RUN npm install -g @openai/codex
 
 # Create workspace directory
 RUN mkdir -p /workspace && chown ${VM_USER}:${VM_USER} /workspace
+
+# ============================================================================
+# Section 9: Finalize (base-level ENV/WORKDIR shared by all targets)
+# ============================================================================
+
+# LLM proxy environment — routes agent CLI traffic through local logging proxy
+# Prepended before the non-interactive guard so it's available to ssh host "cmd"
+RUN sed -i '1i export OPENAI_BASE_URL="http://localhost:12071/openai/api.openai.com"' /home/${VM_USER}/.bashrc \
+    && sed -i '1i export ANTHROPIC_BASE_URL="http://localhost:12071/anthropic/api.anthropic.com"' /home/${VM_USER}/.bashrc
+
+# Persist VM_USER for runtime scripts
+ENV VM_USER=${VM_USER}
+
+# Set environment variables
+ENV GOPATH=/home/${VM_USER}/go
+ENV PATH="/home/${VM_USER}/.local/bin:/home/${VM_USER}/.cargo/bin:/usr/local/go/bin:${PATH}"
+
+# Default working directory
+WORKDIR /home/${VM_USER}
+
+# ============================================================================
+# Stage: container — Apple `container` image. FROM base + entrypoint.
+# ============================================================================
+FROM base AS container
+ARG VM_USER=mooby
+
+COPY init/stockyard-container-init.sh /usr/local/bin/stockyard-container-init.sh
+RUN chmod +x /usr/local/bin/stockyard-container-init.sh
+
+ENTRYPOINT ["/usr/local/bin/stockyard-container-init.sh"]
+
+# ============================================================================
+# Stage: firecracker — Firecracker rootfs image. FROM base + init + kernel.
+# Default build target (last stage = docker build default).
+# ============================================================================
+FROM base AS firecracker
+ARG VM_USER=mooby
 
 # ============================================================================
 # Section 6: SSH Configuration
@@ -320,26 +378,6 @@ RUN cd /tmp/linux-${KERNEL_VERSION} \
     && cp vmlinux /boot/vmlinuz \
     && rm -rf /tmp/linux-${KERNEL_VERSION}
 
-# ============================================================================
-# Section 9: Finalize
-# ============================================================================
-
-# LLM proxy environment — routes agent CLI traffic through local logging proxy
-# Prepended before the non-interactive guard so it's available to ssh host "cmd"
-RUN sed -i '1i export OPENAI_BASE_URL="http://localhost:12071/openai/api.openai.com"' /home/${VM_USER}/.bashrc \
-    && sed -i '1i export ANTHROPIC_BASE_URL="http://localhost:12071/anthropic/api.anthropic.com"' /home/${VM_USER}/.bashrc
-
-# Persist VM_USER for runtime scripts
-ENV VM_USER=${VM_USER}
-
-# Set environment variables
-ENV GOPATH=/home/${VM_USER}/go
-ENV PATH="/home/${VM_USER}/.local/bin:/home/${VM_USER}/.cargo/bin:/usr/local/go/bin:${PATH}"
-
-# Default working directory
-WORKDIR /home/${VM_USER}
-
-# Expose SSH port
 EXPOSE 22
 
 # Default command (will be overridden by cloud-init/systemd in VM)

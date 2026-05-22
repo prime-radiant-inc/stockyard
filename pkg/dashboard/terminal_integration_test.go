@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,8 +13,9 @@ import (
 
 // mockDaemonForTerminal implements DaemonAPI for terminal testing.
 type mockDaemonForTerminal struct {
-	task *Task
-	cid  uint32
+	task     *Task
+	cid      uint32
+	vsockErr error // if non-nil, GetVsockPath returns this error
 }
 
 func (m *mockDaemonForTerminal) ListTasks(ctx context.Context) ([]Task, error) {
@@ -47,6 +49,9 @@ func (m *mockDaemonForTerminal) GetVMCID(ctx context.Context, taskID string) (ui
 	return m.cid, nil
 }
 func (m *mockDaemonForTerminal) GetVsockPath(ctx context.Context, taskID string) (string, error) {
+	if m.vsockErr != nil {
+		return "", m.vsockErr
+	}
 	return "", nil
 }
 
@@ -60,7 +65,7 @@ func TestTerminalHandler_Integration_CID0(t *testing.T) {
 	}
 
 	manager := NewTerminalManager()
-	handler := NewTerminalHandler(manager, daemon, "mooby")
+	handler := NewTerminalHandler(manager, daemon, "mooby", "")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handler.ServeHTTP(w, r)
@@ -92,6 +97,62 @@ func TestTerminalHandler_Integration_CID0(t *testing.T) {
 	t.Error("expected connection to fail or receive error for CID 0")
 }
 
+func TestTerminalHandler_AppleContainerBranch_NoVsock503Avoided(t *testing.T) {
+	// An apple-container task must route to serveContainerExec *before* any
+	// vsock logic is reached. To make this a genuine regression guard we
+	// configure GetVsockPath to return an error: without the apple-container
+	// branch ServeHTTP would call GetVsockPath, get the error, and respond 503
+	// before the WebSocket upgrade — causing Dial to fail with 503. With the
+	// branch the handler never reaches GetVsockPath, so the Dial either
+	// succeeds (darwin) or gets 503 from the stub (non-darwin) — but NOT the
+	// vsock-error 503. The test distinguishes these two 503 sources by
+	// checking the response body.
+	daemon := &mockDaemonForTerminal{
+		task: &Task{
+			ID:      "abc12345",
+			Name:    "test",
+			Status:  "running",
+			Backend: "apple-container",
+			VMID:    "abc12345",
+		},
+		vsockErr: fmt.Errorf("no vsock for apple-container"),
+	}
+	mgr := NewTerminalManager()
+	h := NewTerminalHandler(mgr, daemon, "mooby", "")
+
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/terminal/abc12345"
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		if resp == nil {
+			t.Fatalf("unexpected dial failure with no response: %v", err)
+		}
+		if resp.StatusCode == http.StatusServiceUnavailable {
+			// Read the body to distinguish the two 503 sources.
+			body := new(strings.Builder)
+			if resp.Body != nil {
+				buf := make([]byte, 512)
+				n, _ := resp.Body.Read(buf)
+				body.Write(buf[:n])
+				resp.Body.Close()
+			}
+			if strings.Contains(body.String(), "VM not available") {
+				// The vsock-error path fired — the apple-container branch is MISSING.
+				t.Fatalf("got vsock-error 503 (%q): apple-container branch not taken; branch may be absent", body.String())
+			}
+			// 503 from the non-darwin stub — acceptable on non-darwin builds.
+			return
+		}
+		t.Fatalf("unexpected dial failure (wrong branch?): status=%d err=%v", resp.StatusCode, err)
+	}
+	// darwin: WebSocket upgrade succeeded — the branch routed to serveContainerExec.
+	if conn != nil {
+		conn.Close()
+	}
+}
+
 func TestTerminalHandler_Integration_TaskNotFound(t *testing.T) {
 	daemon := &mockDaemonForTerminal{
 		task: nil, // No task
@@ -99,7 +160,7 @@ func TestTerminalHandler_Integration_TaskNotFound(t *testing.T) {
 	}
 
 	manager := NewTerminalManager()
-	handler := NewTerminalHandler(manager, daemon, "mooby")
+	handler := NewTerminalHandler(manager, daemon, "mooby", "")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handler.ServeHTTP(w, r)

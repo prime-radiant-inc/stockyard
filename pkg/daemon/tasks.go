@@ -32,11 +32,11 @@ func NewTaskManager(d *Daemon, backend vmbackend.Backend) *TaskManager {
 
 // CreateTaskRequest contains the parameters for creating a new task.
 type CreateTaskRequest struct {
-	Name             string
-	Command          []string
-	Env              map[string]string
-	CPUs             int32
-	MemoryMB         int32
+	Name              string
+	Command           []string
+	Env               map[string]string
+	CPUs              int32
+	MemoryMB          int32
 	NoTailscale       bool
 	TailscaleAuthKey  string   // Optional: overrides 1Password lookup
 	SSHAuthorizedKeys []string // SSH public keys for VM access
@@ -179,26 +179,8 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	var vmIP string
 	if tm.backend != nil {
 		// Build backend-agnostic VM config
-		vmEnv := make(map[string]string)
-		vmMetadata := map[string]string{
-			"task-id":   taskID,
-			"task-name": req.Name,
-		}
-
-		// Pass Firecracker-specific fields through Env/Metadata maps
-		// (the Firecracker adapter extracts these)
-		if tailscaleAuthKey != "" {
-			vmEnv["_tailscale_auth_key"] = tailscaleAuthKey
-		}
-		if staticIPArgs != "" {
-			vmEnv["_static_ip_args"] = staticIPArgs
-		}
-		if networkConfig != nil {
-			vmMetadata["_network_ip"] = networkConfig.IP
-			vmMetadata["_network_netmask"] = networkConfig.Netmask
-			vmMetadata["_network_gateway"] = networkConfig.Gateway
-			vmMetadata["_network_dns"] = networkConfig.DNS
-		}
+		vmEnv, vmMetadata := buildVMEnvMetadata(tm.daemon.cfg.Backend, taskID, req.Name,
+			env, tailscaleAuthKey, hostname, staticIPArgs, networkConfig, req.DotEnv)
 
 		vmCfg := &vmbackend.VMConfig{
 			ID:                taskID,
@@ -302,6 +284,103 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	return task, nil
 }
 
+// parseDotEnv parses raw .env file bytes into a key→value map.
+//
+// Supported syntax:
+//   - KEY=VALUE
+//   - export KEY=VALUE  (optional "export " prefix)
+//   - # comment lines   (ignored)
+//   - blank lines        (ignored)
+//   - Values may be optionally surrounded by single or double quotes, which
+//     are stripped. No escape processing is performed inside quoted values.
+func parseDotEnv(data []byte) map[string]string {
+	result := make(map[string]string)
+	for _, rawLine := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Strip optional "export " prefix.
+		line = strings.TrimPrefix(line, "export ")
+		idx := strings.IndexByte(line, '=')
+		if idx <= 0 {
+			continue // no '=' or starts with '=' — skip
+		}
+		key := strings.TrimSpace(line[:idx])
+		val := line[idx+1:]
+		// Strip surrounding quotes (single or double) when they match.
+		if len(val) >= 2 {
+			if (val[0] == '"' && val[len(val)-1] == '"') ||
+				(val[0] == '\'' && val[len(val)-1] == '\'') {
+				val = val[1 : len(val)-1]
+			}
+		}
+		if key != "" {
+			result[key] = val
+		}
+	}
+	return result
+}
+
+// buildVMEnvMetadata constructs the backend-specific Env and Metadata maps for a
+// VMConfig. The apple-container backend has no cloud-init or MMDS, so the entire
+// workload environment must be delivered through Env (forwarded as `container run
+// --env` flags) — including the secrets and the Tailscale auth key, which the
+// container entrypoint reads as TAILSCALE_AUTH_KEY. Firecracker and vfkit instead
+// receive adapter-private underscore-prefixed keys that their adapters extract;
+// those keys are deliberately NOT set on the apple-container path so they cannot
+// leak into `container inspect`.
+//
+// dotEnv contains the raw bytes of an optional .env file. For the
+// apple-container path its entries are applied first (lowest precedence) and
+// then overridden by the explicit task env (env), so that secrets and other
+// caller-supplied values always win. dotEnv is ignored on the
+// Firecracker/vfkit paths because those backends receive DotEnv via MMDS.
+func buildVMEnvMetadata(backend, taskID, taskName string, env map[string]string,
+	tailscaleAuthKey, hostname, staticIPArgs string,
+	networkConfig *network.StaticNetworkConfig, dotEnv []byte) (map[string]string, map[string]string) {
+
+	vmEnv := make(map[string]string)
+	vmMetadata := map[string]string{
+		"task-id":   taskID,
+		"task-name": taskName,
+	}
+
+	if backend == "apple-container" {
+		// Apply .env entries first (lowest precedence).
+		if len(dotEnv) > 0 {
+			for k, v := range parseDotEnv(dotEnv) {
+				vmEnv[k] = v
+			}
+		}
+		// Deliver the real workload environment directly, overriding .env values.
+		for k, v := range env {
+			vmEnv[k] = v
+		}
+		if tailscaleAuthKey != "" {
+			vmEnv["TAILSCALE_AUTH_KEY"] = tailscaleAuthKey
+		}
+		vmEnv["STOCKYARD_HOSTNAME"] = hostname
+		return vmEnv, vmMetadata
+	}
+
+	// Firecracker/vfkit: pass adapter-private fields the Firecracker adapter extracts.
+	// DotEnv is forwarded via VMConfig.DotEnv → MMDS, not parsed here.
+	if tailscaleAuthKey != "" {
+		vmEnv["_tailscale_auth_key"] = tailscaleAuthKey
+	}
+	if staticIPArgs != "" {
+		vmEnv["_static_ip_args"] = staticIPArgs
+	}
+	if networkConfig != nil {
+		vmMetadata["_network_ip"] = networkConfig.IP
+		vmMetadata["_network_netmask"] = networkConfig.Netmask
+		vmMetadata["_network_gateway"] = networkConfig.Gateway
+		vmMetadata["_network_dns"] = networkConfig.DNS
+	}
+	return vmEnv, vmMetadata
+}
+
 // RestartTask restarts a stopped task by starting its VM again.
 func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
 	task, err := tm.daemon.state.GetTask(taskID)
@@ -318,7 +397,16 @@ func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
 		return err
 	}
 
-	// Start VM using existing workspace and rootfs
+	// Start VM using existing workspace and rootfs.
+	//
+	// Apple-container note: StartVM calls `container start <name>`, which
+	// restarts the *same* container. The container's environment (including
+	// TAILSCALE_AUTH_KEY) was baked in at `container run` time and is
+	// preserved across stop/start cycles; tailscaled's node state also
+	// persists in the container's writable layer. Therefore no fresh
+	// Tailscale auth key is needed here. Known limitation: if the container
+	// is stopped for longer than Tailscale's node-key expiry the node will
+	// need re-authorization — that edge case is not handled automatically.
 	var vmInfo *vmbackend.VMInfo
 	if tm.backend != nil && task.VMID != "" {
 		vmCfg := &vmbackend.VMConfig{

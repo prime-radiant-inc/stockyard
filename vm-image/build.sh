@@ -20,6 +20,10 @@ IMAGE_NAME="${IMAGE_NAME:-stockyard-vm}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 VM_USER="${VM_USER:-mooby}"
 VARIANT="${VARIANT:-ubuntu}"
+# Build target stage: "firecracker" (default) or "container".
+TARGET="${TARGET:-firecracker}"
+# Platform for the container target (Apple Silicon → arm64).
+PLATFORM="${PLATFORM:-linux/arm64}"
 
 # Select Dockerfile based on variant
 if [ "$VARIANT" = "alpine" ]; then
@@ -34,23 +38,44 @@ fi
 
 echo "=== Building Stockyard VM Image ==="
 echo "Variant: ${VARIANT}"
+echo "Target:  ${TARGET}"
 echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
 echo "VM User: ${VM_USER}"
 echo "Dockerfile: ${DOCKERFILE}"
 echo ""
 
 # Build the Docker image
-echo "=== Building Docker image ==="
-docker build \
-    --build-arg VM_USER="${VM_USER}" \
-    -t "${IMAGE_NAME}:${IMAGE_TAG}" \
-    -f "${DOCKERFILE}" \
-    .
+if [ "$TARGET" = "container" ]; then
+    echo "=== Building container target (${PLATFORM}) ==="
+    docker build \
+        --build-arg VM_USER="${VM_USER}" \
+        --target container \
+        --platform "${PLATFORM}" \
+        -t "${IMAGE_NAME}:container" \
+        -f "${DOCKERFILE}" \
+        .
+else
+    echo "=== Building firecracker target ==="
+    docker build \
+        --build-arg VM_USER="${VM_USER}" \
+        --target firecracker \
+        -t "${IMAGE_NAME}:${IMAGE_TAG}" \
+        -f "${DOCKERFILE}" \
+        .
+fi
 
 echo ""
 echo "=== Build Complete ==="
-echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
-echo ""
-echo "Next steps:"
-echo "  - Convert to rootfs: IMAGE_TAG=${IMAGE_TAG} ./convert-to-rootfs.sh"
-echo "  - Run container:     docker run -it ${IMAGE_NAME}:${IMAGE_TAG} /bin/bash"
+if [ "$TARGET" = "container" ]; then
+    echo "Image: ${IMAGE_NAME}:container"
+    echo ""
+    echo "Next steps:"
+    echo "  - Push to registry: docker push ${IMAGE_NAME}:container"
+    echo "  - Run container:    container run -d ${IMAGE_NAME}:container"
+else
+    echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+    echo ""
+    echo "Next steps:"
+    echo "  - Convert to rootfs: IMAGE_TAG=${IMAGE_TAG} ./convert-to-rootfs.sh"
+    echo "  - Run container:     docker run -it ${IMAGE_NAME}:${IMAGE_TAG} /bin/bash"
+fi

@@ -1,7 +1,14 @@
 # Stockyard on macOS
 
-Run stockyard VMs on macOS (Apple Silicon) using Apple's Virtualization.framework
-via [vfkit](https://github.com/crc-org/vfkit).
+Run stockyard VMs on macOS (Apple Silicon). Two backends are available, both
+built on Apple's Virtualization.framework:
+
+- **vfkit** — boots a full Linux VM (Alpine + a Kata kernel) via
+  [vfkit](https://github.com/crc-org/vfkit). Covered by the sections below.
+- **Apple `container`** — runs each task as an Apple
+  [`container`](https://github.com/apple/container) from a normal OCI image,
+  with no separate kernel or rootfs to build. Requires macOS 26+. See
+  [Apple `container` backend](#apple-container-backend) at the end of this file.
 
 ## Requirements
 
@@ -207,3 +214,127 @@ the notes below.
 - `Dockerfile.alpine` — also populates the OpenRC `sysinit` runlevel
   (`devfs`, `sysfs`); a docker-exported rootfs starts with empty runlevels,
   so without this `/dev/pts`, `/dev/shm` and `/sys` would be unmounted.
+
+# Apple `container` backend
+
+The `apple-container` backend runs each task as an Apple
+[`container`](https://github.com/apple/container) — one lightweight VM per
+container — instead of a vfkit VM. It consumes a normal OCI image, so there is
+no separate kernel or rootfs to build. This backend is **additive**: it does not
+affect the vfkit or Firecracker paths.
+
+## Requirements
+
+- **macOS 26 (Tahoe) or later**, Apple Silicon. Earlier macOS is not supported.
+- Apple's `container` tool, installed and running:
+  ```bash
+  brew install container
+  container system start
+  container system status     # should report: status running
+  ```
+  `container` ships as a signed `.pkg` that installs a launchd service, so it is
+  not a clean fit for `mise` — use `brew` (or the `.pkg` directly).
+- **Docker** (OrbStack or Docker Desktop) — to build the image (see the note
+  under [Build the image](#build-the-image)).
+- **Go** — to build stockyard.
+
+## 1. Build stockyard
+
+```bash
+make build
+```
+
+Same as the vfkit path — produces `bin/stockyard` and `bin/stockyardd`.
+
+## 2. Build the image
+
+The `apple-container` backend runs an OCI image that must live in `container`'s
+own image store. Build it with Docker, then load it:
+
+```bash
+cd vm-image
+make container-image                              # docker build of the container target (arm64)
+docker save stockyard-vm:container -o /tmp/sy.tar
+container image load -i /tmp/sy.tar
+rm /tmp/sy.tar
+container image ls                                # stockyard-vm:container should be listed
+```
+
+> **Why the Docker round-trip?** `container build` *should* build the image
+> directly into `container`'s store, but on `container` 0.12.x it fails on this
+> multi-stage Dockerfile (`"Stream unexpectedly closed"`). Until that is fixed,
+> build with Docker and `container image load` the result. Tracked in PRI-1755.
+
+## 3. Configure
+
+stockyard reads `~/.config/stockyard/config.json`. Create the secrets directory
+and write the config — replace `/Users/you` with your real absolute path:
+
+```bash
+mkdir -p ~/.local/share/stockyard/secrets
+```
+
+```json
+{
+  "instance_id": "my-mac",
+  "backend": "apple-container",
+  "vm": { "user": "mooby" },
+  "apple_container": {
+    "image": "stockyard-vm:container"
+  },
+  "secrets": {
+    "provider": "file",
+    "dir": "/Users/you/.local/share/stockyard/secrets"
+  },
+  "daemon": {
+    "socket_path": "/Users/you/.local/share/stockyard/stockyard.sock",
+    "data_dir": "/Users/you/.local/share/stockyard"
+  }
+}
+```
+
+Field notes:
+
+- **`backend: apple-container`** — selects this backend.
+- **`apple_container.image`** — the image loaded in step 2. **Required** — the
+  daemon refuses to start without it.
+- **`vm.user: mooby`** — the account baked into the image; `stockyard attach`
+  opens the shell as this user (`container exec -u mooby`). It must exist in
+  the image.
+- No `vfkit` or `rootfs` block is needed — `container` owns the kernel and
+  rootfs.
+- **All paths absolute** — the daemon does not expand `~`. Keep `socket_path` /
+  `data_dir` under your home directory; the `/var/...` defaults require root.
+- Do **not** run `stockyard init` — it writes Firecracker/ZFS defaults. Write
+  the config directly, as above.
+
+## 4. Run
+
+```bash
+stockyardd &                                # start the daemon
+stockyard run --no-tailscale --name dev     # create a task — prints a task id
+stockyard attach <task-id>                  # interactive shell (via container exec)
+stockyard list
+stockyard destroy -f <task-id>              # tear it down
+```
+
+- **Restart `stockyardd` after any config change.** The daemon reads the config
+  — including `apple_container.image` — once at startup and never reloads it.
+  Change the image and you must restart the daemon, or tasks keep using the old
+  one.
+- Pass **`--no-tailscale`** unless you have dropped a `tailscale-auth-key` file
+  in the secrets directory. With a key, the container joins your tailnet
+  (userspace mode, Tailscale SSH) and is reachable by its MagicDNS name.
+- `stockyard attach` runs `container exec -t -i -u <vm.user> … /bin/bash` — the
+  image must have that user and `/bin/bash`. The project image has both; a bare
+  image (e.g. plain `alpine`) does not, and `attach` will fail.
+
+## Notes and limitations
+
+- **macOS 26+ only.**
+- No ZFS snapshots and no per-task VM metrics on this backend (as with vfkit).
+- `stockyard exec` / the command queue is not wired up (as with vfkit) — use
+  `stockyard attach`, or `container exec` directly against the container named
+  `stockyard-<vmID>`.
+- vfkit and Firecracker are unaffected by this backend — `backend` in the
+  config chooses which one runs.

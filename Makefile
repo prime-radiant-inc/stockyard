@@ -1,4 +1,4 @@
-.PHONY: all build build-client build-server build-guest proto clean test test-unit lint fmt
+.PHONY: all build build-client build-server build-guest proto clean test test-unit lint fmt container-image
 
 all: proto build
 
@@ -48,5 +48,8 @@ lint:
 
 fmt:
 	go fmt ./...
+
+container-image:
+	$(MAKE) -C vm-image container-image
 
 .DEFAULT_GOAL := build

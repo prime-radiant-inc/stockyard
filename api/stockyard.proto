@@ -127,6 +127,8 @@ message Task {
     string created_at = 5;
     string stopped_at = 6;
     string ip = 7;
+    string backend = 8;
+    string vm_id = 9;
 }
 
 message Snapshot {
