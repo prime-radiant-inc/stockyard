@@ -8,7 +8,7 @@
 #   make clean    - Remove build artifacts
 #   make help     - Show this help
 
-.PHONY: all build-deps docker rootfs deploy clean help docker-alpine rootfs-alpine deploy-alpine
+.PHONY: all build-deps docker rootfs deploy clean help docker-alpine rootfs-alpine deploy-alpine container-image
 
 # Deployment paths
 INSTALL_DIR := /var/lib/stockyard
@@ -125,6 +125,10 @@ deploy-alpine: rootfs-alpine
 	fi
 	@echo ""
 	@echo "=== Alpine Deployment Complete ==="
+
+# Build the Apple `container` OCI image (arm64). Requires Docker + BuildKit.
+container-image:
+	@TARGET=container ./build.sh
 
 # Remove build artifacts
 clean:
