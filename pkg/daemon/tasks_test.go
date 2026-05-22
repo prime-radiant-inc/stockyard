@@ -163,3 +163,61 @@ func TestTaskManager_FailTask_TaskNotFound(t *testing.T) {
 		t.Error("expected error for non-existent task, got nil")
 	}
 }
+
+func TestBuildVMEnvMetadata_AppleContainer(t *testing.T) {
+	env := map[string]string{
+		"ANTHROPIC_API_KEY": "sk-test",
+		"GITHUB_TOKEN":      "ghp-test",
+		"MY_VAR":            "v",
+	}
+	vmEnv, vmMeta := buildVMEnvMetadata("apple-container", "abc12345", "demo",
+		env, "tskey-abc", "stockyard-abc12345", "ip=ignored", nil)
+
+	// The real workload environment must be delivered to the container — this is
+	// the bug the C1 fix addresses (apple-container has no cloud-init/MMDS).
+	for k, want := range env {
+		if vmEnv[k] != want {
+			t.Errorf("vmEnv[%q] = %q, want %q", k, vmEnv[k], want)
+		}
+	}
+	// The Tailscale key must be named as the container entrypoint reads it.
+	if vmEnv["TAILSCALE_AUTH_KEY"] != "tskey-abc" {
+		t.Errorf("TAILSCALE_AUTH_KEY = %q, want tskey-abc", vmEnv["TAILSCALE_AUTH_KEY"])
+	}
+	if vmEnv["STOCKYARD_HOSTNAME"] != "stockyard-abc12345" {
+		t.Errorf("STOCKYARD_HOSTNAME = %q, want stockyard-abc12345", vmEnv["STOCKYARD_HOSTNAME"])
+	}
+	// Firecracker-adapter-private underscore keys must NOT leak onto this path.
+	if _, ok := vmEnv["_tailscale_auth_key"]; ok {
+		t.Error("_tailscale_auth_key must not be set on the apple-container path")
+	}
+	if _, ok := vmEnv["_static_ip_args"]; ok {
+		t.Error("_static_ip_args must not be set on the apple-container path")
+	}
+	if vmMeta["task-id"] != "abc12345" || vmMeta["task-name"] != "demo" {
+		t.Errorf("metadata labels wrong: %v", vmMeta)
+	}
+}
+
+func TestBuildVMEnvMetadata_FirecrackerUnchanged(t *testing.T) {
+	env := map[string]string{"ANTHROPIC_API_KEY": "sk-test"}
+	vmEnv, _ := buildVMEnvMetadata("firecracker", "abc12345", "demo",
+		env, "tskey-abc", "stockyard-abc12345", "ip=1.2.3.4", nil)
+
+	// Firecracker delivers the workload env via cloud-init, not VMConfig.Env —
+	// the env map must NOT be copied into vmEnv on this path.
+	if _, ok := vmEnv["ANTHROPIC_API_KEY"]; ok {
+		t.Error("firecracker path must not copy workload env into vmEnv")
+	}
+	// The adapter-private keys the Firecracker adapter extracts must be present.
+	if vmEnv["_tailscale_auth_key"] != "tskey-abc" {
+		t.Errorf("_tailscale_auth_key = %q, want tskey-abc", vmEnv["_tailscale_auth_key"])
+	}
+	if vmEnv["_static_ip_args"] != "ip=1.2.3.4" {
+		t.Errorf("_static_ip_args = %q, want ip=1.2.3.4", vmEnv["_static_ip_args"])
+	}
+	// The plain (entrypoint-facing) names must NOT be set on the firecracker path.
+	if _, ok := vmEnv["TAILSCALE_AUTH_KEY"]; ok {
+		t.Error("plain TAILSCALE_AUTH_KEY must not be set on the firecracker path")
+	}
+}

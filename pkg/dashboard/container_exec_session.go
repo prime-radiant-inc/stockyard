@@ -25,17 +25,19 @@ type ContainerExecSession struct {
 	closed bool
 }
 
-// containerExecArgs builds the argv for `container exec` against a VM ID.
-func containerExecArgs(vmID, shell string) []string {
-	return []string{"exec", "-t", "-i", "stockyard-" + vmID, shell}
+// containerExecArgs builds the argv for `container exec` against a VM ID,
+// running the shell as the given user.
+func containerExecArgs(vmID, user, shell string) []string {
+	return []string{"exec", "-t", "-i", "-u", user, "stockyard-" + vmID, shell}
 }
 
-// newContainerExecSession starts `container exec` for the given VM under a PTY.
-func newContainerExecSession(containerBin, vmID, shell string, cols, rows int) (*ContainerExecSession, error) {
+// newContainerExecSession starts `container exec` for the given VM under a PTY,
+// running the shell as the given user.
+func newContainerExecSession(containerBin, vmID, user, shell string, cols, rows int) (*ContainerExecSession, error) {
 	if shell == "" {
 		shell = "/bin/bash"
 	}
-	return newContainerExecSessionWithCommand(containerBin, containerExecArgs(vmID, shell), cols, rows)
+	return newContainerExecSessionWithCommand(containerBin, containerExecArgs(vmID, user, shell), cols, rows)
 }
 
 // newContainerExecSessionWithCommand starts an arbitrary command under a PTY.

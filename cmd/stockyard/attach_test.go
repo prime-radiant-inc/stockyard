@@ -30,7 +30,7 @@ func TestBuildAttachCommand_AppleContainer(t *testing.T) {
 		t.Errorf("expected program 'container', got %q", name)
 	}
 	joined := join(argv)
-	for _, want := range []string{"exec", "-t", "-i", "stockyard-abc12345"} {
+	for _, want := range []string{"exec", "-t", "-i", "-u", "mooby", "stockyard-abc12345"} {
 		if !contains(joined, want) {
 			t.Errorf("apple-container argv missing %q; got %v", want, argv)
 		}

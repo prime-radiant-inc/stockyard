@@ -12,7 +12,7 @@ type ContainerExecSession struct {
 	User   string
 }
 
-func newContainerExecSession(containerBin, vmID, shell string, cols, rows int) (*ContainerExecSession, error) {
+func newContainerExecSession(containerBin, vmID, user, shell string, cols, rows int) (*ContainerExecSession, error) {
 	return nil, fmt.Errorf("apple-container terminal is only available on macOS")
 }
 

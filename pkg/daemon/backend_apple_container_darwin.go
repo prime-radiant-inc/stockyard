@@ -18,6 +18,11 @@ func createAppleContainerBackend(cfg *config.Config) (vmbackend.Backend, error) 
 		bin = "container"
 	}
 
+	// Fail-fast: the workload image is mandatory and has no usable default.
+	if cfg.AppleContainer.Image == "" {
+		return nil, fmt.Errorf("apple-container backend: apple_container.image is not configured")
+	}
+
 	// Fail-fast probe: confirm the `container` service is reachable.
 	probeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

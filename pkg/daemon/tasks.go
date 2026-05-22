@@ -32,11 +32,11 @@ func NewTaskManager(d *Daemon, backend vmbackend.Backend) *TaskManager {
 
 // CreateTaskRequest contains the parameters for creating a new task.
 type CreateTaskRequest struct {
-	Name             string
-	Command          []string
-	Env              map[string]string
-	CPUs             int32
-	MemoryMB         int32
+	Name              string
+	Command           []string
+	Env               map[string]string
+	CPUs              int32
+	MemoryMB          int32
 	NoTailscale       bool
 	TailscaleAuthKey  string   // Optional: overrides 1Password lookup
 	SSHAuthorizedKeys []string // SSH public keys for VM access
@@ -179,26 +179,8 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	var vmIP string
 	if tm.backend != nil {
 		// Build backend-agnostic VM config
-		vmEnv := make(map[string]string)
-		vmMetadata := map[string]string{
-			"task-id":   taskID,
-			"task-name": req.Name,
-		}
-
-		// Pass Firecracker-specific fields through Env/Metadata maps
-		// (the Firecracker adapter extracts these)
-		if tailscaleAuthKey != "" {
-			vmEnv["_tailscale_auth_key"] = tailscaleAuthKey
-		}
-		if staticIPArgs != "" {
-			vmEnv["_static_ip_args"] = staticIPArgs
-		}
-		if networkConfig != nil {
-			vmMetadata["_network_ip"] = networkConfig.IP
-			vmMetadata["_network_netmask"] = networkConfig.Netmask
-			vmMetadata["_network_gateway"] = networkConfig.Gateway
-			vmMetadata["_network_dns"] = networkConfig.DNS
-		}
+		vmEnv, vmMetadata := buildVMEnvMetadata(tm.daemon.cfg.Backend, taskID, req.Name,
+			env, tailscaleAuthKey, hostname, staticIPArgs, networkConfig)
 
 		vmCfg := &vmbackend.VMConfig{
 			ID:                taskID,
@@ -300,6 +282,52 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	}
 
 	return task, nil
+}
+
+// buildVMEnvMetadata constructs the backend-specific Env and Metadata maps for a
+// VMConfig. The apple-container backend has no cloud-init or MMDS, so the entire
+// workload environment must be delivered through Env (forwarded as `container run
+// --env` flags) — including the secrets and the Tailscale auth key, which the
+// container entrypoint reads as TAILSCALE_AUTH_KEY. Firecracker and vfkit instead
+// receive adapter-private underscore-prefixed keys that their adapters extract;
+// those keys are deliberately NOT set on the apple-container path so they cannot
+// leak into `container inspect`.
+func buildVMEnvMetadata(backend, taskID, taskName string, env map[string]string,
+	tailscaleAuthKey, hostname, staticIPArgs string,
+	networkConfig *network.StaticNetworkConfig) (map[string]string, map[string]string) {
+
+	vmEnv := make(map[string]string)
+	vmMetadata := map[string]string{
+		"task-id":   taskID,
+		"task-name": taskName,
+	}
+
+	if backend == "apple-container" {
+		// Deliver the real workload environment directly.
+		for k, v := range env {
+			vmEnv[k] = v
+		}
+		if tailscaleAuthKey != "" {
+			vmEnv["TAILSCALE_AUTH_KEY"] = tailscaleAuthKey
+		}
+		vmEnv["STOCKYARD_HOSTNAME"] = hostname
+		return vmEnv, vmMetadata
+	}
+
+	// Firecracker/vfkit: pass adapter-private fields the Firecracker adapter extracts.
+	if tailscaleAuthKey != "" {
+		vmEnv["_tailscale_auth_key"] = tailscaleAuthKey
+	}
+	if staticIPArgs != "" {
+		vmEnv["_static_ip_args"] = staticIPArgs
+	}
+	if networkConfig != nil {
+		vmMetadata["_network_ip"] = networkConfig.IP
+		vmMetadata["_network_netmask"] = networkConfig.Netmask
+		vmMetadata["_network_gateway"] = networkConfig.Gateway
+		vmMetadata["_network_dns"] = networkConfig.DNS
+	}
+	return vmEnv, vmMetadata
 }
 
 // RestartTask restarts a stopped task by starting its VM again.

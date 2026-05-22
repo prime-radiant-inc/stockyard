@@ -19,7 +19,7 @@ func (h *TerminalHandler) serveContainerExec(w http.ResponseWriter, r *http.Requ
 	}
 	defer conn.Close()
 
-	session, err := newContainerExecSession(h.containerBin(), task.VMID, "/bin/bash", cols, rows)
+	session, err := newContainerExecSession(h.containerBin(), task.VMID, user, "/bin/bash", cols, rows)
 	if err != nil {
 		h.sendError(conn, "Failed to start container exec: "+err.Error())
 		return

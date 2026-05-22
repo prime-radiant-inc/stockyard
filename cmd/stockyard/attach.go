@@ -17,7 +17,7 @@ import (
 // dispatching on the task's backend. extraArgs are appended after a "--" separator
 // for SSH or directly as the remote command for `container exec`.
 //
-// For apple-container: `container exec -t -i stockyard-<vmID> <shell-or-extraArgs>`.
+// For apple-container: `container exec -t -i -u <user> stockyard-<vmID> <shell-or-extraArgs>`.
 // For all other backends: the existing SSH-via-Tailscale path.
 func buildAttachCommand(task *pb.Task, sshUser, containerBin string, extraArgs []string) (string, []string, error) {
 	if task.GetBackend() == "apple-container" {
@@ -25,7 +25,7 @@ func buildAttachCommand(task *pb.Task, sshUser, containerBin string, extraArgs [
 		if vmID == "" {
 			return "", nil, fmt.Errorf("apple-container task has no vm_id")
 		}
-		argv := []string{containerBin, "exec", "-t", "-i", "stockyard-" + vmID}
+		argv := []string{containerBin, "exec", "-t", "-i", "-u", sshUser, "stockyard-" + vmID}
 		if len(extraArgs) > 0 {
 			argv = append(argv, extraArgs...)
 		} else {

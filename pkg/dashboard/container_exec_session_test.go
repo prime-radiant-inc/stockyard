@@ -36,9 +36,9 @@ func TestNewContainerExecSession_RunsCommand(t *testing.T) {
 }
 
 func TestContainerExecSession_BuildArgs(t *testing.T) {
-	argv := containerExecArgs("abc12345", "/bin/bash")
+	argv := containerExecArgs("abc12345", "mooby", "/bin/bash")
 	joined := strings.Join(argv, " ")
-	for _, want := range []string{"exec", "-t", "-i", "stockyard-abc12345", "/bin/bash"} {
+	for _, want := range []string{"exec", "-t", "-i", "-u", "mooby", "stockyard-abc12345", "/bin/bash"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("containerExecArgs missing %q; got %v", want, argv)
 		}
