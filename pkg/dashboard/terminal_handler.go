@@ -37,6 +37,13 @@ func NewTerminalHandler(manager *TerminalManager, daemon DaemonAPI, defaultUser 
 	}
 }
 
+// containerBin returns the `container` binary path (currently the default).
+// A future change can make this configurable; "container" on PATH is correct
+// for the supported `brew install container` setup.
+func (h *TerminalHandler) containerBin() string {
+	return "container"
+}
+
 // ServeHTTP handles WebSocket upgrade requests for terminal sessions.
 // URL format: /ws/terminal/{taskID}?user=<username>&cols=<cols>&rows=<rows>
 func (h *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +87,12 @@ func (h *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if task == nil {
 		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+
+	// apple-container tasks have no vsock; bridge to `container exec` instead.
+	if task.Backend == "apple-container" {
+		h.serveContainerExec(w, r, task, user, cols, rows)
 		return
 	}
 

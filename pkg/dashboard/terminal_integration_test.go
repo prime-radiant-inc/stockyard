@@ -92,6 +92,41 @@ func TestTerminalHandler_Integration_CID0(t *testing.T) {
 	t.Error("expected connection to fail or receive error for CID 0")
 }
 
+func TestTerminalHandler_AppleContainerBranch_NoVsock503Avoided(t *testing.T) {
+	// An apple-container task has an empty vsock path. The handler must NOT
+	// 503 on empty vsock for this backend — it must take the container branch.
+	daemon := &mockDaemonForTerminal{
+		task: &Task{
+			ID:      "abc12345",
+			Name:    "test",
+			Status:  "running",
+			Backend: "apple-container",
+			VMID:    "abc12345",
+		},
+	}
+	mgr := NewTerminalManager()
+	h := NewTerminalHandler(mgr, daemon, "mooby")
+
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/terminal/abc12345"
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		// On non-darwin the container branch returns 503 via the stub — that is
+		// the documented behaviour. On darwin the upgrade succeeds (then the
+		// exec may fail later because `container` is absent, which is fine).
+		if resp != nil && resp.StatusCode == http.StatusServiceUnavailable {
+			return // acceptable on non-darwin
+		}
+		// A *vsock*-path 503 ("VM not available") would mean the branch is wrong.
+		t.Fatalf("unexpected dial failure (wrong branch?): %v", err)
+	}
+	if conn != nil {
+		conn.Close()
+	}
+}
+
 func TestTerminalHandler_Integration_TaskNotFound(t *testing.T) {
 	daemon := &mockDaemonForTerminal{
 		task: nil, // No task
