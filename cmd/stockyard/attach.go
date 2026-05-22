@@ -25,7 +25,7 @@ func buildAttachCommand(task *pb.Task, sshUser, containerBin string, extraArgs [
 		if vmID == "" {
 			return "", nil, fmt.Errorf("apple-container task has no vm_id")
 		}
-		argv := []string{"container", "exec", "-t", "-i", "stockyard-" + vmID}
+		argv := []string{containerBin, "exec", "-t", "-i", "stockyard-" + vmID}
 		if len(extraArgs) > 0 {
 			argv = append(argv, extraArgs...)
 		} else {
