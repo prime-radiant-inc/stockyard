@@ -4,6 +4,7 @@ package vmbackend
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"strings"
 	"testing"
@@ -255,5 +256,37 @@ func TestAppleContainerBackend_CreateVM_BuildsRunArgs(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Errorf("run args missing %q; got: %s", want, joined)
 		}
+	}
+}
+
+func TestAppleContainerBackend_DeleteVM_IdempotentWhenContainerGone(t *testing.T) {
+	fr := newFakeRunner()
+	// The real error `container rm` emits when the container no longer exists
+	// (captured from container 0.12.3).
+	fr.errs["rm"] = errors.New(`container [rm stockyard-abc12345]: exit status 1: ` +
+		`Error: internalError: "failed to delete container" ` +
+		`(cause: "notFound: \"container with ID stockyard-abc12345 not found\"")`)
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
+	if err := b.DeleteVM(context.Background(), "abc12345"); err != nil {
+		t.Errorf("DeleteVM must be idempotent — an already-gone container is success, got: %v", err)
+	}
+}
+
+func TestAppleContainerBackend_DeleteVM_RealErrorStillFails(t *testing.T) {
+	fr := newFakeRunner()
+	fr.errs["rm"] = errors.New("container rm: exit status 1: some other failure")
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
+	if err := b.DeleteVM(context.Background(), "abc12345"); err == nil {
+		t.Error("DeleteVM must still fail on a genuine (non-not-found) error")
+	}
+}
+
+func TestAppleContainerBackend_StopVM_IdempotentWhenContainerGone(t *testing.T) {
+	fr := newFakeRunner()
+	fr.errs["stop"] = errors.New(`container stop: exit status 1: ` +
+		`Error: internalError: "notFound: \"container not found\""`)
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
+	if err := b.StopVM(context.Background(), "abc12345"); err != nil {
+		t.Errorf("StopVM on an already-gone container must succeed, got: %v", err)
 	}
 }

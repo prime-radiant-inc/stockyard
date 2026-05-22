@@ -241,9 +241,20 @@ func (b *AppleContainerBackend) StartVM(ctx context.Context, cfg *VMConfig) (*VM
 	}, nil
 }
 
+// containerGone reports whether err indicates the target container does not
+// exist. For stop and delete that is the desired end state, not a failure:
+// `container stop`/`rm` exit non-zero when the container is already gone.
+func containerGone(err error) bool {
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "not found") || strings.Contains(s, "notfound")
+}
+
 func (b *AppleContainerBackend) StopVM(ctx context.Context, id string) error {
 	b.stopLogFollower(id)
 	if _, err := b.run(ctx, b.cfg.ContainerBin, "stop", containerName(id)); err != nil {
+		if containerGone(err) {
+			return nil // an absent container is already stopped
+		}
 		return fmt.Errorf("container stop: %w", err)
 	}
 	return nil
@@ -251,10 +262,15 @@ func (b *AppleContainerBackend) StopVM(ctx context.Context, id string) error {
 
 func (b *AppleContainerBackend) DeleteVM(ctx context.Context, id string) error {
 	b.stopLogFollower(id)
-	// Best-effort stop; ignore error (container may already be stopped).
+	// Best-effort stop; ignore error (container may already be stopped or gone).
 	b.run(ctx, b.cfg.ContainerBin, "stop", containerName(id))
 	if _, err := b.run(ctx, b.cfg.ContainerBin, "rm", containerName(id)); err != nil {
-		return fmt.Errorf("container rm: %w", err)
+		// An already-absent container is the desired end state. DeleteVM must
+		// be idempotent so a task whose container is already gone can still be
+		// destroyed instead of getting stuck in the daemon's state.
+		if !containerGone(err) {
+			return fmt.Errorf("container rm: %w", err)
+		}
 	}
 	os.RemoveAll(b.vmStateDir(id))
 	return nil
