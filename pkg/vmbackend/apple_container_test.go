@@ -103,7 +103,7 @@ func TestAppleContainerBackend_ListVMs_ParsesArray(t *testing.T) {
 
 func TestAppleContainerBackend_InspectIP(t *testing.T) {
 	fr := newFakeRunner()
-	fr.outputs["inspect"] = `[{"status":"running","networks":[{"address":"192.168.64.7/24"}],"configuration":{"id":"stockyard-abc12345"}}]`
+	fr.outputs["inspect"] = `[{"status":"running","networks":[{"ipv4Address":"192.168.64.7/24"}],"configuration":{"id":"stockyard-abc12345"}}]`
 	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
 	ip, err := b.inspectIP(context.Background(), "abc12345")
 	if err != nil {
@@ -142,7 +142,7 @@ func TestAppleContainerBackend_CloseKillsFollowers(t *testing.T) {
 func TestAppleContainerBackend_StartVM(t *testing.T) {
 	fr := newFakeRunner()
 	// Provide inspect output so pollIP resolves on the first attempt (no delay).
-	fr.outputs["inspect"] = `[{"status":"running","networks":[{"address":"192.168.64.7/24"}],"configuration":{"id":"stockyard-abc12345"}}]`
+	fr.outputs["inspect"] = `[{"status":"running","networks":[{"ipv4Address":"192.168.64.7/24"}],"configuration":{"id":"stockyard-abc12345"}}]`
 	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
 	b.skipLogFollower = true
 	if _, err := b.StartVM(context.Background(), &VMConfig{ID: "abc12345"}); err != nil {
@@ -218,7 +218,7 @@ func TestAppleContainerBackend_StartLogFollower_EvictsExisting(t *testing.T) {
 func TestAppleContainerBackend_CreateVM_BuildsRunArgs(t *testing.T) {
 	fr := newFakeRunner()
 	// Provide inspect output so pollIP resolves on the first attempt (no delay).
-	fr.outputs["inspect"] = `[{"status":"running","networks":[{"address":"192.168.64.5/24"}],"configuration":{"id":"stockyard-abc12345"}}]`
+	fr.outputs["inspect"] = `[{"status":"running","networks":[{"ipv4Address":"192.168.64.5/24"}],"configuration":{"id":"stockyard-abc12345"}}]`
 	b := newAppleContainerBackendWithRunner(AppleContainerConfig{
 		Image:    "stockyard-vm:container",
 		StateDir: t.TempDir(),

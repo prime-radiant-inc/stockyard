@@ -197,7 +197,7 @@ func (b *AppleContainerBackend) pollIP(ctx context.Context, id string) string {
 }
 
 func (b *AppleContainerBackend) inspectIP(ctx context.Context, id string) (string, error) {
-	out, err := b.run(ctx, b.cfg.ContainerBin, "inspect", containerName(id), "--format", "json")
+	out, err := b.run(ctx, b.cfg.ContainerBin, "inspect", containerName(id))
 	if err != nil {
 		return "", fmt.Errorf("container inspect: %w", err)
 	}
@@ -208,7 +208,7 @@ func (b *AppleContainerBackend) inspectIP(ctx context.Context, id string) (strin
 	if len(arr) == 0 || len(arr[0].Networks) == 0 {
 		return "", nil
 	}
-	return addressToIP(arr[0].Networks[0].Address), nil
+	return addressToIP(arr[0].Networks[0].IPv4Address), nil
 }
 
 // StartVM restarts an existing (stopped) container by name. The container's
@@ -261,14 +261,16 @@ func (b *AppleContainerBackend) DeleteVM(ctx context.Context, id string) error {
 }
 
 // containerJSON is the subset of `container inspect`/`container ls` JSON we use.
-// Apple `container` is pre-1.0; parse defensively and tolerate missing fields.
+// Verified against the `container` 0.12.3 CLI: both commands emit a JSON array
+// of these objects (`inspect` emits JSON by default — it has no --format flag;
+// `ls` needs --format json). Parse defensively and tolerate missing fields.
 type containerJSON struct {
 	Status        string `json:"status"`
 	Configuration struct {
 		ID string `json:"id"`
 	} `json:"configuration"`
 	Networks []struct {
-		Address string `json:"address"`
+		IPv4Address string `json:"ipv4Address"` // CIDR form, e.g. "192.168.65.4/24"
 	} `json:"networks"`
 }
 
@@ -290,7 +292,7 @@ func addressToIP(addr string) string {
 }
 
 func (b *AppleContainerBackend) GetVM(ctx context.Context, id string) (*VMState, error) {
-	out, err := b.run(ctx, b.cfg.ContainerBin, "inspect", containerName(id), "--format", "json")
+	out, err := b.run(ctx, b.cfg.ContainerBin, "inspect", containerName(id))
 	if err != nil {
 		return nil, fmt.Errorf("container inspect: %w", err)
 	}
