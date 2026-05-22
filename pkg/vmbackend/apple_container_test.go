@@ -141,6 +141,8 @@ func TestAppleContainerBackend_CloseKillsFollowers(t *testing.T) {
 
 func TestAppleContainerBackend_StartVM(t *testing.T) {
 	fr := newFakeRunner()
+	// Provide inspect output so pollIP resolves on the first attempt (no delay).
+	fr.outputs["inspect"] = `[{"status":"running","networks":[{"address":"192.168.64.7/24"}],"configuration":{"id":"stockyard-abc12345"}}]`
 	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
 	b.skipLogFollower = true
 	if _, err := b.StartVM(context.Background(), &VMConfig{ID: "abc12345"}); err != nil {
@@ -186,8 +188,37 @@ func TestAppleContainerBackend_DeleteVM(t *testing.T) {
 	}
 }
 
+// TestAppleContainerBackend_StartLogFollower_EvictsExisting asserts that
+// calling startLogFollower for a VM ID that already has a registered follower
+// kills the old process before spawning a new one. This is a regression test
+// for the follower-leak bug where the old *logFollower was silently overwritten.
+func TestAppleContainerBackend_StartLogFollower_EvictsExisting(t *testing.T) {
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, newFakeRunner().run)
+
+	// Register a real long-lived process as the existing follower.
+	cmd := exec.Command("sleep", "60")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start sleep: %v", err)
+	}
+	b.mu.Lock()
+	b.followers["abc12345"] = &logFollower{cmd: cmd}
+	b.mu.Unlock()
+
+	// startLogFollower will attempt to evict the old follower before spawning
+	// `container logs -f`. Because `container` is not installed, the spawn will
+	// fail — but the eviction must have already happened, which is what we test.
+	_ = b.startLogFollower("abc12345")
+
+	// The old process must have been killed.
+	if err := cmd.Wait(); err == nil {
+		t.Error("expected old follower process to be killed before new spawn, but it exited cleanly")
+	}
+}
+
 func TestAppleContainerBackend_CreateVM_BuildsRunArgs(t *testing.T) {
 	fr := newFakeRunner()
+	// Provide inspect output so pollIP resolves on the first attempt (no delay).
+	fr.outputs["inspect"] = `[{"status":"running","networks":[{"address":"192.168.64.5/24"}],"configuration":{"id":"stockyard-abc12345"}}]`
 	b := newAppleContainerBackendWithRunner(AppleContainerConfig{
 		Image:    "stockyard-vm:container",
 		StateDir: t.TempDir(),

@@ -261,7 +261,9 @@ func (d *Daemon) reconcileViaBackend(tasks []*Task) {
 			continue
 		}
 		fmt.Printf("  Task %s: container not running, marking as stopped\n", task.ID)
-		d.state.UpdateTaskStatus(task.ID, "stopped")
+		if err := d.state.UpdateTaskStatus(task.ID, "stopped"); err != nil {
+			fmt.Printf("Warning: failed to mark task %s stopped: %v\n", task.ID, err)
+		}
 	}
 }
 

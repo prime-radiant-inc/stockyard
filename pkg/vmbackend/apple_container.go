@@ -5,7 +5,6 @@ package vmbackend
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -73,8 +72,6 @@ func NewAppleContainerBackend(cfg AppleContainerConfig) *AppleContainerBackend {
 	return newAppleContainerBackendWithRunner(cfg, execRunner)
 }
 
-var errNotImplemented = errors.New("apple-container backend: not implemented")
-
 func (b *AppleContainerBackend) CreateVM(ctx context.Context, cfg *VMConfig) (*VMInfo, error) {
 	stateDir, err := b.ensureStateDir(cfg.ID)
 	if err != nil {
@@ -94,7 +91,7 @@ func (b *AppleContainerBackend) CreateVM(ctx context.Context, cfg *VMConfig) (*V
 		}
 	}
 
-	ip, _ := b.inspectIP(ctx, cfg.ID) // best-effort; empty IP is acceptable
+	ip := b.pollIP(ctx, cfg.ID) // best-effort; empty IP is acceptable
 
 	return &VMInfo{
 		ID:        cfg.ID,
@@ -138,6 +135,10 @@ func (b *AppleContainerBackend) buildRunArgs(cfg *VMConfig) []string {
 // startLogFollower spawns `container logs -f` redirecting into the per-VM
 // stdout.log / stderr.log so the daemon's logTailer works unchanged.
 func (b *AppleContainerBackend) startLogFollower(id string) error {
+	// Kill any existing follower for this ID before spawning a new one.
+	// Without this, a retry or duplicate call would silently leak the old process.
+	b.stopLogFollower(id)
+
 	dir := b.vmStateDir(id)
 	stdoutF, err := os.Create(filepath.Join(dir, "stdout.log"))
 	if err != nil {
@@ -178,6 +179,23 @@ func (b *AppleContainerBackend) stopLogFollower(id string) {
 	}
 }
 
+// pollIP retries inspectIP until a non-empty IP is returned or the budget is
+// exhausted. It is used by CreateVM and StartVM to give vmnet a short window
+// to assign an address. An empty result after the budget is acceptable
+// best-effort — callers treat an empty IP as non-fatal.
+func (b *AppleContainerBackend) pollIP(ctx context.Context, id string) string {
+	const maxAttempts = 20
+	const pause = 100 * time.Millisecond
+	for i := 0; i < maxAttempts; i++ {
+		ip, _ := b.inspectIP(ctx, id)
+		if ip != "" {
+			return ip
+		}
+		time.Sleep(pause)
+	}
+	return ""
+}
+
 func (b *AppleContainerBackend) inspectIP(ctx context.Context, id string) (string, error) {
 	out, err := b.run(ctx, b.cfg.ContainerBin, "inspect", containerName(id), "--format", "json")
 	if err != nil {
@@ -206,7 +224,7 @@ func (b *AppleContainerBackend) StartVM(ctx context.Context, cfg *VMConfig) (*VM
 			fmt.Printf("Warning: apple-container log follower for %s: %v\n", cfg.ID, err)
 		}
 	}
-	ip, _ := b.inspectIP(ctx, cfg.ID)
+	ip := b.pollIP(ctx, cfg.ID) // best-effort; empty IP is acceptable
 	return &VMInfo{
 		ID:        cfg.ID,
 		IP:        ip,

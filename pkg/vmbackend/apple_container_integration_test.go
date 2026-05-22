@@ -52,17 +52,9 @@ func TestAppleContainerBackend_Integration_Lifecycle(t *testing.T) {
 
 func getTestImage(t *testing.T) string {
 	t.Helper()
-	img := envOrSkip(t, "STOCKYARD_TEST_IMAGE")
-	return img
-}
-
-func envOrSkip(t *testing.T, key string) string {
-	t.Helper()
-	v := getenv(key)
+	v := os.Getenv("STOCKYARD_TEST_IMAGE")
 	if v == "" {
-		t.Skipf("%s not set; skipping integration test", key)
+		t.Skip("STOCKYARD_TEST_IMAGE not set; skipping integration test")
 	}
 	return v
 }
-
-func getenv(k string) string { return os.Getenv(k) }
