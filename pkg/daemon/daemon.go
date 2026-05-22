@@ -188,6 +188,12 @@ func (d *Daemon) reconcileRunningVMs() {
 
 	fmt.Printf("Reconciling %d running task(s)...\n", len(tasks))
 
+	// apple-container has no PID files; reconcile against the backend itself.
+	if d.cfg.Backend == "apple-container" {
+		d.reconcileViaBackend(tasks)
+		return
+	}
+
 	// VM state directory: <data-dir>/vms/stockyard/<task-id>/
 	vmStateDir := filepath.Join(d.cfg.Daemon.DataDir, "vms")
 	const vmNamespace = "stockyard"
@@ -228,6 +234,34 @@ func (d *Daemon) reconcileRunningVMs() {
 		} else {
 			fmt.Printf("  Task %s: Process %d still running\n", task.ID, pid)
 		}
+	}
+}
+
+// reconcileViaBackend reconciles task liveness by asking the VM backend which
+// VMs are running. Used by backends (e.g. apple-container) that keep no PID file.
+func (d *Daemon) reconcileViaBackend(tasks []*Task) {
+	if d.tasks == nil || d.tasks.backend == nil {
+		// No backend to ask — leave statuses untouched.
+		return
+	}
+	states, err := d.tasks.backend.ListVMs(context.Background())
+	if err != nil {
+		fmt.Printf("Warning: backend ListVMs during reconciliation failed: %v\n", err)
+		return
+	}
+	running := make(map[string]bool, len(states))
+	for _, s := range states {
+		if s.Status == "running" {
+			running[s.ID] = true
+		}
+	}
+	for _, task := range tasks {
+		if running[task.VMID] {
+			fmt.Printf("  Task %s: container still running\n", task.ID)
+			continue
+		}
+		fmt.Printf("  Task %s: container not running, marking as stopped\n", task.ID)
+		d.state.UpdateTaskStatus(task.ID, "stopped")
 	}
 }
 
