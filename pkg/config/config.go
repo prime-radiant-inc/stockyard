@@ -12,15 +12,16 @@ const DefaultSocketPath = "/var/run/stockyard/stockyard.sock"
 
 type Config struct {
 	InstanceID  string            `json:"instance_id"`
-	Backend     string            `json:"backend"` // "firecracker" (default) or "vfkit"
+	Backend     string            `json:"backend"` // "firecracker" (default), "vfkit", or "apple-container"
 	Secrets     SecretsConfig     `json:"secrets"`
 	Daemon      DaemonConfig      `json:"daemon"`
 	ZFS         ZFSConfig         `json:"zfs"`
 	Firecracker FirecrackerConfig `json:"firecracker"`
 	Vfkit       VfkitConfig       `json:"vfkit"`
 	VM          VMConfig          `json:"vm"`
-	HTTP        HTTPConfig        `json:"http"`
-	Rootfs      RootfsConfig      `json:"rootfs"`
+	HTTP           HTTPConfig           `json:"http"`
+	Rootfs         RootfsConfig         `json:"rootfs"`
+	AppleContainer AppleContainerConfig `json:"apple_container"`
 }
 
 type RootfsConfig struct {
@@ -102,6 +103,9 @@ func DefaultConfig() *Config {
 		HTTP: HTTPConfig{
 			Enabled: false,
 			Addr:    ":8080",
+		},
+		AppleContainer: AppleContainerConfig{
+			ContainerBin: "container",
 		},
 	}
 }
