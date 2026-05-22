@@ -8,15 +8,58 @@ import (
 	"os/exec"
 	"syscall"
 
+	pb "github.com/obra/stockyard/pkg/api/v1"
 	"github.com/obra/stockyard/pkg/config"
 	"github.com/spf13/cobra"
 )
 
+// buildAttachCommand decides the program and argv to exec for `stockyard attach`,
+// dispatching on the task's backend. extraArgs are appended after a "--" separator
+// for SSH or directly as the remote command for `container exec`.
+//
+// For apple-container: `container exec -t -i stockyard-<vmID> <shell-or-extraArgs>`.
+// For all other backends: the existing SSH-via-Tailscale path.
+func buildAttachCommand(task *pb.Task, sshUser, containerBin string, extraArgs []string) (string, []string, error) {
+	if task.GetBackend() == "apple-container" {
+		vmID := task.GetVmId()
+		if vmID == "" {
+			return "", nil, fmt.Errorf("apple-container task has no vm_id")
+		}
+		argv := []string{"container", "exec", "-t", "-i", "stockyard-" + vmID}
+		if len(extraArgs) > 0 {
+			argv = append(argv, extraArgs...)
+		} else {
+			argv = append(argv, "/bin/bash")
+		}
+		return containerBin, argv, nil
+	}
+
+	// Default: SSH via Tailscale hostname, falling back to direct IP.
+	sshHost := task.GetTailscaleHostname()
+	if sshHost == "" {
+		sshHost = task.GetIp()
+	}
+	if sshHost == "" {
+		return "", nil, fmt.Errorf("task has no reachable address (no Tailscale hostname or IP)")
+	}
+	argv := []string{"ssh",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		fmt.Sprintf("%s@%s", sshUser, sshHost),
+	}
+	if len(extraArgs) > 0 {
+		argv = append(argv, "--")
+		argv = append(argv, extraArgs...)
+	}
+	return "ssh", argv, nil
+}
+
 var attachCmd = &cobra.Command{
 	Use:   "attach <task-id>",
-	Short: "Attach to a running task via SSH",
-	Long:  `Attach to a running task's VM via SSH through Tailscale.`,
-	Args:  cobra.ExactArgs(1),
+	Short: "Attach to a running task",
+	Long:  `Attach to a running task — via SSH (Firecracker/vfkit) or container exec (apple-container).`,
+	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskID := args[0]
 
@@ -31,51 +74,39 @@ var attachCmd = &cobra.Command{
 			return err
 		}
 
-		// Get task details
 		task, err := c.GetTask(context.Background(), taskID)
 		if err != nil {
 			return fmt.Errorf("failed to get task: %w", err)
 		}
-
 		if task == nil {
 			return fmt.Errorf("task not found: %s", taskID)
 		}
-
 		if task.Status != "running" {
 			return fmt.Errorf("task is not running (status: %s)", task.Status)
 		}
 
-		// Determine SSH target — prefer Tailscale hostname, fall back to direct IP
-		sshHost := task.TailscaleHostname
-		if sshHost == "" {
-			sshHost = task.Ip
-		}
-		if sshHost == "" {
-			return fmt.Errorf("task has no reachable address (no Tailscale hostname or IP)")
-		}
-		sshUser := cfg.VM.User
-
-		fmt.Printf("Connecting to %s@%s...\n", sshUser, sshHost)
-
-		// Exec SSH (replaces current process)
-		sshPath, err := exec.LookPath("ssh")
-		if err != nil {
-			return fmt.Errorf("ssh not found: %w", err)
-		}
-
-		sshArgs := []string{"ssh",
-			"-o", "StrictHostKeyChecking=no",
-			"-o", "UserKnownHostsFile=/dev/null",
-			"-o", "LogLevel=ERROR",
-			fmt.Sprintf("%s@%s", sshUser, sshHost),
-		}
-		// Append any extra args after "--"
+		var extraArgs []string
 		if cmd.ArgsLenAtDash() >= 0 {
-			sshArgs = append(sshArgs, "--")
-			sshArgs = append(sshArgs, args[1:]...)
+			extraArgs = args[1:]
 		}
 
-		return syscall.Exec(sshPath, sshArgs, os.Environ())
+		containerBin := cfg.AppleContainer.ContainerBin
+		if containerBin == "" {
+			containerBin = "container"
+		}
+
+		program, argv, err := buildAttachCommand(task, cfg.VM.User, containerBin, extraArgs)
+		if err != nil {
+			return err
+		}
+
+		progPath, err := exec.LookPath(program)
+		if err != nil {
+			return fmt.Errorf("%s not found: %w", program, err)
+		}
+
+		fmt.Printf("Attaching to %s...\n", taskID)
+		return syscall.Exec(progPath, argv, os.Environ())
 	},
 }
 
