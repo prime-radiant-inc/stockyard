@@ -40,9 +40,9 @@ type VMConfig struct {
 	VCPU              int32
 	MemoryMB          int32
 	KernelPath        string
-	RootfsPath        string            // Path to this VM's writable rootfs image
+	RootfsPath        string // Path to this VM's writable rootfs image
 	SSHAuthorizedKeys []string
-	CloudInitData     string            // Base64-encoded cloud-init user-data
+	CloudInitData     string // Base64-encoded cloud-init user-data
 	DotEnv            []byte
 	Env               map[string]string
 	Metadata          map[string]string // Labels (task-id, task-name, etc.)
@@ -51,11 +51,11 @@ type VMConfig struct {
 // VMInfo is returned after a VM is created or started.
 type VMInfo struct {
 	ID        string
-	PID       int       // OS process ID of the hypervisor
-	IP        string    // VM's IP address (may be empty if not yet known)
-	CID       uint32    // vsock Context ID (Firecracker-specific, 0 if unused)
-	VsockPath string    // Path to vsock UDS (Firecracker-specific, empty if unused)
-	StateDir  string    // Directory containing VM state files
+	PID       int    // OS process ID of the hypervisor
+	IP        string // VM's IP address (may be empty if not yet known)
+	CID       uint32 // vsock Context ID (Firecracker-specific, 0 if unused)
+	VsockPath string // Path to vsock UDS (Firecracker-specific, empty if unused)
+	StateDir  string // Directory containing VM state files
 	State     string
 	CreatedAt time.Time
 }

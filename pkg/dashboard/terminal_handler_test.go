@@ -24,14 +24,14 @@ func TestTerminalHandler_Creation(t *testing.T) {
 		t.Errorf("expected vscode, got %s", handler.defaultUser)
 	}
 	// Empty containerBin should default to "container"
-	if handler.containerBin() != "container" {
-		t.Errorf("expected default containerBin 'container', got %q", handler.containerBin())
+	if handler.containerBin != "container" {
+		t.Errorf("expected default containerBin 'container', got %q", handler.containerBin)
 	}
 
 	// Custom containerBin should be used as-is
 	handler2 := NewTerminalHandler(tm, nil, "vscode", "/opt/homebrew/bin/container")
-	if handler2.containerBin() != "/opt/homebrew/bin/container" {
-		t.Errorf("expected custom containerBin '/opt/homebrew/bin/container', got %q", handler2.containerBin())
+	if handler2.containerBin != "/opt/homebrew/bin/container" {
+		t.Errorf("expected custom containerBin '/opt/homebrew/bin/container', got %q", handler2.containerBin)
 	}
 }
 

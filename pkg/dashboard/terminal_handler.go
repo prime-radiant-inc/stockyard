@@ -20,7 +20,7 @@ type TerminalHandler struct {
 	manager      *TerminalManager
 	daemon       DaemonAPI
 	defaultUser  string
-	_containerBin string // path to the `container` binary; defaults to "container"
+	containerBin string // path to the `container` binary; defaults to "container"
 	upgrader     websocket.Upgrader
 }
 
@@ -35,18 +35,13 @@ func NewTerminalHandler(manager *TerminalManager, daemon DaemonAPI, defaultUser 
 		manager:      manager,
 		daemon:       daemon,
 		defaultUser:  defaultUser,
-		_containerBin: containerBin,
+		containerBin: containerBin,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 			CheckOrigin:     func(r *http.Request) bool { return true },
 		},
 	}
-}
-
-// containerBin returns the configured path to the `container` binary.
-func (h *TerminalHandler) containerBin() string {
-	return h._containerBin
 }
 
 // ServeHTTP handles WebSocket upgrade requests for terminal sessions.

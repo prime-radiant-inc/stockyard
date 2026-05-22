@@ -28,23 +28,23 @@ import (
 
 // Daemon is the core daemon process that manages workspaces and tasks.
 type Daemon struct {
-	cfg       *config.Config
-	secrets   secrets.Provider
-	zfs       *zfs.Manager
-	state        *State
-	tasks        *TaskManager
-	queueManager *QueueManager
-	snapshots    *SnapshotService
-	dhcp      *network.DHCPServer
-	ipPool    *network.IPPool
+	cfg               *config.Config
+	secrets           secrets.Provider
+	zfs               *zfs.Manager
+	state             *State
+	tasks             *TaskManager
+	queueManager      *QueueManager
+	snapshots         *SnapshotService
+	dhcp              *network.DHCPServer
+	ipPool            *network.IPPool
 	rootfsProvisioner rootfs.Provisioner
 
 	listener     net.Listener
 	grpcListener net.Listener // TCP listener for remote gRPC (optional)
 	grpcServer   *grpc.Server
 	httpServer   *http.Server
-	mu         sync.Mutex
-	running    bool
+	mu           sync.Mutex
+	running      bool
 
 	// Real-time dashboard components
 	dashboardServer      *dashboard.Server
