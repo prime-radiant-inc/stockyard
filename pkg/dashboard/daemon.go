@@ -12,6 +12,8 @@ type Task struct {
 	Status        string
 	Owner         string
 	TailscaleHost string
+	Backend       string
+	VMID          string
 	CreatedAt     time.Time
 	StoppedAt     *time.Time
 }

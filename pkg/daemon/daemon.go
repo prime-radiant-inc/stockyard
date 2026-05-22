@@ -354,7 +354,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 	// Start HTTP server if enabled
 	if d.cfg.HTTP.Enabled {
 		// Create dashboard facade and adapter
-		facade := NewDashboardFacade(d.state, d.tasks, d.zfs)
+		facade := NewDashboardFacade(d.state, d.tasks, d.zfs, d.cfg.Backend)
 		adapter := dashboard.NewDaemonAdapter(facade)
 		d.dashboardServer = dashboard.NewServer(adapter, d.cfg.VM.User)
 		tsClient := tailscale.NewLocalClient()
