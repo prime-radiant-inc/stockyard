@@ -42,6 +42,53 @@ func TestAppleContainerBackend_NewSetsDefaults(t *testing.T) {
 	}
 }
 
+func TestAppleContainerBackend_StartVM(t *testing.T) {
+	fr := newFakeRunner()
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
+	b.skipLogFollower = true
+	if _, err := b.StartVM(context.Background(), &VMConfig{ID: "abc12345"}); err != nil {
+		t.Fatalf("StartVM: %v", err)
+	}
+	joined := strings.Join(fr.calls[0], " ")
+	if !strings.Contains(joined, "start stockyard-abc12345") {
+		t.Errorf("expected `start stockyard-abc12345`, got: %s", joined)
+	}
+}
+
+func TestAppleContainerBackend_StopVM(t *testing.T) {
+	fr := newFakeRunner()
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
+	if err := b.StopVM(context.Background(), "abc12345"); err != nil {
+		t.Fatalf("StopVM: %v", err)
+	}
+	joined := strings.Join(fr.calls[0], " ")
+	if !strings.Contains(joined, "stop stockyard-abc12345") {
+		t.Errorf("expected `stop stockyard-abc12345`, got: %s", joined)
+	}
+}
+
+func TestAppleContainerBackend_DeleteVM(t *testing.T) {
+	fr := newFakeRunner()
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
+	if err := b.DeleteVM(context.Background(), "abc12345"); err != nil {
+		t.Fatalf("DeleteVM: %v", err)
+	}
+	// DeleteVM = stop then rm.
+	var sawStop, sawRm bool
+	for _, c := range fr.calls {
+		j := strings.Join(c, " ")
+		if strings.Contains(j, "stop stockyard-abc12345") {
+			sawStop = true
+		}
+		if strings.Contains(j, "rm stockyard-abc12345") {
+			sawRm = true
+		}
+	}
+	if !sawStop || !sawRm {
+		t.Errorf("DeleteVM should stop and rm; sawStop=%v sawRm=%v", sawStop, sawRm)
+	}
+}
+
 func TestAppleContainerBackend_CreateVM_BuildsRunArgs(t *testing.T) {
 	fr := newFakeRunner()
 	b := newAppleContainerBackendWithRunner(AppleContainerConfig{

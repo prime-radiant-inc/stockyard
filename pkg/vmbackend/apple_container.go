@@ -183,15 +183,45 @@ func (b *AppleContainerBackend) inspectIP(ctx context.Context, id string) (strin
 }
 
 func (b *AppleContainerBackend) StartVM(ctx context.Context, cfg *VMConfig) (*VMInfo, error) {
-	return nil, errNotImplemented
+	stateDir, err := b.ensureStateDir(cfg.ID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := b.run(ctx, b.cfg.ContainerBin, "start", containerName(cfg.ID)); err != nil {
+		return nil, fmt.Errorf("container start: %w", err)
+	}
+	if !b.skipLogFollower {
+		if err := b.startLogFollower(cfg.ID); err != nil {
+			fmt.Printf("Warning: apple-container log follower for %s: %v\n", cfg.ID, err)
+		}
+	}
+	ip, _ := b.inspectIP(ctx, cfg.ID)
+	return &VMInfo{
+		ID:        cfg.ID,
+		IP:        ip,
+		StateDir:  stateDir,
+		State:     "running",
+		CreatedAt: time.Now(),
+	}, nil
 }
 
 func (b *AppleContainerBackend) StopVM(ctx context.Context, id string) error {
-	return errNotImplemented
+	b.stopLogFollower(id)
+	if _, err := b.run(ctx, b.cfg.ContainerBin, "stop", containerName(id)); err != nil {
+		return fmt.Errorf("container stop: %w", err)
+	}
+	return nil
 }
 
 func (b *AppleContainerBackend) DeleteVM(ctx context.Context, id string) error {
-	return errNotImplemented
+	b.stopLogFollower(id)
+	// Best-effort stop; ignore error (container may already be stopped).
+	b.run(ctx, b.cfg.ContainerBin, "stop", containerName(id))
+	if _, err := b.run(ctx, b.cfg.ContainerBin, "rm", containerName(id)); err != nil {
+		return fmt.Errorf("container rm: %w", err)
+	}
+	os.RemoveAll(b.vmStateDir(id))
+	return nil
 }
 
 func (b *AppleContainerBackend) GetVM(ctx context.Context, id string) (*VMState, error) {
