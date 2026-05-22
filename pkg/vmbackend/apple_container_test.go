@@ -4,6 +4,7 @@ package vmbackend
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -39,6 +40,31 @@ func TestAppleContainerBackend_NewSetsDefaults(t *testing.T) {
 	b := newAppleContainerBackendWithRunner(AppleContainerConfig{}, newFakeRunner().run)
 	if b.cfg.ContainerBin != "container" {
 		t.Errorf("expected default ContainerBin %q, got %q", "container", b.cfg.ContainerBin)
+	}
+}
+
+func TestAppleContainerBackend_CloseKillsFollowers(t *testing.T) {
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, newFakeRunner().run)
+	// Register a real, long-lived process as a follower.
+	cmd := exec.Command("sleep", "60")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start sleep: %v", err)
+	}
+	b.mu.Lock()
+	b.followers["abc12345"] = &logFollower{cmd: cmd}
+	b.mu.Unlock()
+
+	if err := b.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := cmd.Wait(); err == nil {
+		t.Error("expected follower process to be killed, but it exited cleanly")
+	}
+	b.mu.Lock()
+	n := len(b.followers)
+	b.mu.Unlock()
+	if n != 0 {
+		t.Errorf("expected followers map cleared, got %d entries", n)
 	}
 }
 

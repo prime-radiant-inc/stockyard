@@ -233,6 +233,15 @@ func (b *AppleContainerBackend) ListVMs(ctx context.Context) ([]*VMState, error)
 }
 
 func (b *AppleContainerBackend) Close() error {
+	b.mu.Lock()
+	ids := make([]string, 0, len(b.followers))
+	for id := range b.followers {
+		ids = append(ids, id)
+	}
+	b.mu.Unlock()
+	for _, id := range ids {
+		b.stopLogFollower(id)
+	}
 	return nil
 }
 
