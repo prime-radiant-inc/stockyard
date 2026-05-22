@@ -4,12 +4,14 @@ package vmbackend
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -176,10 +178,19 @@ func (b *AppleContainerBackend) stopLogFollower(id string) {
 	}
 }
 
-// inspectIP reads the container's IP from `container inspect --format json`.
-// Defined fully in Task 1.6; a stub here keeps CreateVM compiling.
 func (b *AppleContainerBackend) inspectIP(ctx context.Context, id string) (string, error) {
-	return "", nil
+	out, err := b.run(ctx, b.cfg.ContainerBin, "inspect", containerName(id), "--format", "json")
+	if err != nil {
+		return "", fmt.Errorf("container inspect: %w", err)
+	}
+	var arr []containerJSON
+	if err := json.Unmarshal(out, &arr); err != nil {
+		return "", fmt.Errorf("parse container inspect JSON: %w", err)
+	}
+	if len(arr) == 0 || len(arr[0].Networks) == 0 {
+		return "", nil
+	}
+	return addressToIP(arr[0].Networks[0].Address), nil
 }
 
 func (b *AppleContainerBackend) StartVM(ctx context.Context, cfg *VMConfig) (*VMInfo, error) {
@@ -224,12 +235,68 @@ func (b *AppleContainerBackend) DeleteVM(ctx context.Context, id string) error {
 	return nil
 }
 
+// containerJSON is the subset of `container inspect`/`container ls` JSON we use.
+// Apple `container` is pre-1.0; parse defensively and tolerate missing fields.
+type containerJSON struct {
+	Status        string `json:"status"`
+	Configuration struct {
+		ID string `json:"id"`
+	} `json:"configuration"`
+	Networks []struct {
+		Address string `json:"address"`
+	} `json:"networks"`
+}
+
+// vmIDFromName strips the "stockyard-" prefix; returns ("", false) if absent.
+func vmIDFromName(name string) (string, bool) {
+	const prefix = "stockyard-"
+	if !strings.HasPrefix(name, prefix) {
+		return "", false
+	}
+	return strings.TrimPrefix(name, prefix), true
+}
+
+// addressToIP strips a trailing CIDR suffix ("/24") from an address.
+func addressToIP(addr string) string {
+	if i := strings.IndexByte(addr, '/'); i >= 0 {
+		return addr[:i]
+	}
+	return addr
+}
+
 func (b *AppleContainerBackend) GetVM(ctx context.Context, id string) (*VMState, error) {
-	return nil, errNotImplemented
+	out, err := b.run(ctx, b.cfg.ContainerBin, "inspect", containerName(id), "--format", "json")
+	if err != nil {
+		return nil, fmt.Errorf("container inspect: %w", err)
+	}
+	var arr []containerJSON
+	if err := json.Unmarshal(out, &arr); err != nil {
+		return nil, fmt.Errorf("parse container inspect JSON: %w", err)
+	}
+	if len(arr) == 0 {
+		return nil, fmt.Errorf("VM not found: %s", id)
+	}
+	return &VMState{ID: id, Status: arr[0].Status}, nil
 }
 
 func (b *AppleContainerBackend) ListVMs(ctx context.Context) ([]*VMState, error) {
-	return nil, errNotImplemented
+	out, err := b.run(ctx, b.cfg.ContainerBin, "ls", "--all", "--format", "json")
+	if err != nil {
+		return nil, fmt.Errorf("container ls: %w", err)
+	}
+	var arr []containerJSON
+	if err := json.Unmarshal(out, &arr); err != nil {
+		return nil, fmt.Errorf("parse container ls JSON: %w", err)
+	}
+	var states []*VMState
+	for _, c := range arr {
+		vmID, ok := vmIDFromName(c.Configuration.ID)
+		if !ok {
+			continue // not one of ours
+		}
+		states = append(states, &VMState{ID: vmID, Status: c.Status})
+	}
+	return states, nil
 }
 
 func (b *AppleContainerBackend) Close() error {

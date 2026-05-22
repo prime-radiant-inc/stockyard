@@ -43,6 +43,77 @@ func TestAppleContainerBackend_NewSetsDefaults(t *testing.T) {
 	}
 }
 
+func TestAppleContainerBackend_GetVM_ParsesStatus(t *testing.T) {
+	fr := newFakeRunner()
+	fr.outputs["inspect"] = `[{"status":"running","configuration":{"id":"stockyard-abc12345"}}]`
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
+
+	st, err := b.GetVM(context.Background(), "abc12345")
+	if err != nil {
+		t.Fatalf("GetVM: %v", err)
+	}
+	if st.ID != "abc12345" {
+		t.Errorf("expected ID abc12345, got %q", st.ID)
+	}
+	if st.Status != "running" {
+		t.Errorf("expected status running, got %q", st.Status)
+	}
+}
+
+func TestAppleContainerBackend_GetVM_StoppedStatus(t *testing.T) {
+	fr := newFakeRunner()
+	fr.outputs["inspect"] = `[{"status":"stopped","configuration":{"id":"stockyard-abc12345"}}]`
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
+	st, err := b.GetVM(context.Background(), "abc12345")
+	if err != nil {
+		t.Fatalf("GetVM: %v", err)
+	}
+	if st.Status != "stopped" {
+		t.Errorf("expected status stopped, got %q", st.Status)
+	}
+}
+
+func TestAppleContainerBackend_ListVMs_ParsesArray(t *testing.T) {
+	fr := newFakeRunner()
+	fr.outputs["ls"] = `[
+		{"status":"running","configuration":{"id":"stockyard-aaa11111"}},
+		{"status":"stopped","configuration":{"id":"stockyard-bbb22222"}},
+		{"status":"running","configuration":{"id":"not-ours"}}
+	]`
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
+	states, err := b.ListVMs(context.Background())
+	if err != nil {
+		t.Fatalf("ListVMs: %v", err)
+	}
+	// Only stockyard-prefixed containers belong to us.
+	got := map[string]string{}
+	for _, s := range states {
+		got[s.ID] = s.Status
+	}
+	if got["aaa11111"] != "running" {
+		t.Errorf("expected aaa11111 running, got %q", got["aaa11111"])
+	}
+	if got["bbb22222"] != "stopped" {
+		t.Errorf("expected bbb22222 stopped, got %q", got["bbb22222"])
+	}
+	if _, ok := got["not-ours"]; ok {
+		t.Error("non-stockyard container should be ignored")
+	}
+}
+
+func TestAppleContainerBackend_InspectIP(t *testing.T) {
+	fr := newFakeRunner()
+	fr.outputs["inspect"] = `[{"status":"running","networks":[{"address":"192.168.64.7/24"}],"configuration":{"id":"stockyard-abc12345"}}]`
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
+	ip, err := b.inspectIP(context.Background(), "abc12345")
+	if err != nil {
+		t.Fatalf("inspectIP: %v", err)
+	}
+	if ip != "192.168.64.7" {
+		t.Errorf("expected 192.168.64.7 (CIDR stripped), got %q", ip)
+	}
+}
+
 func TestAppleContainerBackend_CloseKillsFollowers(t *testing.T) {
 	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, newFakeRunner().run)
 	// Register a real, long-lived process as a follower.
