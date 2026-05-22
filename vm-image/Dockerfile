@@ -25,9 +25,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Configurable VM user (default: mooby)
 ARG VM_USER=mooby
-# Target architecture, auto-populated by BuildKit (amd64 | arm64).
-# Default keeps non-BuildKit builds working.
-ARG TARGETARCH=amd64
+# Target architecture (amd64 | arm64). Declared WITHOUT a default: BuildKit
+# auto-populates predefined platform args, and a default value would shadow the
+# real one — silently pulling amd64 binaries into an arm64 image.
+ARG TARGETARCH
 
 # ============================================================================
 # Section 1: Base System
@@ -168,8 +169,14 @@ RUN curl -fsSL "https://github.com/prime-radiant-inc/llm-proxy/releases/download
 # Section 4b: Linters and Formatters
 # ============================================================================
 
-# Go linter (golangci-lint)
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin
+# Go linter (golangci-lint) — pinned direct download. The upstream `master`
+# install.sh verifies against the wrong release asset (the .sbom.json) and
+# fails the checksum, so fetch and extract the release tarball directly.
+ARG GOLANGCI_LINT_VERSION=2.12.2
+RUN curl -fsSL "https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_LINT_VERSION}/golangci-lint-${GOLANGCI_LINT_VERSION}-linux-${TARGETARCH}.tar.gz" \
+    | tar -xzf - -C /tmp \
+    && mv "/tmp/golangci-lint-${GOLANGCI_LINT_VERSION}-linux-${TARGETARCH}/golangci-lint" /usr/local/bin/golangci-lint \
+    && rm -rf /tmp/golangci-lint-*
 
 # Python linter/formatter (ruff - extremely fast)
 RUN /usr/local/bin/uv tool install ruff \
