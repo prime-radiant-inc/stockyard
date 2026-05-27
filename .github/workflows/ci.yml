@@ -34,6 +34,33 @@ jobs:
       - name: Test
         run: make test
 
+  # macOS compile + vet job: catches darwin-build-tag breakage that the
+  # Linux runner silently skips (apple-container backend lives behind
+  # //go:build darwin tags). Does NOT attempt an apple-container e2e —
+  # Apple's `container` CLI needs macOS 26 / Tahoe and GH-hosted runners
+  # don't ship that. The full e2e stays as a "controller drives it
+  # locally before push" step. See PRI-1859.
+  build-darwin:
+    name: Build and Vet (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build (darwin)
+        run: make build
+
+      - name: Vet (darwin)
+        run: go vet ./...
+
+      - name: Test (darwin)
+        run: make test
+
   release:
     name: Release
     runs-on: ubuntu-latest
