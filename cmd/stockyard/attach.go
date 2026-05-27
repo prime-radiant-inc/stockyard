@@ -18,7 +18,7 @@ import (
 // for SSH or directly as the remote command for `container exec`.
 //
 // For apple-container: `container exec -t -i -u <user> stockyard-<vmID> <shell-or-extraArgs>`.
-// For all other backends: the existing SSH-via-Tailscale path.
+// For Firecracker (and any other backend): SSH via Tailscale hostname (or IP fallback).
 func buildAttachCommand(task *pb.Task, sshUser, containerBin string, extraArgs []string) (string, []string, error) {
 	if task.GetBackend() == "apple-container" {
 		vmID := task.GetVmId()
@@ -58,7 +58,7 @@ func buildAttachCommand(task *pb.Task, sshUser, containerBin string, extraArgs [
 var attachCmd = &cobra.Command{
 	Use:   "attach <task-id>",
 	Short: "Attach to a running task",
-	Long:  `Attach to a running task — via SSH (Firecracker/vfkit) or container exec (apple-container).`,
+	Long:  `Attach to a running task — via container exec (apple-container) or SSH (Firecracker, the fallback).`,
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskID := args[0]

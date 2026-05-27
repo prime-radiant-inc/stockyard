@@ -117,12 +117,6 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 				backend = vmbackend.NewFirecrackerBackend(client)
 			}
 		}
-	case "vfkit":
-		var err error
-		backend, err = createVfkitBackend(cfg)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create vfkit backend: %w", err)
-		}
 	case "apple-container":
 		var err error
 		backend, err = createAppleContainerBackend(cfg)
