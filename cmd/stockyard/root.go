@@ -13,8 +13,9 @@ var urlFlag string
 var rootCmd = &cobra.Command{
 	Use:   "stockyard",
 	Short: "Coding agent VM orchestrator",
-	Long: `Stockyard runs coding agents in isolated Firecracker micro-VMs
-with ZFS-based audit trail snapshots.
+	Long: `Stockyard runs coding agents in isolated VMs:
+Firecracker micro-VMs on Linux (with ZFS-based audit-trail snapshots),
+and Apple's container tool on macOS.
 
 Quick Start:
   # Initialize stockyard
@@ -24,9 +25,9 @@ Quick Start:
   stockyardd
 
   # Run a coding agent
-  stockyard run --repo github.com/org/repo -- claude-code -p "your prompt"
+  stockyard run --name my-task
 
-  # Attach to the running VM
+  # Attach to the running task
   stockyard attach <task-id>
 
   # List running tasks

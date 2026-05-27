@@ -25,9 +25,12 @@ var (
 var runCmd = &cobra.Command{
 	Use:   "run [flags]",
 	Short: "Create a new VM task",
-	Long: `Create a new Firecracker micro-VM task.
+	Long: `Create a new VM task.
 
-Use 'stockyard exec' to run commands in the VM after creation.`,
+The backend (Firecracker on Linux, apple-container on macOS) is
+selected by the daemon's configured backend.
+
+Use 'stockyard attach' to get an interactive shell.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := getClient()
 		if err != nil {
