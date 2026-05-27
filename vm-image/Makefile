@@ -73,8 +73,7 @@ deploy: rootfs
 
 # ============================================================================
 # Alpine variant targets (Linux Firecracker — separate from the default Ubuntu
-# rootfs path. Uses Dockerfile.alpine + VARIANT=alpine ./build.sh. Unrelated
-# to the deleted vm-image/macos/ vfkit build, despite the shared "alpine" name.)
+# rootfs path. Uses Dockerfile.alpine + VARIANT=alpine ./build.sh.)
 # ============================================================================
 
 # Build Alpine Docker image

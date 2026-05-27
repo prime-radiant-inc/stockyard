@@ -399,7 +399,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 
 	// Start snapshot service (Firecracker backend only — it relies on vsock
-	// and ZFS, neither of which exists on the vfkit/macOS path).
+	// and ZFS, neither of which exists on the macOS/apple-container path).
 	if d.cfg.Backend == "" || d.cfg.Backend == "firecracker" {
 		go func() {
 			if err := d.snapshots.Start(ctx); err != nil {

@@ -15,15 +15,6 @@ make deploy-image   # Build and deploy VM image
 make deploy         # Full deployment (daemon + image)
 ```
 
-## macOS Setup
-
-```bash
-brew install vfkit e2fsprogs
-./vm-image/macos/setup.sh        # Download kernel + build Alpine rootfs
-```
-
-See `vm-image/macos/README.md` for full instructions.
-
 ## Testing
 
 ```bash
@@ -40,6 +31,5 @@ go test ./pkg/...   # Run package tests
 - `pkg/daemon/` - Daemon core logic
 - `pkg/dashboard/` - Web dashboard and websocket server
 - `pkg/firecracker/` - Firecracker VM management (Linux)
-- `pkg/vmbackend/` - VM backend interface + implementations (Firecracker, vfkit)
-- `pkg/rootfs/` - Rootfs provisioner interface + implementations (ZFS, APFS, copy)
-- `vm-image/` - VM image build scripts (Linux: Docker-based, macOS: Alpine + Kata kernel)
+- `pkg/vmbackend/` - VM backend interface + implementations (Firecracker, apple-container)
+- `vm-image/` - VM image build scripts (Linux: Docker-based)

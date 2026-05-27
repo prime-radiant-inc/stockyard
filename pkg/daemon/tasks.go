@@ -137,7 +137,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	// Generate hostname
 	hostname := fmt.Sprintf("stockyard-%s", taskID)
 
-	// Generate cloud-init config (Firecracker only — vfkit handles its own cloud-init)
+	// Generate cloud-init config (Firecracker only)
 	var cloudInitData string
 	if tm.daemon.cfg.Backend == "" || tm.daemon.cfg.Backend == "firecracker" {
 		cloudInitCfg := &firecracker.CloudInitConfig{
@@ -306,8 +306,8 @@ func parseDotEnv(data []byte) map[string]string {
 // VMConfig. The apple-container backend has no cloud-init or MMDS, so the entire
 // workload environment must be delivered through Env (forwarded as `container run
 // --env` flags) — including the secrets and the Tailscale auth key, which the
-// container entrypoint reads as TAILSCALE_AUTH_KEY. Firecracker and vfkit instead
-// receive adapter-private underscore-prefixed keys that their adapters extract;
+// container entrypoint reads as TAILSCALE_AUTH_KEY. Firecracker instead
+// receives adapter-private underscore-prefixed keys that its adapter extracts;
 // those keys are deliberately NOT set on the apple-container path so they cannot
 // leak into `container inspect`.
 //
@@ -315,7 +315,7 @@ func parseDotEnv(data []byte) map[string]string {
 // apple-container path its entries are applied first (lowest precedence) and
 // then overridden by the explicit task env (env), so that secrets and other
 // caller-supplied values always win. dotEnv is ignored on the
-// Firecracker/vfkit paths because those backends receive DotEnv via MMDS.
+// Firecracker path because that backend receives DotEnv via MMDS.
 func buildVMEnvMetadata(backend, taskID, taskName string, env map[string]string,
 	tailscaleAuthKey, hostname, staticIPArgs string,
 	networkConfig *network.StaticNetworkConfig, dotEnv []byte) (map[string]string, map[string]string) {
@@ -344,7 +344,7 @@ func buildVMEnvMetadata(backend, taskID, taskName string, env map[string]string,
 		return vmEnv, vmMetadata
 	}
 
-	// Firecracker/vfkit: pass adapter-private fields the Firecracker adapter extracts.
+	// Firecracker: pass adapter-private fields the Firecracker adapter extracts.
 	// DotEnv is forwarded via VMConfig.DotEnv → MMDS, not parsed here.
 	if tailscaleAuthKey != "" {
 		vmEnv["_tailscale_auth_key"] = tailscaleAuthKey
