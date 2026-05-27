@@ -1,6 +1,6 @@
 # Stockyard
 
-Coding agent VM orchestrator. Runs coding agents in isolated Firecracker micro-VMs with ZFS-based audit trail snapshots.
+Coding agent VM orchestrator. Runs coding agents in isolated VMs — Firecracker micro-VMs on Linux (with ZFS-based audit-trail snapshots), and Apple's `container` tool on macOS.
 
 ## Quick Start
 
@@ -41,31 +41,9 @@ SSH public keys from `~/.ssh/*.pub` are automatically injected into the VM.
 
 ### Environment Configuration
 
-The `--env-file` flag delivers a `.env` file into the VM via Firecracker's MMDS metadata service at boot. This is the primary way to pass API keys and tokens.
+The `--env-file` flag delivers a `.env` file into the VM at boot. The Firecracker backend ships it via the MMDS metadata service; the apple-container backend forwards it as `container run --env` flags (explicit task env overrides `.env` entries). Either way, this is the primary way to pass API keys and tokens.
 
 Tailscale auth keys are handled separately via `--tailscale-auth-key` or automatic 1Password lookup.
-
-## Exec and Command Queues (Experimental)
-
-> **Note:** `exec` and command queues are an experiment in programmatic VM orchestration. The API works but it's not clear this is the right abstraction — running commands via SSH into the VM's Tailscale address is simpler and may be the better pattern. This interface may change significantly or be removed.
-
-`stockyard exec` runs commands inside a VM:
-
-```bash
-stockyard exec <task-id> -- go mod download
-stockyard exec <task-id> -- claude-code -p "implement OAuth"
-```
-
-Commands are managed through named queues. Two are created automatically with each VM:
-
-- **`default`** — serial execution. Commands run one at a time.
-- **`admin`** — concurrent. For interactive/debug shells.
-
-```bash
-stockyard queue list <task-id>
-stockyard queue status <task-id> default
-stockyard command logs <task-id> <command-id> --follow
-```
 
 ## Remote Access
 
@@ -110,6 +88,7 @@ To enable remote access, configure the daemon to listen on TCP:
 
 ```json
 {
+  "backend": "firecracker",
   "daemon": {
     "socket_path": "/var/run/stockyard/stockyard.sock",
     "grpc_addr": ":65433"
@@ -119,20 +98,43 @@ To enable remote access, configure the daemon to listen on TCP:
 
 When `grpc_addr` is set, the daemon listens on both the Unix socket (for local access) and TCP (for remote access).
 
+The top-level `backend` key selects the VM backend. Valid values are `"firecracker"` (default, Linux) and `"apple-container"` (macOS). The apple-container backend skips the Firecracker-only setup steps — no ZFS, no kernel/rootfs install — and uses Apple's `container` CLI to manage VMs.
+
 **Note:** For secure remote access, use Tailscale or a reverse proxy with TLS. The daemon does not yet support TLS directly.
 
 ## VM Services
 
-VMs include built-in services that communicate with the host via vsock:
+VMs ship with `llm-proxy` (port 12071) — an outbound HTTP proxy that logs Anthropic/OpenAI API traffic. It runs in-guest on both backends.
 
-| Service | Port | Description |
-|---------|------|-------------|
-| `stockyard-shell` | 52 | Terminal access via vsock (no SSH needed) |
-| `stockyard-snapshot` | 51 | ZFS snapshot coordination |
-| `llm-proxy` | 12071 | LLM API logging proxy (routes Anthropic/OpenAI traffic) |
+Terminal access and snapshot coordination work differently per backend:
 
-### Terminal Access
+| Capability | Firecracker (Linux) | apple-container (macOS) |
+|------------|---------------------|--------------------------|
+| Terminal | In-guest `stockyard-shell` listens on vsock port 52; dashboard dials in | Host runs `container exec` under a PTY |
+| Audit snapshots | In-guest `stockyard-snapshot` dials host on vsock port 51; daemon does `zfs snapshot` | Not applicable (no ZFS) |
 
-The dashboard provides browser-based terminal access to VMs using `stockyard-shell`. This eliminates SSH key management and works even when VM networking is misconfigured.
+Both vsock services exist because Firecracker VMs are otherwise isolated from the host. On apple-container, native container tooling covers the same needs — so neither guest binary is built into or needed in the apple-container image.
 
-See [docs/specs/vsock-shell-service.md](docs/specs/vsock-shell-service.md) for protocol details.
+See [docs/specs/vsock-shell-service.md](docs/specs/vsock-shell-service.md) for the Firecracker vsock-shell protocol.
+
+## Exec and Command Queues (Experimental, Linux only)
+
+> **Note:** `exec` and command queues are an experiment in programmatic VM orchestration, and only the Firecracker backend implements them. The API works and has proven useful from time to time, but it's not clear this is the right abstraction — running commands via SSH into the VM's Tailscale address is simpler and may be the better pattern. This interface may change significantly or be removed.
+
+`stockyard exec` runs commands inside a VM:
+
+```bash
+stockyard exec <task-id> -- go mod download
+stockyard exec <task-id> -- claude-code -p "implement OAuth"
+```
+
+Commands are managed through named queues. Two are created automatically with each VM:
+
+- **`default`** — serial execution. Commands run one at a time.
+- **`admin`** — concurrent. For interactive/debug shells.
+
+```bash
+stockyard queue list <task-id>
+stockyard queue status <task-id> default
+stockyard command logs <task-id> <command-id> --follow
+```
