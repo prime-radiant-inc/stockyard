@@ -19,14 +19,7 @@ type Config struct {
 	Firecracker    FirecrackerConfig    `json:"firecracker"`
 	VM             VMConfig             `json:"vm"`
 	HTTP           HTTPConfig           `json:"http"`
-	Rootfs         RootfsConfig         `json:"rootfs"`
 	AppleContainer AppleContainerConfig `json:"apple_container"`
-}
-
-type RootfsConfig struct {
-	Provider  string `json:"provider"`   // "zfs" (default), "apfs", "copy"
-	BaseImage string `json:"base_image"` // Path to base rootfs image (for apfs/copy)
-	VMsDir    string `json:"vms_dir"`    // Directory for VM rootfs copies (for apfs/copy)
 }
 
 type VMConfig struct {

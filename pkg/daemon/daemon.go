@@ -19,7 +19,6 @@ import (
 	"github.com/obra/stockyard/pkg/dashboard"
 	"github.com/obra/stockyard/pkg/firecracker"
 	"github.com/obra/stockyard/pkg/network"
-	"github.com/obra/stockyard/pkg/rootfs"
 	"github.com/obra/stockyard/pkg/secrets"
 	"github.com/obra/stockyard/pkg/tailscale"
 	"github.com/obra/stockyard/pkg/vmbackend"
@@ -37,7 +36,6 @@ type Daemon struct {
 	snapshots         *SnapshotService
 	dhcp              *network.DHCPServer
 	ipPool            *network.IPPool
-	rootfsProvisioner rootfs.Provisioner
 
 	listener     net.Listener
 	grpcListener net.Listener // TCP listener for remote gRPC (optional)
@@ -127,7 +125,6 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 		return nil, fmt.Errorf("unknown backend: %s", cfg.Backend)
 	}
 	d.tasks = NewTaskManager(d, backend)
-	d.rootfsProvisioner = createRootfsProvisioner(cfg)
 	d.queueManager = NewQueueManager(state, cfg)
 
 	// DHCP and IP pool are only needed for Firecracker backend
@@ -193,11 +190,7 @@ func (d *Daemon) reconcileRunningVMs() {
 	const vmNamespace = "stockyard"
 
 	for _, task := range tasks {
-		// Check for PID file from either backend
 		pidFile := filepath.Join(vmStateDir, vmNamespace, task.ID, "firecracker.pid")
-		if _, err := os.Stat(pidFile); os.IsNotExist(err) {
-			pidFile = filepath.Join(vmStateDir, vmNamespace, task.ID, "vfkit.pid")
-		}
 		pidData, err := os.ReadFile(pidFile)
 		if err != nil {
 			// PID file doesn't exist - VM is definitely not running
@@ -519,11 +512,6 @@ func (d *Daemon) DHCP() *network.DHCPServer {
 // IPPool returns the daemon's IP pool for static VM IP allocation.
 func (d *Daemon) IPPool() *network.IPPool {
 	return d.ipPool
-}
-
-// RootfsProvisioner returns the daemon's rootfs provisioner, or nil if not configured.
-func (d *Daemon) RootfsProvisioner() rootfs.Provisioner {
-	return d.rootfsProvisioner
 }
 
 // ActivityFeed returns the activity feed for recording events.
