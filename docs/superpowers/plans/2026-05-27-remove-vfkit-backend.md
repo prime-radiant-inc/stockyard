@@ -109,7 +109,7 @@ Removes `pkg/rootfs/` entirely (APFS + copy + ZFS provisioners + the interface),
 - Delete: `pkg/daemon/rootfs_darwin.go`
 - Delete: `pkg/daemon/rootfs_other.go`
 - Delete: `pkg/daemon/rootfs_darwin_test.go`
-- Modify: `pkg/daemon/daemon.go` (drop `rootfsProvisioner` field, accessor, init line, `rootfs` import)
+- Modify: `pkg/daemon/daemon.go` (drop `rootfsProvisioner` field, accessor, init line, `rootfs` import; **also** drop the `vfkit.pid` fallback in the reconcile path around line 199)
 - Modify: `pkg/daemon/tasks.go` (drop nil-checked `RootfsProvisioner()` call sites)
 - Modify: `pkg/config/config.go` (drop `Rootfs` field + `RootfsConfig` type definition)
 
@@ -133,6 +133,19 @@ Open `pkg/daemon/daemon.go`. Remove:
 Open `pkg/daemon/tasks.go`. There are four call sites (around lines 164, 199, 241, 567 per the audit). Each is guarded by `if tm.daemon.RootfsProvisioner() != nil`. Since the provisioner is now always nil, delete each guarded block in its entirety. After this, `rootfsPath` (a local variable assigned from `Clone(...)` at line ~166) may also become unused — if so, delete that variable declaration and any downstream use of it that this plan didn't already cover.
 
 Read the file carefully — the four call sites are: rootfs clone on task creation, rootfs destroy on creation-failure rollback (×2), and rootfs destroy on task deletion. All four go.
+
+- [ ] **Step 2.3b: Drop the `vfkit.pid` reconcile fallback in daemon.go**
+
+Open `pkg/daemon/daemon.go`. Around line 199, the reconcile loop has:
+
+```go
+pidFile := filepath.Join(vmStateDir, vmNamespace, task.ID, "firecracker.pid")
+if _, err := os.Stat(pidFile); os.IsNotExist(err) {
+    pidFile = filepath.Join(vmStateDir, vmNamespace, task.ID, "vfkit.pid")
+}
+```
+
+Nothing writes `vfkit.pid` after Phase 1, so the fallback is unreachable. Collapse to just the `firecracker.pid` assignment (no `os.Stat` fallback). If `firecracker.pid` doesn't exist, the existing `os.ReadFile` error path will handle it — same as today when no PID file exists at all.
 
 - [ ] **Step 2.4: Drop the `Rootfs` field and `RootfsConfig` type from Config**
 
@@ -246,6 +259,23 @@ Removes vfkit/APFS/Alpine references from user-facing docs and deletes supersede
 - Delete: `docs/superpowers/plans/2026-04-01-fast-boot-alpine.md`
 - Delete: `docs/research/macos-backend-sketch.md`
 - Modify: `docs/superpowers/plans/2026-04-01-vm-backend-interface.md` (drop vfkit case studies if present, else delete the doc if it's wholly vfkit-historical)
+
+- [ ] **Step 4.0: Strip stale vfkit mentions from daemon code comments**
+
+These are code-comment cleanups in files that otherwise remain. Each is a one-line tweak that drops "vfkit" from a comment whose underlying logic is now Firecracker-only. The code paths themselves are correct; only the comments are stale.
+
+In `pkg/daemon/tasks.go`:
+- Line ~140: `// Generate cloud-init config (Firecracker only — vfkit handles its own cloud-init)` → drop the `— vfkit handles its own cloud-init` clause; reads `// Generate cloud-init config (Firecracker only)`.
+- Lines ~329 and ~338 (the doc comments on `buildVMEnvMetadata` and surrounding paragraph): change "Firecracker and vfkit" and "Firecracker/vfkit" to just "Firecracker".
+- Line ~367: comment `// Firecracker/vfkit: pass adapter-private fields …` → `// Firecracker: pass adapter-private fields …`.
+
+In `pkg/daemon/grpc.go`:
+- Line ~53: `// … on the vfkit backend there is no Tailscale.` → reword to `// … when Tailscale wasn't configured (e.g. apple-container without --tailscale).` or similar. Use judgment; the point is the comment should describe the *current* reason a hostname might be empty.
+
+In `pkg/daemon/daemon.go`:
+- Line ~409 (snapshot-service-start comment): `// Start snapshot service (Firecracker backend only — it relies on vsock and ZFS, neither of which exists on the vfkit/macOS path).` → drop "vfkit/", read `… neither of which exists on the macOS/apple-container path).` or similar.
+
+Verify `make build` and `make test` after — code-only changes, but the build catching a typo'd comment block delimiter is worth the cheap check.
 
 - [ ] **Step 4.1: Edit CLAUDE.md**
 
