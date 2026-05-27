@@ -50,7 +50,7 @@ func (s *grpcServer) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) 
 
 	// Report the hostname the task manager actually assigned — non-empty only
 	// when Tailscale was genuinely set up (valid auth key). Do not synthesize
-	// one here; on the vfkit backend there is no Tailscale.
+	// one here; it stays empty when Tailscale wasn't configured for this task.
 	return &pb.CreateTaskResponse{
 		TaskId:            task.ID,
 		TailscaleHostname: task.TailscaleHostname,

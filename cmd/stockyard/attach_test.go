@@ -37,25 +37,6 @@ func TestBuildAttachCommand_AppleContainer(t *testing.T) {
 	}
 }
 
-func TestBuildAttachCommand_SSHForVfkit(t *testing.T) {
-	task := &pb.Task{
-		Id:                "abc12345",
-		Status:            "running",
-		Backend:           "vfkit",
-		TailscaleHostname: "stockyard-abc12345",
-	}
-	name, argv, err := buildAttachCommand(task, "mooby", "container", nil)
-	if err != nil {
-		t.Fatalf("buildAttachCommand: %v", err)
-	}
-	if name != "ssh" {
-		t.Errorf("expected program 'ssh', got %q", name)
-	}
-	if !contains(join(argv), "mooby@stockyard-abc12345") {
-		t.Errorf("ssh argv missing user@host; got %v", argv)
-	}
-}
-
 func TestBuildAttachCommand_SSHForEmptyBackend(t *testing.T) {
 	// Empty backend (legacy Firecracker) must take the SSH path.
 	task := &pb.Task{

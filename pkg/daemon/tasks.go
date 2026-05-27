@@ -137,7 +137,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	// Generate hostname
 	hostname := fmt.Sprintf("stockyard-%s", taskID)
 
-	// Generate cloud-init config (Firecracker only — vfkit handles its own cloud-init)
+	// Generate cloud-init config (Firecracker only)
 	var cloudInitData string
 	if tm.daemon.cfg.Backend == "" || tm.daemon.cfg.Backend == "firecracker" {
 		cloudInitCfg := &firecracker.CloudInitConfig{
@@ -159,19 +159,6 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		}
 	}
 
-	// Clone rootfs for the VM (non-Firecracker backends need pre-cloned rootfs)
-	var rootfsPath string
-	if tm.daemon.RootfsProvisioner() != nil {
-		var err error
-		rootfsPath, err = tm.daemon.RootfsProvisioner().Clone(ctx, taskID)
-		if err != nil {
-			if tm.daemon.IPPool() != nil {
-				tm.daemon.IPPool().Release(taskID)
-			}
-			return nil, fmt.Errorf("failed to clone rootfs: %w", err)
-		}
-	}
-
 	// Create VM if backend is available
 	var vmID string
 	var vmCID uint32
@@ -186,7 +173,6 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			ID:                taskID,
 			VCPU:              req.CPUs,
 			MemoryMB:          req.MemoryMB,
-			RootfsPath:        rootfsPath,
 			CloudInitData:     cloudInitData,
 			SSHAuthorizedKeys: req.SSHAuthorizedKeys,
 			DotEnv:            req.DotEnv,
@@ -196,9 +182,6 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 		vm, err := tm.backend.CreateVM(ctx, vmCfg)
 		if err != nil {
-			if tm.daemon.RootfsProvisioner() != nil {
-				tm.daemon.RootfsProvisioner().Destroy(ctx, taskID)
-			}
 			if tm.daemon.zfs != nil {
 				tm.daemon.zfs.DestroyDataset(ctx, taskID)
 			}
@@ -237,9 +220,6 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		// Attempt cleanup on failure
 		if tm.backend != nil && vmID != "" {
 			tm.backend.DeleteVM(ctx, vmID)
-		}
-		if tm.daemon.RootfsProvisioner() != nil {
-			tm.daemon.RootfsProvisioner().Destroy(ctx, taskID)
 		}
 		if tm.daemon.zfs != nil {
 			tm.daemon.zfs.DestroyDataset(ctx, taskID)
@@ -326,8 +306,8 @@ func parseDotEnv(data []byte) map[string]string {
 // VMConfig. The apple-container backend has no cloud-init or MMDS, so the entire
 // workload environment must be delivered through Env (forwarded as `container run
 // --env` flags) — including the secrets and the Tailscale auth key, which the
-// container entrypoint reads as TAILSCALE_AUTH_KEY. Firecracker and vfkit instead
-// receive adapter-private underscore-prefixed keys that their adapters extract;
+// container entrypoint reads as TAILSCALE_AUTH_KEY. Firecracker instead
+// receives adapter-private underscore-prefixed keys that its adapter extracts;
 // those keys are deliberately NOT set on the apple-container path so they cannot
 // leak into `container inspect`.
 //
@@ -335,7 +315,7 @@ func parseDotEnv(data []byte) map[string]string {
 // apple-container path its entries are applied first (lowest precedence) and
 // then overridden by the explicit task env (env), so that secrets and other
 // caller-supplied values always win. dotEnv is ignored on the
-// Firecracker/vfkit paths because those backends receive DotEnv via MMDS.
+// Firecracker path because that backend receives DotEnv via MMDS.
 func buildVMEnvMetadata(backend, taskID, taskName string, env map[string]string,
 	tailscaleAuthKey, hostname, staticIPArgs string,
 	networkConfig *network.StaticNetworkConfig, dotEnv []byte) (map[string]string, map[string]string) {
@@ -364,7 +344,7 @@ func buildVMEnvMetadata(backend, taskID, taskName string, env map[string]string,
 		return vmEnv, vmMetadata
 	}
 
-	// Firecracker/vfkit: pass adapter-private fields the Firecracker adapter extracts.
+	// Firecracker: pass adapter-private fields the Firecracker adapter extracts.
 	// DotEnv is forwarded via VMConfig.DotEnv → MMDS, not parsed here.
 	if tailscaleAuthKey != "" {
 		vmEnv["_tailscale_auth_key"] = tailscaleAuthKey
@@ -560,13 +540,6 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 	if tm.daemon.zfs != nil && (tm.daemon.cfg.Backend == "" || tm.daemon.cfg.Backend == "firecracker") {
 		if err := tm.daemon.zfs.DestroyDataset(ctx, taskID); err != nil {
 			fmt.Printf("Warning: failed to destroy ZFS dataset for %s: %v\n", taskID, err)
-		}
-	}
-
-	// Clean up rootfs clone (for non-Firecracker backends)
-	if tm.daemon.RootfsProvisioner() != nil {
-		if err := tm.daemon.RootfsProvisioner().Destroy(ctx, taskID); err != nil {
-			fmt.Printf("Warning: failed to destroy rootfs for %s: %v\n", taskID, err)
 		}
 	}
 

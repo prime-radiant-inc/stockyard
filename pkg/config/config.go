@@ -12,22 +12,14 @@ const DefaultSocketPath = "/var/run/stockyard/stockyard.sock"
 
 type Config struct {
 	InstanceID     string               `json:"instance_id"`
-	Backend        string               `json:"backend"` // "firecracker" (default), "vfkit", or "apple-container"
+	Backend        string               `json:"backend"` // "" (default → firecracker), "firecracker", or "apple-container"
 	Secrets        SecretsConfig        `json:"secrets"`
 	Daemon         DaemonConfig         `json:"daemon"`
 	ZFS            ZFSConfig            `json:"zfs"`
 	Firecracker    FirecrackerConfig    `json:"firecracker"`
-	Vfkit          VfkitConfig          `json:"vfkit"`
 	VM             VMConfig             `json:"vm"`
 	HTTP           HTTPConfig           `json:"http"`
-	Rootfs         RootfsConfig         `json:"rootfs"`
 	AppleContainer AppleContainerConfig `json:"apple_container"`
-}
-
-type RootfsConfig struct {
-	Provider  string `json:"provider"`   // "zfs" (default), "apfs", "copy"
-	BaseImage string `json:"base_image"` // Path to base rootfs image (for apfs/copy)
-	VMsDir    string `json:"vms_dir"`    // Directory for VM rootfs copies (for apfs/copy)
 }
 
 type VMConfig struct {
