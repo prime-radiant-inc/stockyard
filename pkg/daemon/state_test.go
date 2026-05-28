@@ -843,3 +843,23 @@ func TestFlushQueue(t *testing.T) {
 		t.Errorf("got %d commands after flush, want 1 (completed one)", len(cmds))
 	}
 }
+
+func TestState_BusyTimeoutConfigured(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	// The pure-Go SQLite driver sets no busy_timeout by default. The daemon
+	// runs many goroutines against one shared *sql.DB, so without a timeout a
+	// concurrent write fails immediately with SQLITE_BUSY ("database is
+	// locked") instead of waiting for the lock to clear.
+	var timeout int
+	if err := state.db.QueryRow("PRAGMA busy_timeout").Scan(&timeout); err != nil {
+		t.Fatalf("query busy_timeout: %v", err)
+	}
+	if timeout != 5000 {
+		t.Errorf("busy_timeout = %d ms, want 5000", timeout)
+	}
+}
