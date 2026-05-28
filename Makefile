@@ -4,13 +4,17 @@ all: proto build
 
 build: build-server build-guest
 
-# Client (CLI only)
+# Client (CLI only).
+# CGO_ENABLED=0 throughout: every binary ships as a static, pure-Go build
+# (the daemon's SQLite state store uses the pure-Go modernc driver). Building
+# and testing this way locally and in CI catches any accidental cgo dependency
+# before it reaches a CGO_ENABLED=0 release tarball.
 build-client:
-	go build -o bin/stockyard ./cmd/stockyard
+	CGO_ENABLED=0 go build -o bin/stockyard ./cmd/stockyard
 
 # Server (daemon + CLI)
 build-server: build-client
-	go build -o bin/stockyardd ./cmd/stockyardd
+	CGO_ENABLED=0 go build -o bin/stockyardd ./cmd/stockyardd
 
 # Guest binaries (static Linux, run inside VMs)
 build-guest: build-guest-amd64 build-guest-arm64
@@ -37,7 +41,7 @@ clean:
 test: test-unit
 
 test-unit:
-	go test ./pkg/... -v
+	CGO_ENABLED=0 go test ./pkg/... -v
 
 # Development helpers
 dev-daemon: build

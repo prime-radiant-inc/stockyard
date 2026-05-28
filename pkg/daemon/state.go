@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // Sentinel errors for the State layer. Use errors.Is to check these
@@ -131,7 +131,13 @@ func NewStateInMemory() (*State, error) {
 }
 
 func newState(dbPath string) (*State, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	// modernc's SQLite driver applies no busy_timeout unless one is set in the
+	// DSN. The daemon shares one *sql.DB across many goroutines, so without it
+	// a concurrent write fails immediately with SQLITE_BUSY ("database is
+	// locked") instead of waiting for the lock to clear. The pragma is applied
+	// to every connection the pool opens.
+	dsn := dbPath + "?_pragma=busy_timeout(5000)"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
