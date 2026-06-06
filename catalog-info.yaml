@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: stockyard
+  description: "Coding-agent VM orchestrator running agents in isolated VMs: Firecracker micro-VMs on Linux (ZFS audit snapshots) and Apple container on macOS."
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    prime-radiant.com/repo-map-rev: "f4066c4651be86ba3e80c8bd6ed23cffa4af32a8"
+  tags: [go, vm-orchestration]
+spec:
+  type: service
+  lifecycle: experimental
+  owner: user:obra
+  system: brooks
