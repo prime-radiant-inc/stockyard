@@ -253,8 +253,18 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		log.Printf("Waiting for Tailscale peer %s...", tailscaleHostname)
 		waitCtx, waitCancel := context.WithTimeout(ctx, 60*time.Second)
 		defer waitCancel()
-		if err := tailscale.WaitForPeer(waitCtx, tailscaleHostname, 60*time.Second); err != nil {
-			log.Printf("Warning: Tailscale peer %s not ready: %v", tailscaleHostname, err)
+		// apple-container access is via `container exec`, not SSH, and the
+		// container's in-netstack Tailscale SSH listener can lag well behind
+		// "node online". Gate on online-only there; keep the SSH probe for the
+		// Firecracker path, where sshd readiness is what callers wait on.
+		var waitErr error
+		if tm.daemon.cfg.Backend == "apple-container" {
+			waitErr = tailscale.WaitForPeerOnline(waitCtx, tailscaleHostname, 60*time.Second)
+		} else {
+			waitErr = tailscale.WaitForPeer(waitCtx, tailscaleHostname, 60*time.Second)
+		}
+		if waitErr != nil {
+			log.Printf("Warning: Tailscale peer %s not ready: %v", tailscaleHostname, waitErr)
 			// Don't fail — VM is running and accessible via direct IP
 		} else {
 			log.Printf("Tailscale peer %s is online", tailscaleHostname)
