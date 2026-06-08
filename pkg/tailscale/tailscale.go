@@ -8,12 +8,31 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/obra/stockyard/pkg/dashboard"
 )
+
+// macOSAppCLI is where the Tailscale macOS GUI app bundles its CLI. Unlike
+// Linux/Homebrew, the app does not put `tailscale` on the shell PATH.
+const macOSAppCLI = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+
+// tailscaleBin returns the path to the Tailscale CLI. On Linux (and Homebrew)
+// it is on PATH; on macOS the GUI app ships the CLI only inside its bundle, so
+// fall back to that location. The bundled binary accepts the same
+// `status`/`whois` subcommands the host-side code uses.
+func tailscaleBin() string {
+	if p, err := exec.LookPath("tailscale"); err == nil {
+		return p
+	}
+	if _, err := os.Stat(macOSAppCLI); err == nil {
+		return macOSAppCLI
+	}
+	return "tailscale" // last resort: surfaces a clear "not found" error
+}
 
 // BuildHostname generates a Tailscale hostname for a task
 func BuildHostname(taskID string) string {
@@ -96,9 +115,39 @@ func WaitForPeer(ctx context.Context, hostname string, timeout time.Duration) er
 	}
 }
 
+// WaitForPeerOnline blocks until the given hostname is present on the tailnet
+// and Online. Unlike WaitForPeer it does NOT probe SSH on the peer.
+//
+// This is the readiness gate for the apple-container backend, where workload
+// access is via `container exec` and Tailscale is opt-in extra reachability —
+// not the access path. The container's in-netstack Tailscale SSH listener can
+// also start serving :22 well after the node is Online (netmap/policy
+// propagation), so requiring an SSH handshake here would needlessly stall task
+// creation. "Online as a peer" is the meaningful signal for this path.
+func WaitForPeerOnline(ctx context.Context, hostname string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			// getPeerIP only returns a non-empty IP once the peer is Online.
+			if getPeerIP(ctx, hostname) != "" {
+				return nil
+			}
+			if time.Now().After(deadline) {
+				return fmt.Errorf("timeout waiting for Tailscale peer %s to come online after %v", hostname, timeout)
+			}
+		}
+	}
+}
+
 // getPeerIP returns the Tailscale IPv4 address for hostname, or "" if not found/online.
 func getPeerIP(ctx context.Context, hostname string) string {
-	cmd := exec.CommandContext(ctx, "tailscale", "status", "--json")
+	cmd := exec.CommandContext(ctx, tailscaleBin(), "status", "--json")
 	output, err := cmd.Output()
 	if err != nil {
 		return ""

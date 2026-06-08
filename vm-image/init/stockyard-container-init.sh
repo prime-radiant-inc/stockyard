@@ -31,9 +31,22 @@ if [ -n "${TS_AUTHKEY}" ]; then
     if [ ! -S /var/run/tailscale/tailscaled.sock ]; then
         echo "stockyard-container-init: WARNING tailscaled socket never appeared; tailscale up will likely fail"
     fi
-    tailscale up --ssh --authkey="${TS_AUTHKEY}" \
-        --hostname="${STOCKYARD_HOSTNAME:-stockyard}" || \
-        echo "stockyard-container-init: WARNING tailscale up failed; continuing"
+    # Bring Tailscale up in the background with a bounded timeout. Tailscale is
+    # opt-in extra reachability here (CLI/dashboard access is via `container
+    # exec`), so it must never gate the entrypoint:
+    #   * --timeout stops a stuck control-plane handshake from blocking forever
+    #     — e.g. a node still awaiting tailnet admin approval. Without it,
+    #     `tailscale up` blocks (it does not exit non-zero), so the `||` guard
+    #     never fires and llm-proxy / `sleep infinity` are never reached.
+    #   * backgrounding decouples llm-proxy startup from Tailscale entirely.
+    (
+        if tailscale up --ssh --timeout=30s --authkey="${TS_AUTHKEY}" \
+                --hostname="${STOCKYARD_HOSTNAME:-stockyard}"; then
+            echo "stockyard-container-init: tailscale up succeeded"
+        else
+            echo "stockyard-container-init: WARNING tailscale up failed/timed out; continuing"
+        fi
+    ) &
 else
     echo "stockyard-container-init: no Tailscale auth key; skipping Tailscale"
 fi
