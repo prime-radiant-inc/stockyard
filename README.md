@@ -116,25 +116,3 @@ Terminal access and snapshot coordination work differently per backend:
 Both vsock services exist because Firecracker VMs are otherwise isolated from the host. On apple-container, native container tooling covers the same needs — so neither guest binary is built into or needed in the apple-container image.
 
 See [docs/specs/vsock-shell-service.md](docs/specs/vsock-shell-service.md) for the Firecracker vsock-shell protocol.
-
-## Exec and Command Queues (Experimental, Linux only)
-
-> **Note:** `exec` and command queues are an experiment in programmatic VM orchestration, and only the Firecracker backend implements them. The API works and has proven useful from time to time, but it's not clear this is the right abstraction — running commands via SSH into the VM's Tailscale address is simpler and may be the better pattern. This interface may change significantly or be removed.
-
-`stockyard exec` runs commands inside a VM:
-
-```bash
-stockyard exec <task-id> -- go mod download
-stockyard exec <task-id> -- claude-code -p "implement OAuth"
-```
-
-Commands are managed through named queues. Two are created automatically with each VM:
-
-- **`default`** — serial execution. Commands run one at a time.
-- **`admin`** — concurrent. For interactive/debug shells.
-
-```bash
-stockyard queue list <task-id>
-stockyard queue status <task-id> default
-stockyard command logs <task-id> <command-id> --follow
-```
