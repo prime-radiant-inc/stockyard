@@ -27,15 +27,14 @@ import (
 
 // Daemon is the core daemon process that manages workspaces and tasks.
 type Daemon struct {
-	cfg               *config.Config
-	secrets           secrets.Provider
-	zfs               *zfs.Manager
-	state             *State
-	tasks             *TaskManager
-	queueManager      *QueueManager
-	snapshots         *SnapshotService
-	dhcp              *network.DHCPServer
-	ipPool            *network.IPPool
+	cfg       *config.Config
+	secrets   secrets.Provider
+	zfs       *zfs.Manager
+	state     *State
+	tasks     *TaskManager
+	snapshots *SnapshotService
+	dhcp      *network.DHCPServer
+	ipPool    *network.IPPool
 
 	listener     net.Listener
 	grpcListener net.Listener // TCP listener for remote gRPC (optional)
@@ -125,7 +124,6 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 		return nil, fmt.Errorf("unknown backend: %s", cfg.Backend)
 	}
 	d.tasks = NewTaskManager(d, backend)
-	d.queueManager = NewQueueManager(state, cfg)
 
 	// DHCP and IP pool are only needed for Firecracker backend
 	if cfg.Backend == "" || cfg.Backend == "firecracker" {
@@ -492,11 +490,6 @@ func (d *Daemon) Config() *config.Config {
 // Tasks returns the daemon's task manager.
 func (d *Daemon) Tasks() *TaskManager {
 	return d.tasks
-}
-
-// QueueManager returns the daemon's queue manager.
-func (d *Daemon) QueueManager() *QueueManager {
-	return d.queueManager
 }
 
 // SetTaskManager sets the daemon's task manager.
