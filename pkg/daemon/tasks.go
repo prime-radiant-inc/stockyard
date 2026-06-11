@@ -83,7 +83,12 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	// A nil tm.backend here means a backendless test daemon — real daemons
 	// fail at startup if their backend can't be constructed — so a nil
 	// validator can only misattribute the rejection message in tests.
-	validator, _ := tm.backend.(vmbackend.ImageValidator)
+	var validator vmbackend.ImageValidator
+	if tm.daemon.images != nil {
+		validator = tm.daemon.images // Firecracker: the registry validates
+	} else {
+		validator, _ = tm.backend.(vmbackend.ImageValidator)
+	}
 	resolvedImage, err := resolveTaskImage(ctx, req.Image, backendName, defaultImage, validator)
 	if err != nil {
 		return nil, err
@@ -195,6 +200,17 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		}
 	}
 
+	// Resolve per-image snapshot path and kernel (Firecracker + registry only).
+	// Per-image kernel applies at CREATE only; restart uses the shared kernel.
+	// See docs/image-contract.md and the Task 5 commit for the known limitation.
+	var rootfsSnapshot, imageKernel string
+	if tm.daemon.images != nil {
+		if rec, err := tm.daemon.state.GetImage(resolvedImage); err == nil {
+			rootfsSnapshot = tm.daemon.images.snapshotPathFor(rec)
+			imageKernel = rec.KernelPath
+		}
+	}
+
 	// Create VM if backend is available
 	var vmID string
 	var vmCID uint32
@@ -209,6 +225,8 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			ID:                taskID,
 			VCPU:              req.CPUs,
 			MemoryMB:          req.MemoryMB,
+			KernelPath:        imageKernel,
+			RootfsSnapshot:    rootfsSnapshot,
 			CloudInitData:     cloudInitData,
 			SSHAuthorizedKeys: req.SSHAuthorizedKeys,
 			DotEnv:            req.DotEnv,

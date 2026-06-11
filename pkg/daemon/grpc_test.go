@@ -310,15 +310,88 @@ func TestGRPCServer_ImportImage_AppleContainerRedirects(t *testing.T) {
 	}
 }
 
-func TestGRPCServer_RemoveImage_FirecrackerCitesPhase2(t *testing.T) {
+// newTestGRPCServerWithRegistry builds a grpcServer that has an imageRegistry
+// backed by in-memory state and fakeRegistryZFS/fakeDestroyer.
+func newTestGRPCServerWithRegistry(t *testing.T) (*grpcServer, *fakeRegistryZFS, *fakeDestroyer) {
+	t.Helper()
 	s := newTestGRPCServer(t, true)
 	s.daemon.cfg.Backend = "firecracker"
+	fz := &fakeRegistryZFS{snapshots: map[string]bool{}}
+	fd := &fakeDestroyer{}
+	s.daemon.images = &imageRegistry{
+		state:      s.daemon.state,
+		zfs:        fz,
+		destroyer:  fd,
+		pool:       "tank",
+		imagesPath: "stockyard/images",
+	}
+	return s, fz, fd
+}
 
-	_, err := s.RemoveImage(context.Background(), &pb.RemoveImageRequest{Name: "x"})
+func TestGRPCServer_RegistryImportListRemove(t *testing.T) {
+	s, _, _ := newTestGRPCServerWithRegistry(t)
+	rf := tempRootfs(t)
+
+	// Import
+	_, err := s.ImportImage(context.Background(), &pb.ImportImageRequest{Name: "prudence:1", RootfsPath: rf})
+	if err != nil {
+		t.Fatalf("ImportImage: %v", err)
+	}
+
+	// List — should show the imported image
+	resp, err := s.ListImages(context.Background(), &pb.ListImagesRequest{})
+	if err != nil {
+		t.Fatalf("ListImages: %v", err)
+	}
+	if len(resp.Images) != 1 || resp.Images[0].Reference != "prudence:1" {
+		t.Errorf("unexpected list: %+v", resp.Images)
+	}
+
+	// Remove
+	_, err = s.RemoveImage(context.Background(), &pb.RemoveImageRequest{Name: "prudence:1"})
+	if err != nil {
+		t.Fatalf("RemoveImage: %v", err)
+	}
+
+	// List again — empty
+	resp2, err := s.ListImages(context.Background(), &pb.ListImagesRequest{})
+	if err != nil {
+		t.Fatalf("ListImages after remove: %v", err)
+	}
+	if len(resp2.Images) != 0 {
+		t.Errorf("expected 0 images after remove, got %d", len(resp2.Images))
+	}
+}
+
+func TestGRPCServer_RegistryImportMissingRootfs(t *testing.T) {
+	s, _, _ := newTestGRPCServerWithRegistry(t)
+	_, err := s.ImportImage(context.Background(), &pb.ImportImageRequest{Name: "x", RootfsPath: "/nonexistent/rootfs.ext4"})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
+	}
+}
+
+func TestGRPCServer_RegistryRemoveDefault(t *testing.T) {
+	s, _, _ := newTestGRPCServerWithRegistry(t)
+	_, err := s.RemoveImage(context.Background(), &pb.RemoveImageRequest{Name: "default"})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument for default removal, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "cannot be removed") {
+		t.Errorf("expected refusal message: %v", err)
+	}
+}
+
+func TestGRPCServer_ListImages_NoRegistryNoLister(t *testing.T) {
+	s := newTestGRPCServer(t, true)
+	s.daemon.cfg.Backend = "firecracker"
+	// images is nil, backend is nil — no lister at all.
+
+	_, err := s.ListImages(context.Background(), &pb.ListImagesRequest{})
 	if status.Code(err) != codes.Unimplemented {
 		t.Fatalf("expected Unimplemented, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "PRI-2150 phase 2") {
-		t.Errorf("firecracker should cite phase 2: %v", err)
+	if !strings.Contains(err.Error(), "firecracker") {
+		t.Errorf("error should name the backend: %v", err)
 	}
 }

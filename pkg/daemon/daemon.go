@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"syscall"
@@ -32,6 +31,7 @@ type Daemon struct {
 	zfs       *zfs.Manager
 	state     *State
 	tasks     *TaskManager
+	images    *imageRegistry
 	snapshots *SnapshotService
 	dhcp      *network.DHCPServer
 	ipPool    *network.IPPool
@@ -114,6 +114,16 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 				backend = vmbackend.NewFirecrackerBackend(client)
 			}
 		}
+		// Construct the image registry regardless of kernel-path availability.
+		// d.zfs may be nil in tests or when ZFS is absent; guard against that.
+		if d.zfs != nil {
+			d.images = &imageRegistry{
+				state:      d.state,
+				zfs:        d.zfs,
+				pool:       cfg.ZFS.Pool,
+				imagesPath: cfg.ZFS.ImagesPath,
+			}
+		}
 	case "apple-container":
 		var err error
 		backend, err = createAppleContainerBackend(cfg)
@@ -124,6 +134,9 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 		return nil, fmt.Errorf("unknown backend: %s", cfg.Backend)
 	}
 	d.tasks = NewTaskManager(d, backend)
+	if d.images != nil {
+		d.images.destroyer = d.tasks
+	}
 
 	// DHCP and IP pool are only needed for Firecracker backend
 	if cfg.Backend == "" || cfg.Backend == "firecracker" {
@@ -277,9 +290,9 @@ func (d *Daemon) Start(ctx context.Context) error {
 	// Reconcile running VMs - update status for any that died while daemon was stopped
 	d.reconcileRunningVMs()
 
-	// Ensure base rootfs image is available for VM creation (Firecracker only — uses ZFS)
-	if d.cfg.Backend == "" || d.cfg.Backend == "firecracker" {
-		if err := d.ensureBaseImage(ctx); err != nil {
+	// Ensure base rootfs image is available for VM creation (Firecracker + ZFS only).
+	if d.images != nil {
+		if err := d.images.EnsureDefault(ctx, d.cfg.Firecracker.RootfsPath); err != nil {
 			return fmt.Errorf("failed to ensure base image: %w", err)
 		}
 	}
@@ -546,21 +559,3 @@ func (d *Daemon) pollHostMetrics() {
 	}
 }
 
-// ensureBaseImage checks if the base rootfs snapshot exists and imports it if not.
-func (d *Daemon) ensureBaseImage(ctx context.Context) error {
-	// Construct the expected snapshot path: pool/ImagesPath/rootfs@base
-	// e.g., tank/stockyard/images/rootfs@base
-	snapshotPath := fmt.Sprintf("%s/%s/rootfs@base", d.cfg.ZFS.Pool, d.cfg.ZFS.ImagesPath)
-
-	// Check if snapshot exists
-	cmd := exec.CommandContext(ctx, "zfs", "list", "-t", "snapshot", snapshotPath)
-	if err := cmd.Run(); err != nil {
-		// Snapshot doesn't exist, import from configured rootfs
-		fmt.Printf("Importing base rootfs image from %s...\n", d.cfg.Firecracker.RootfsPath)
-		if err := d.zfs.ImportRootfsImage(ctx, d.cfg.ZFS.ImagesPath, d.cfg.Firecracker.RootfsPath); err != nil {
-			return fmt.Errorf("failed to import base image: %w", err)
-		}
-		fmt.Println("Base image imported successfully")
-	}
-	return nil
-}
