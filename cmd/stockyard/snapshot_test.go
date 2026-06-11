@@ -80,14 +80,19 @@ func TestSnapshotRestore_ArgsAndForceFlag(t *testing.T) {
 }
 
 func TestOldTopLevelCommandsRemoved(t *testing.T) {
+	found := false
 	for _, c := range rootCmd.Commands() {
 		switch c.Name() {
 		case "snapshots", "restore":
 			t.Errorf("old top-level command %q must be removed", c.Name())
 		case "snapshot":
+			found = true
 			if c.Runnable() {
 				t.Error("top-level 'snapshot' must be a group, not the old runnable create command")
 			}
 		}
+	}
+	if !found {
+		t.Error("'snapshot' group is not registered on rootCmd")
 	}
 }
