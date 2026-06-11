@@ -43,7 +43,7 @@ var imageLsCmd = &cobra.Command{
 				created = "-"
 			}
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-				img.Reference, shortDigest(img.Digest), img.Size, created)
+				displayRef(img.Reference), shortDigest(img.Digest), img.Size, created)
 		}
 		w.Flush()
 		return nil
@@ -93,6 +93,18 @@ func shortDigest(d string) string {
 		return "-"
 	}
 	return d
+}
+
+// displayRef strips containerd-style reference normalization noise for table
+// display — "docker.io/library/" on official-namespace refs, bare "docker.io/"
+// otherwise — matching Docker's CLI and Apple's `container image ls` table.
+// Display only: stored refs stay canonical, and --image accepts short or
+// qualified forms unchanged.
+func displayRef(ref string) string {
+	if rest, ok := strings.CutPrefix(ref, "docker.io/library/"); ok {
+		return rest
+	}
+	return strings.TrimPrefix(ref, "docker.io/")
 }
 
 func init() {
