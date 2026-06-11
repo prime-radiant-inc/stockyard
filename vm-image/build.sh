@@ -9,6 +9,7 @@
 #   ./build.sh                    # Build with default settings
 #   IMAGE_NAME=my-image ./build.sh   # Custom image name
 #   IMAGE_TAG=v1.0.0 ./build.sh      # Custom tag
+#   TARGET=container ./build.sh      # Apple `container` target → stockyard.local/<name>:container
 
 set -e
 
@@ -25,6 +26,16 @@ TARGET="${TARGET:-firecracker}"
 # Platform for the container target (Apple Silicon → arm64).
 PLATFORM="${PLATFORM:-linux/arm64}"
 
+# Qualified OCI ref for the Apple `container` target (PRI-2178).
+# Unqualified names are normalized to docker.io/library/<name> by
+# containerd-style stores (false Docker Hub provenance) and are squattable
+# on Docker Hub — anything that PULLS an unqualified ref asks Hub for it.
+# stockyard.local declares "built here, never pulled".
+# The Firecracker/rootfs pipeline is deliberately NOT qualified: its Docker
+# tag is consumed locally by convert-to-rootfs.sh, and the Linux registry
+# names images at `stockyard image import` time.
+CONTAINER_IMAGE_REF="stockyard.local/${IMAGE_NAME}:container"
+
 # Select Dockerfile based on variant
 if [ "$VARIANT" = "alpine" ]; then
     DOCKERFILE="Dockerfile.alpine"
@@ -39,7 +50,11 @@ fi
 echo "=== Building Stockyard VM Image ==="
 echo "Variant: ${VARIANT}"
 echo "Target:  ${TARGET}"
-echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+if [ "$TARGET" = "container" ]; then
+    echo "Image: ${CONTAINER_IMAGE_REF}"
+else
+    echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+fi
 echo "VM User: ${VM_USER}"
 echo "Dockerfile: ${DOCKERFILE}"
 echo ""
@@ -51,7 +66,7 @@ if [ "$TARGET" = "container" ]; then
         --build-arg VM_USER="${VM_USER}" \
         --target container \
         --platform "${PLATFORM}" \
-        -t "${IMAGE_NAME}:container" \
+        -t "${CONTAINER_IMAGE_REF}" \
         -f "${DOCKERFILE}" \
         .
 else
@@ -67,11 +82,13 @@ fi
 echo ""
 echo "=== Build Complete ==="
 if [ "$TARGET" = "container" ]; then
-    echo "Image: ${IMAGE_NAME}:container"
+    echo "Image: ${CONTAINER_IMAGE_REF}"
     echo ""
     echo "Next steps:"
-    echo "  - Push to registry: docker push ${IMAGE_NAME}:container"
-    echo "  - Run container:    container run -d ${IMAGE_NAME}:container"
+    echo "  - Load into Apple's container store:"
+    echo "      docker save ${CONTAINER_IMAGE_REF} -o /tmp/stockyard-vm-oci.tar"
+    echo "      container image load --input /tmp/stockyard-vm-oci.tar"
+    echo "  - Run container: container run -d ${CONTAINER_IMAGE_REF}"
 else
     echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
     echo ""

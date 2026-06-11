@@ -131,7 +131,7 @@ git commit -m "feat(PRI-2178): de-noise docker.io/library/ prefixes in stockyard
 
 No Go code here — verification is `bash -n` plus output inspection of the echo paths (the full Docker build is NOT required; see Task 4 note).
 
-- [ ] **Step 1: Add the qualified ref variable and usage line**
+- [x] **Step 1: Add the qualified ref variable and usage line**
 
 In `vm-image/build.sh`, extend the usage header (currently lines 8-11):
 
@@ -157,7 +157,7 @@ After the `PLATFORM` default (line 26), add:
 CONTAINER_IMAGE_REF="stockyard.local/${IMAGE_NAME}:container"
 ```
 
-- [ ] **Step 2: Use the qualified ref in the header echo, tag, and next-steps**
+- [x] **Step 2: Use the qualified ref in the header echo, tag, and next-steps**
 
 Change the header echo (currently line 42, which prints `${IMAGE_NAME}:${IMAGE_TAG}` even for the container target — a pre-existing inaccuracy):
 
@@ -196,7 +196,7 @@ if [ "$TARGET" = "container" ]; then
 
 The `else` (firecracker) branch stays byte-for-byte unchanged.
 
-- [ ] **Step 3: Verify the script**
+- [x] **Step 3: Verify the script**
 
 Run: `bash -n vm-image/build.sh`
 Expected: exit 0, no output.
@@ -219,7 +219,7 @@ rm -rf /tmp/fake-docker
 
 Expected: output includes `Image: stockyard.local/stockyard-vm:container` (twice — header and completion echo) and the fake-docker line shows `-t stockyard.local/stockyard-vm:container`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add vm-image/build.sh
