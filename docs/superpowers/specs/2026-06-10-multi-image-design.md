@@ -60,7 +60,7 @@ New doc: `docs/image-contract.md`. The two platforms boot differently, and the e
 
 ## Errors
 
-One legible shape across backends for the common failure: `image "<ref>" not found on host; available: <list>`. Phase 1's Firecracker rejection names the ticket and phase. Import failures (unreadable rootfs file, insufficient pool space) report the underlying cause directly.
+One legible shape across backends for the common failure: `image "<ref>" not found on host; available images:` followed by the host's image listing (the `container image ls` table on macOS; one registered ref per line on Linux). Stockyard does not parse the `container` CLI's table output to reformat it — the raw listing is the contract. Phase 1's Firecracker rejection names the ticket and phase. Import failures (unreadable rootfs file, insufficient pool space) report the underlying cause directly.
 
 ## Testing
 
