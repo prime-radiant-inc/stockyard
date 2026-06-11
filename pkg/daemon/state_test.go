@@ -636,6 +636,57 @@ func TestTaskImageRoundtrip(t *testing.T) {
 	}
 }
 
+func TestImageRecordRoundtrip(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	rec := &ImageRecord{Name: "prudence-vm:1.2", Dataset: "prudence-vm-1.2", KernelPath: "/var/lib/stockyard/k.bin", SizeBytes: 1234, CreatedAt: time.Now()}
+	if err := state.CreateImage(rec); err != nil {
+		t.Fatalf("CreateImage: %v", err)
+	}
+	got, err := state.GetImage("prudence-vm:1.2")
+	if err != nil {
+		t.Fatalf("GetImage: %v", err)
+	}
+	if got.Dataset != "prudence-vm-1.2" || got.KernelPath != "/var/lib/stockyard/k.bin" || got.SizeBytes != 1234 {
+		t.Errorf("roundtrip mismatch: %+v", got)
+	}
+
+	// GetImageByDataset must return the same record.
+	got2, err := state.GetImageByDataset("prudence-vm-1.2")
+	if err != nil {
+		t.Fatalf("GetImageByDataset: %v", err)
+	}
+	if got2.Name != "prudence-vm:1.2" {
+		t.Errorf("GetImageByDataset Name = %q, want %q", got2.Name, "prudence-vm:1.2")
+	}
+	// Missing dataset must error.
+	if _, err := state.GetImageByDataset("no-such-dataset"); err == nil {
+		t.Error("expected error for missing dataset")
+	}
+
+	all, err := state.ListImages()
+	if err != nil || len(all) != 1 {
+		t.Fatalf("ListImages: %v / %d", err, len(all))
+	}
+
+	// Dataset collisions must fail (UNIQUE) — different name, same dataset.
+	dup := &ImageRecord{Name: "prudence-vm/1.2", Dataset: "prudence-vm-1.2", CreatedAt: time.Now()}
+	if err := state.CreateImage(dup); err == nil {
+		t.Error("expected UNIQUE violation on dataset collision")
+	}
+
+	if err := state.DeleteImage("prudence-vm:1.2"); err != nil {
+		t.Fatalf("DeleteImage: %v", err)
+	}
+	if _, err := state.GetImage("prudence-vm:1.2"); err == nil {
+		t.Error("expected error after delete")
+	}
+}
+
 func TestState_BusyTimeoutConfigured(t *testing.T) {
 	state, err := NewStateInMemory()
 	if err != nil {

@@ -24,6 +24,7 @@ func (b *FirecrackerBackend) CreateVM(ctx context.Context, cfg *VMConfig) (*VMIn
 		MemoryMB:          cfg.MemoryMB,
 		KernelPath:        cfg.KernelPath,
 		RootfsPath:        cfg.RootfsPath,
+		RootfsSnapshot:    cfg.RootfsSnapshot,
 		CloudInitData:     cfg.CloudInitData,
 		SSHAuthorizedKeys: cfg.SSHAuthorizedKeys,
 		DotEnv:            cfg.DotEnv,

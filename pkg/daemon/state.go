@@ -139,6 +139,14 @@ func (s *State) migrate() error {
 		created_at DATETIME NOT NULL
 	);
 
+	CREATE TABLE IF NOT EXISTS images (
+		name TEXT PRIMARY KEY,
+		dataset TEXT NOT NULL UNIQUE,
+		kernel_path TEXT DEFAULT '',
+		size_bytes INTEGER DEFAULT 0,
+		created_at DATETIME NOT NULL
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_task_id ON snapshots(task_id);
 	`
@@ -621,4 +629,112 @@ func (s *State) ListTaskSnapshots(taskID string) ([]SnapshotRecord, error) {
 	}
 
 	return snapshots, nil
+}
+
+// ImageRecord is one registered Firecracker image (PRI-2150 phase 2).
+type ImageRecord struct {
+	Name       string
+	Dataset    string // ZFS dataset component under images path
+	KernelPath string // empty = shared default kernel
+	SizeBytes  int64
+	CreatedAt  time.Time
+}
+
+// CreateImage inserts a new image record. Returns an error if name or dataset already exists.
+func (s *State) CreateImage(rec *ImageRecord) error {
+	_, err := s.db.Exec(
+		`INSERT INTO images (name, dataset, kernel_path, size_bytes, created_at) VALUES (?, ?, ?, ?, ?)`,
+		rec.Name, rec.Dataset, rec.KernelPath, rec.SizeBytes, rec.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create image: %w", err)
+	}
+	return nil
+}
+
+// GetImage retrieves an image by name; returns an error when absent.
+func (s *State) GetImage(name string) (*ImageRecord, error) {
+	row := s.db.QueryRow(
+		`SELECT name, dataset, kernel_path, size_bytes, created_at FROM images WHERE name = ?`,
+		name,
+	)
+	rec := &ImageRecord{}
+	err := row.Scan(&rec.Name, &rec.Dataset, &rec.KernelPath, &rec.SizeBytes, &rec.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("image not found: %s", name)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get image: %w", err)
+	}
+	return rec, nil
+}
+
+// GetImageByDataset retrieves an image by its ZFS dataset component; returns an
+// error when absent. Used as a collision pre-check before any ZFS mutation.
+func (s *State) GetImageByDataset(dataset string) (*ImageRecord, error) {
+	row := s.db.QueryRow(
+		`SELECT name, dataset, kernel_path, size_bytes, created_at FROM images WHERE dataset = ?`,
+		dataset,
+	)
+	rec := &ImageRecord{}
+	err := row.Scan(&rec.Name, &rec.Dataset, &rec.KernelPath, &rec.SizeBytes, &rec.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("image with dataset %q not found", dataset)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get image by dataset: %w", err)
+	}
+	return rec, nil
+}
+
+// ListImages returns all registered images ordered by name.
+func (s *State) ListImages() ([]*ImageRecord, error) {
+	rows, err := s.db.Query(
+		`SELECT name, dataset, kernel_path, size_bytes, created_at FROM images ORDER BY name`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list images: %w", err)
+	}
+	defer rows.Close()
+
+	var recs []*ImageRecord
+	for rows.Next() {
+		rec := &ImageRecord{}
+		if err := rows.Scan(&rec.Name, &rec.Dataset, &rec.KernelPath, &rec.SizeBytes, &rec.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan image: %w", err)
+		}
+		recs = append(recs, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating images: %w", err)
+	}
+	return recs, nil
+}
+
+// UpdateImageSize updates the size_bytes field for a registered image.
+// Used by EnsureDefault's self-heal branch to reflect the actual rootfs size
+// after a re-import (the stored value may be stale if the prior import was
+// interrupted before the row was updated).
+func (s *State) UpdateImageSize(name string, sizeBytes int64) error {
+	_, err := s.db.Exec(`UPDATE images SET size_bytes = ? WHERE name = ?`, sizeBytes, name)
+	if err != nil {
+		return fmt.Errorf("failed to update image size: %w", err)
+	}
+	return nil
+}
+
+// DeleteImage removes an image record by name.
+func (s *State) DeleteImage(name string) error {
+	result, err := s.db.Exec(`DELETE FROM images WHERE name = ?`, name)
+	if err != nil {
+		return fmt.Errorf("failed to delete image: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("image not found: %s", name)
+	}
+	return nil
 }

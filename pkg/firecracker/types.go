@@ -47,6 +47,7 @@ type VMConfig struct {
 	VCPU              int32
 	MemoryMB          int32
 	RootfsPath        string             // Path to rootfs.ext4
+	RootfsSnapshot    string             // Full ZFS snapshot to clone (PRI-2150 phase 2); empty = backend default
 	KernelPath        string             // Path to vmlinux kernel
 	KernelArgs        string             // Boot arguments (optional, has defaults)
 	CloudInitData     string             // Base64-encoded cloud-init user-data

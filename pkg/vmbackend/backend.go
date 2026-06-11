@@ -42,6 +42,7 @@ type VMConfig struct {
 	KernelPath        string
 	RootfsPath        string // Path to this VM's writable rootfs image
 	Image             string // Per-task OCI image ref; empty = backend's configured default (PRI-2150)
+	RootfsSnapshot    string // Full ZFS snapshot to clone (PRI-2150 phase 2); empty = backend default
 	SSHAuthorizedKeys []string
 	CloudInitData     string // Base64-encoded cloud-init user-data
 	DotEnv            []byte
