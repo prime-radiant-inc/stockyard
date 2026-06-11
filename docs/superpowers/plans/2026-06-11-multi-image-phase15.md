@@ -128,7 +128,7 @@ git commit -m "feat(PRI-2150): ImageInfo and ImageLister backend seam"
 
 **Files:**
 - Test: `pkg/vmbackend/apple_container_test.go`
-- Modify: `pkg/vmbackend/apple_container.go` (append after `ValidateImage`, file currently 408 lines)
+- Modify: `pkg/vmbackend/apple_container.go` (append at end of file, currently 408 lines)
 
 - [ ] **Step 1: Write the failing tests** — add to apple_container_test.go (the fakeRunner already supports two-token keys like `"image ls"`):
 
@@ -311,7 +311,7 @@ func TestGRPCServer_RemoveImage_FirecrackerCitesPhase2(t *testing.T) {
 }
 ```
 
-Add imports to grpc_test.go if missing: `strings`, `google.golang.org/grpc/codes`, `google.golang.org/grpc/status`, `github.com/obra/stockyard/pkg/vmbackend` (check what's already imported first).
+Add imports to grpc_test.go if missing: `strings` and `github.com/obra/stockyard/pkg/vmbackend` (`codes`/`status` are already imported — verify). Drive-by fix while in the file: the fixture comment at grpc_test.go:41 says `// nil config = no firecracker client` — the second NewTaskManager param is a `vmbackend.Backend`; correct it to `// nil backend = no VM backend`.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -350,18 +350,20 @@ func (s *grpcServer) ListImages(ctx context.Context, req *pb.ListImagesRequest) 
 // ImportImage and RemoveImage are daemon-side guidance until the Firecracker
 // registry (PRI-2150 phase 2). The apple-container store is authoritative and
 // stockyard does not mutate it — that redirect is permanent, not a stopgap.
+// NOTE: the `container` CLI has no `image import`; its verbs are load/pull/rm,
+// so the redirect names the real command, not the RPC verb.
 func (s *grpcServer) ImportImage(ctx context.Context, req *pb.ImportImageRequest) (*pb.ImportImageResponse, error) {
-	return nil, s.imageMutationUnsupported("import")
+	return nil, s.imageMutationUnsupported("import", "container image load` or `container image pull")
 }
 
 func (s *grpcServer) RemoveImage(ctx context.Context, req *pb.RemoveImageRequest) (*pb.RemoveImageResponse, error) {
-	return nil, s.imageMutationUnsupported("remove")
+	return nil, s.imageMutationUnsupported("remove", "container image rm")
 }
 
-func (s *grpcServer) imageMutationUnsupported(verb string) error {
+func (s *grpcServer) imageMutationUnsupported(verb, containerCmd string) error {
 	if s.backendName() == "apple-container" {
 		return status.Errorf(codes.Unimplemented,
-			"the apple-container image store is managed by the container CLI; run `container image %s ...` on the daemon host", verb)
+			"the apple-container image store is managed by the container CLI; use `%s` on the daemon host", containerCmd)
 	}
 	return status.Errorf(codes.Unimplemented,
 		"image %s arrives with the %s image registry (PRI-2150 phase 2)", verb, s.backendName())
@@ -560,10 +562,12 @@ git commit -m "feat(PRI-2150): stockyard image ls/import/rm command group"
 
 Same scratch-instance recipe as phase 1 (memory: `STOCKYARD_CONFIG_DIR`, never the default socket; daemon always tries 1Password first — harmless). Steps:
 
+**Every `stockyard` command below MUST carry `STOCKYARD_CONFIG_DIR=/tmp/stockyard-smoke15`** — the CLI resolves the real default socket without it (this is the trap in the project memory).
+
 - [ ] Scratch config at `/tmp/stockyard-smoke15/` (same JSON shape as phase 1; `apple_container.image` = an existing ref from `container image ls`; `http.enabled: false`; scratch socket/data dir). Start daemon with `STOCKYARD_CONFIG_DIR=/tmp/stockyard-smoke15`, log to file, record PID.
 - [ ] `stockyard image ls` → table matches `container image ls` content (spot-check 2 refs, sizes present, digests truncated to 12 hex chars).
-- [ ] `stockyard image import foo --rootfs /tmp/nope` → error mentioning `container image import` redirect (the apple-container guidance), non-zero exit.
-- [ ] `stockyard image rm foo` → error with the same redirect shape (`container image rm ...`).
+- [ ] `stockyard image import foo --rootfs /tmp/nope` → error mentioning `container image load` / `container image pull` (the apple-container guidance), non-zero exit.
+- [ ] `stockyard image rm foo` → error redirecting to `container image rm`.
 - [ ] Regression: `stockyard run --name smoke15 --no-tailscale --image <existing-ref>` → task runs; `stockyard list` shows the IMAGE column. Then `destroy --force` it.
 - [ ] Cleanup: kill daemon by recorded PID, `rm -rf /tmp/stockyard-smoke15`, verify `container ls --all` shows nothing of ours.
 - [ ] Record outputs for the PR description.
