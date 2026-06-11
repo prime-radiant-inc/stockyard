@@ -205,10 +205,18 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	// See docs/image-contract.md and the Task 5 commit for the known limitation.
 	var rootfsSnapshot, imageKernel string
 	if tm.daemon.images != nil {
-		if rec, err := tm.daemon.state.GetImage(resolvedImage); err == nil {
-			rootfsSnapshot = tm.daemon.images.snapshotPathFor(rec)
-			imageKernel = rec.KernelPath
+		rec, err := tm.daemon.state.GetImage(resolvedImage)
+		if err != nil {
+			if tm.daemon.zfs != nil {
+				tm.daemon.zfs.DestroyDataset(ctx, taskID)
+			}
+			if tm.daemon.IPPool() != nil {
+				tm.daemon.IPPool().Release(taskID)
+			}
+			return nil, fmt.Errorf("image %q disappeared during task creation: %w", resolvedImage, err)
 		}
+		rootfsSnapshot = tm.daemon.images.snapshotPathFor(rec)
+		imageKernel = rec.KernelPath
 	}
 
 	// Create VM if backend is available

@@ -1,6 +1,6 @@
 # Multi-Image Phase 2 (Firecracker image registry) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Named, ZFS-backed Firecracker images behind the existing `stockyard image` surface: `import` ingests, `rm` destroys, `ls` lists, `run --image <name>` clones the named base.
 
@@ -27,7 +27,7 @@
 - Modify: `pkg/zfs/zfs.go`
 - Test: `pkg/zfs/zfs_test.go`
 
-- [ ] **Step 1 (TDD): sanitizer tests** — add to zfs_test.go:
+- [x] **Step 1 (TDD): sanitizer tests** — add to zfs_test.go:
 
 ```go
 func TestSanitizeDatasetComponent(t *testing.T) {
@@ -47,7 +47,7 @@ func TestSanitizeDatasetComponent(t *testing.T) {
 
 Run `go test ./pkg/zfs/ -run TestSanitizeDatasetComponent -v` — expect compile error (undefined).
 
-- [ ] **Step 2: implement** in zfs.go (near BuildSnapshotName, reusing its character policy):
+- [x] **Step 2: implement** in zfs.go (near BuildSnapshotName, reusing its character policy):
 
 ```go
 // SanitizeDatasetComponent maps an image name (an OCI-style ref) to a single
@@ -64,7 +64,7 @@ func SanitizeDatasetComponent(name string) string {
 }
 ```
 
-- [ ] **Step 3: parameterized import + helpers** — refactor `ImportRootfsImage`'s body into:
+- [x] **Step 3: parameterized import + helpers** — refactor `ImportRootfsImage`'s body into:
 
 ```go
 // ImportImageRootfs imports a rootfs file into pool/imagesPath/<dataset> as
@@ -89,7 +89,7 @@ func (m *Manager) DestroyDatasetRecursive(ctx context.Context, datasetPath strin
 }
 ```
 
-- [ ] **Step 4:** `go test ./pkg/zfs/ -v` all green; `CGO_ENABLED=0 go build ./...` clean. Commit: `feat(PRI-2150): zfs sanitizer, parameterized image import, registry helpers`
+- [x] **Step 4:** `go test ./pkg/zfs/ -v` all green; `CGO_ENABLED=0 go build ./...` clean. Commit: `feat(PRI-2150): zfs sanitizer, parameterized image import, registry helpers`
 
 ---
 
@@ -99,7 +99,7 @@ func (m *Manager) DestroyDatasetRecursive(ctx context.Context, datasetPath strin
 - Modify: `pkg/daemon/state.go`
 - Test: `pkg/daemon/state_test.go`
 
-- [ ] **Step 1 (TDD): roundtrip test** in state_test.go:
+- [x] **Step 1 (TDD): roundtrip test** in state_test.go:
 
 ```go
 func TestImageRecordRoundtrip(t *testing.T) {
@@ -143,7 +143,7 @@ func TestImageRecordRoundtrip(t *testing.T) {
 
 Run — expect compile error (`ImageRecord` undefined).
 
-- [ ] **Step 2: implement** — in `migrate()`'s schema block add:
+- [x] **Step 2: implement** — in `migrate()`'s schema block add:
 
 ```sql
 CREATE TABLE IF NOT EXISTS images (
@@ -178,7 +178,7 @@ Extend the roundtrip test: after `GetImage`, also `GetImageByDataset("prudence-v
 
 Implement with the file's existing query/Scan conventions (INSERT 5 cols; SELECT name, dataset, kernel_path, size_bytes, created_at).
 
-- [ ] **Step 3:** `go test ./pkg/daemon/ -v` green. Commit: `feat(PRI-2150): images table and ImageRecord store`
+- [x] **Step 3:** `go test ./pkg/daemon/ -v` green. Commit: `feat(PRI-2150): images table and ImageRecord store`
 
 ---
 
@@ -190,7 +190,7 @@ Implement with the file's existing query/Scan conventions (INSERT 5 cols; SELECT
 
 The registry owns name→dataset resolution and the orderly scorched-earth sequence. ZFS and task-destruction go behind small interfaces so the whole thing unit-tests on macOS.
 
-- [ ] **Step 1: write image_registry.go**:
+- [x] **Step 1: write image_registry.go**:
 
 ```go
 package daemon
@@ -399,7 +399,7 @@ func humanBytes(n int64) string {
 }
 ```
 
-- [ ] **Step 2 (TDD-ish, tests after the skeleton given above is typed but BEFORE wiring): image_registry_test.go** — fakes + the behavior matrix:
+- [x] **Step 2 (TDD-ish, tests after the skeleton given above is typed but BEFORE wiring): image_registry_test.go** — fakes + the behavior matrix:
 
 ```go
 package daemon
@@ -607,7 +607,7 @@ var _ vmbackend.ImageLister = (*imageRegistry)(nil)
 
 (Test-file imports: context, os, path/filepath, strings, testing, time, vmbackend — drop fmt unless used.)
 
-- [ ] **Step 3:** `go test ./pkg/daemon/ -run TestRegistry -v` — all green; full package green. Commit: `feat(PRI-2150): imageRegistry — ZFS-backed named images with orderly replace`
+- [x] **Step 3:** `go test ./pkg/daemon/ -run TestRegistry -v` — all green; full package green. Commit: `feat(PRI-2150): imageRegistry — ZFS-backed named images with orderly replace`
 
 ---
 
@@ -617,7 +617,7 @@ var _ vmbackend.ImageLister = (*imageRegistry)(nil)
 - Modify: `pkg/daemon/tasks.go`
 - Test: extend `pkg/daemon/tasks_image_test.go`
 
-- [ ] Implement on TaskManager. `DestroyTask(ctx context.Context, taskID string) error` exists at tasks.go:559 and removes the task row entirely, so any row returned by ListTasks is destroyable — no status filter needed:
+- [x] Implement on TaskManager. `DestroyTask(ctx context.Context, taskID string) error` exists at tasks.go:559 and removes the task row entirely, so any row returned by ListTasks is destroyable — no status filter needed:
 
 ```go
 // DestroyTasksByImage destroys every task whose resolved image is name.
@@ -639,8 +639,8 @@ func (tm *TaskManager) DestroyTasksByImage(ctx context.Context, image string) er
 }
 ```
 
-- [ ] Test with the in-memory state: create two task rows with different images via `state.CreateTask`, a TaskManager with nil backend (DestroyTask nil-guards every backend/zfs/feed access and ends in `state.DeleteTask` — the row is REMOVED, not status-flipped), call DestroyTasksByImage, then assert the matching task's `GetTask` errors (row gone) and the other task's row survives.
-- [ ] Full `go test ./pkg/daemon/` green. Commit: `feat(PRI-2150): TaskManager.DestroyTasksByImage for scoped image replacement`
+- [x] Test with the in-memory state: create two task rows with different images via `state.CreateTask`, a TaskManager with nil backend (DestroyTask nil-guards every backend/zfs/feed access and ends in `state.DeleteTask` — the row is REMOVED, not status-flipped), call DestroyTasksByImage, then assert the matching task's `GetTask` errors (row gone) and the other task's row survives.
+- [x] Full `go test ./pkg/daemon/` green. Commit: `feat(PRI-2150): TaskManager.DestroyTasksByImage for scoped image replacement`
 
 ---
 
@@ -649,14 +649,14 @@ func (tm *TaskManager) DestroyTasksByImage(ctx context.Context, image string) er
 **Files:**
 - Modify: `pkg/vmbackend/backend.go` (VMConfig), `pkg/vmbackend/firecracker.go` (mapping), `pkg/firecracker/client.go` (VMConfig struct + CreateVM), test `pkg/firecracker/client_test.go` if a VMConfig-mapping test exists (check)
 
-- [ ] `vmbackend.VMConfig` gains:
+- [x] `vmbackend.VMConfig` gains:
 
 ```go
 	RootfsSnapshot    string // Full ZFS snapshot to clone (PRI-2150 phase 2); empty = backend default
 ```
 
-- [ ] `firecracker.VMConfig` gains the same field; `vmbackend/firecracker.go`'s CreateVM mapping copies it.
-- [ ] `pkg/firecracker/client.go` CreateVM: replace the hardcoded line with:
+- [x] `firecracker.VMConfig` gains the same field; `vmbackend/firecracker.go`'s CreateVM mapping copies it.
+- [x] `pkg/firecracker/client.go` CreateVM: replace the hardcoded line with:
 
 ```go
 		snapshotPath := config.RootfsSnapshot
@@ -666,7 +666,7 @@ func (tm *TaskManager) DestroyTasksByImage(ctx context.Context, image string) er
 		}
 ```
 
-- [ ] Build + full tests green; linux cross-compile clean. Commit: `feat(PRI-2150): thread RootfsSnapshot through VMConfig to the clone source`
+- [x] Build + full tests green; linux cross-compile clean. Commit: `feat(PRI-2150): thread RootfsSnapshot through VMConfig to the clone source`
 
 ---
 
@@ -676,8 +676,8 @@ func (tm *TaskManager) DestroyTasksByImage(ctx context.Context, image string) er
 - Modify: `pkg/daemon/daemon.go`, `pkg/daemon/tasks.go`, `pkg/daemon/grpc.go`
 - Test: extend `pkg/daemon/grpc_test.go`
 
-- [ ] **daemon.go:** add field `images *imageRegistry` to Daemon. Construct it inside `case "", "firecracker":` but OUTSIDE the `if cfg.Firecracker.KernelPath != "" && ...` conditional (state and zfs are initialized at :83-96, before backend construction; a kernel-path-less config must still get a registry or must safely skip — and the EnsureDefault call-site must not nil-panic): `d.images = &imageRegistry{state: d.state, zfs: d.zfs, pool: cfg.ZFS.Pool, imagesPath: cfg.ZFS.ImagesPath}` guarded by `d.zfs != nil`. Set `d.images.destroyer = d.tasks` right after `d.tasks = NewTaskManager(...)` (guard `d.images != nil`). Replace the `ensureBaseImage(ctx)` call (line ~282) with `d.images.EnsureDefault(ctx, d.cfg.Firecracker.RootfsPath)` guarded by `d.images != nil` (replacing the backend-name condition), and delete the old `ensureBaseImage` function.
-- [ ] **tasks.go CreateTask:** validator selection becomes registry-aware, and the resolved image maps to snapshot/kernel:
+- [x] **daemon.go:** add field `images *imageRegistry` to Daemon. Construct it inside `case "", "firecracker":` but OUTSIDE the `if cfg.Firecracker.KernelPath != "" && ...` conditional (state and zfs are initialized at :83-96, before backend construction; a kernel-path-less config must still get a registry or must safely skip — and the EnsureDefault call-site must not nil-panic): `d.images = &imageRegistry{state: d.state, zfs: d.zfs, pool: cfg.ZFS.Pool, imagesPath: cfg.ZFS.ImagesPath}` guarded by `d.zfs != nil`. Set `d.images.destroyer = d.tasks` right after `d.tasks = NewTaskManager(...)` (guard `d.images != nil`). Replace the `ensureBaseImage(ctx)` call (line ~282) with `d.images.EnsureDefault(ctx, d.cfg.Firecracker.RootfsPath)` guarded by `d.images != nil` (replacing the backend-name condition), and delete the old `ensureBaseImage` function.
+- [x] **tasks.go CreateTask:** validator selection becomes registry-aware, and the resolved image maps to snapshot/kernel:
 
 Replace
 
@@ -712,7 +712,7 @@ then add to the vmCfg literal: `RootfsSnapshot: rootfsSnapshot,` and set `Kernel
 
 **Known limitation (state it in the commit message and the contract doc):** per-image kernels apply at CREATE only. `RestartTask` rebuilds a minimal VMConfig (tasks.go:435-439) without KernelPath, so a restarted task boots the shared kernel. Full kernel-pairing semantics (incl. restart and boot args) remain the deferred phase-2 design point in the spec — this ships the minimal create-time pairing only.
 
-- [ ] **grpc.go:** route the mutation RPCs to the registry when present:
+- [x] **grpc.go:** route the mutation RPCs to the registry when present:
 
 ```go
 func (s *grpcServer) ImportImage(ctx context.Context, req *pb.ImportImageRequest) (*pb.ImportImageResponse, error) {
@@ -744,8 +744,8 @@ func (s *grpcServer) ImportImage(ctx context.Context, req *pb.ImportImageRequest
 
 (the rest of the handler is unchanged).
 
-- [ ] **grpc_test.go:** the phase-1.5 firecracker tests change meaning: `TestGRPCServer_RemoveImage_FirecrackerCitesPhase2` is now WRONG — replace it with registry-backed tests: build the server fixture, attach an imageRegistry with the fakes from image_registry_test.go, assert ImportImage/RemoveImage/ListImages round-trip through the registry, and that apple-container (no registry) still redirects. Keep a no-registry-no-lister case asserting Unimplemented.
-- [ ] Full `go test ./pkg/...` green; linux cross-compile. Commit: `feat(PRI-2150): wire image registry into resolution, startup, and image RPCs`
+- [x] **grpc_test.go:** the phase-1.5 firecracker tests change meaning: `TestGRPCServer_RemoveImage_FirecrackerCitesPhase2` is now WRONG — replace it with registry-backed tests: build the server fixture, attach an imageRegistry with the fakes from image_registry_test.go, assert ImportImage/RemoveImage/ListImages round-trip through the registry, and that apple-container (no registry) still redirects. Keep a no-registry-no-lister case asserting Unimplemented.
+- [x] Full `go test ./pkg/...` green; linux cross-compile. Commit: `feat(PRI-2150): wire image registry into resolution, startup, and image RPCs`
 
 ---
 
@@ -758,7 +758,7 @@ Per spec: "the deploy target shrinks to build → copy artifact to host → `sto
 
 **CRITICAL naming constraint:** `IMAGE_NAME` is ALREADY taken — `build.sh:19` and `convert-to-rootfs.sh:18` consume it as the *Docker* image name, and make exports command-line variables to recipe sub-shells, so `make deploy IMAGE_NAME=foo` would break the build pipeline. The registry name variable is `REGISTRY_IMAGE`. Also: `deploy` and `deploy-alpine` must NOT share a `rootfs` prerequisite chain — both variants write `output/rootfs.ext4`, so an alias that re-triggers `rootfs` would clobber the Alpine artifact with the Ubuntu build. Factor a prerequisite-free `deploy-image` target.
 
-- [ ] Rework deployment targets:
+- [x] Rework deployment targets:
 
 ```makefile
 # Deployment paths
@@ -787,14 +787,14 @@ deploy-alpine: rootfs-alpine
 
 Notes for the implementer: DELETE the old deploy/deploy-alpine bodies entirely — systemctl stop/start, pkill, and `zfs destroy -R` all go (the daemon does orderly scoped replacement while running; that's the point of phase 2). Update `.PHONY` and the help text (remove the "destroys all existing VMs" warning; replacement destroys only tasks on the replaced image; document `REGISTRY_IMAGE`).
 
-- [ ] Verify with `make -n -C vm-image deploy-image`, `make -n -C vm-image deploy-image REGISTRY_IMAGE=alpine` (dry-run renders, conditional copy appears only for default; no sudo executed). Commit: `feat(PRI-2150): vm-image deploy registers images via stockyard image import`
+- [x] Verify with `make -n -C vm-image deploy-image`, `make -n -C vm-image deploy-image REGISTRY_IMAGE=alpine` (dry-run renders, conditional copy appears only for default; no sudo executed). Commit: `feat(PRI-2150): vm-image deploy registers images via stockyard image import`
 
 ---
 
 ### Task 8: Verification + docs touch-up
 
-- [ ] `make test` green; `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./...` clean; `CGO_ENABLED=0 go build ./...` clean; `make build`.
-- [ ] Update `docs/image-contract.md`: the Linux paragraph's "registered-image store (phase 2, PRI-2150)" parenthetical is now reality — reword to present tense and mention `stockyard image import`. Commit: `docs(PRI-2150): image contract reflects the live Firecracker registry`
+- [x] `make test` green; `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./...` clean; `CGO_ENABLED=0 go build ./...` clean; `make build`.
+- [x] Update `docs/image-contract.md`: the Linux paragraph's "registered-image store (phase 2, PRI-2150)" parenthetical is now reality — reword to present tense and mention `stockyard image import`. Commit: `docs(PRI-2150): image contract reflects the live Firecracker registry`
 
 ---
 

@@ -285,6 +285,8 @@ func (m *Manager) DestroyDatasetRecursive(ctx context.Context, datasetPath strin
 // ImportRootfsImage imports a rootfs.ext4 file into ZFS and creates the base snapshot.
 // Creates: pool/imagesPath/rootfs dataset with rootfs.ext4 file and @base snapshot.
 // imagesPath is the full path under the pool, e.g., "stockyard/images"
+//
+// Retained for API compatibility; EnsureDefault uses ImportImageRootfs directly.
 func (m *Manager) ImportRootfsImage(ctx context.Context, imagesPath, srcPath string) error {
 	return m.ImportImageRootfs(ctx, imagesPath, "rootfs", srcPath)
 }
