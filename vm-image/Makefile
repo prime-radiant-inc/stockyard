@@ -69,7 +69,8 @@ rootfs-alpine: docker-alpine
 deploy-alpine: rootfs-alpine
 	$(MAKE) deploy-image REGISTRY_IMAGE=alpine
 
-# Build the Apple `container` OCI image (arm64). Requires Docker + BuildKit.
+# Build the Apple `container` OCI image (arm64), tagged
+# stockyard.local/$(IMAGE_NAME or stockyard-vm):container. Requires Docker + BuildKit.
 container-image:
 	@TARGET=container ./build.sh
 
@@ -92,7 +93,7 @@ help:
 	@echo "  make docker-alpine              Build Alpine-variant Docker image (Linux Firecracker)"
 	@echo "  make rootfs-alpine              Convert Alpine image to Firecracker rootfs (requires sudo)"
 	@echo "  make deploy-alpine              Build + register Alpine image (requires sudo)"
-	@echo "  make container-image            Build the Apple container OCI image (arm64)"
+	@echo "  make container-image            Build the Apple container OCI image (arm64, tagged stockyard.local/stockyard-vm:container)"
 	@echo "  make clean                      Remove build artifacts"
 	@echo "  make help                       Show this help"
 	@echo ""
@@ -106,7 +107,7 @@ help:
 	@echo "  REGISTRY_IMAGE   Registry name for this image (default: default)"
 	@echo "  STOCKYARD_BIN    Path to stockyard binary (default: ../bin/stockyard)"
 	@echo "  VM_USER          VM username (default: mooby)"
-	@echo "  IMAGE_NAME       Docker image name (default: stockyard-vm) — owned by build.sh"
+	@echo "  IMAGE_NAME       Docker image name (default: stockyard-vm) — owned by build.sh; the container target tags it stockyard.local/<IMAGE_NAME>:container"
 	@echo "  IMAGE_TAG        Docker image tag (default: latest) — owned by convert-to-rootfs.sh"
 	@echo "  ROOTFS_SIZE      Rootfs size (default: 10G)"
 	@echo ""

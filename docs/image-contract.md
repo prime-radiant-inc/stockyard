@@ -45,6 +45,18 @@ bytes. `stockyard-vm` builds per-target stages from a shared Docker base
 (`vm-image/Dockerfile`): the `firecracker` stage ships systemd, the
 `container` stage ships the container init. Follow that pattern.
 
+Stockyard-built OCI images are qualified as `stockyard.local/<name>:<tag>`;
+the macOS container image is `stockyard.local/stockyard-vm:container`
+(built by `make container-image`). Unqualified names display as
+`docker.io/library/<name>` under containerd-style reference normalization —
+false Hub provenance — and are squattable on Docker Hub. `stockyard.local`
+states provenance without implying a real registry; stockyard never pulls.
+Linux Firecracker registry names are unaffected: images there are named at
+`stockyard image import` time.
+
+**Transition:** existing unqualified local tags keep working. Alias them with
+`container image tag stockyard-vm:container stockyard.local/stockyard-vm:container`.
+
 ## Environment
 
 The daemon injects configuration as environment variables (`container run
