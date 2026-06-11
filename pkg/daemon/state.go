@@ -32,6 +32,7 @@ type Task struct {
 	IP                string // Direct IP address (for macOS/non-Tailscale access)
 	Owner             string // Username who created the task
 	TailscaleHostname string
+	Image             string // Resolved OCI image ref the task runs (PRI-2150)
 	CreatedAt         time.Time
 	StoppedAt         *time.Time
 }
@@ -126,6 +127,7 @@ func (s *State) migrate() error {
 		cid INTEGER DEFAULT 0,
 		owner TEXT DEFAULT '',
 		tailscale_hostname TEXT,
+		image TEXT DEFAULT '',
 		created_at DATETIME NOT NULL,
 		stopped_at DATETIME
 	);
@@ -156,6 +158,7 @@ func (s *State) migrate() error {
 		`ALTER TABLE tasks ADD COLUMN ip TEXT DEFAULT ''`,
 		`ALTER TABLE tasks DROP COLUMN repo`,
 		`ALTER TABLE tasks DROP COLUMN ref`,
+		`ALTER TABLE tasks ADD COLUMN image TEXT DEFAULT ''`,
 	}
 
 	for _, migration := range migrations {
@@ -181,8 +184,8 @@ func (s *State) SetStatusChangeCallback(cb StatusChangeCallback) {
 // CreateTask creates a new task in the database.
 func (s *State) CreateTask(task *Task) error {
 	query := `
-	INSERT INTO tasks (id, name, command, status, vmid, cid, vsock_path, ip, owner, tailscale_hostname, created_at, stopped_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO tasks (id, name, command, status, vmid, cid, vsock_path, ip, owner, tailscale_hostname, image, created_at, stopped_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := s.db.Exec(query,
 		task.ID,
@@ -195,6 +198,7 @@ func (s *State) CreateTask(task *Task) error {
 		task.IP,
 		task.Owner,
 		task.TailscaleHostname,
+		task.Image,
 		task.CreatedAt,
 		task.StoppedAt,
 	)
@@ -207,7 +211,7 @@ func (s *State) CreateTask(task *Task) error {
 // GetTask retrieves a task by ID.
 func (s *State) GetTask(id string) (*Task, error) {
 	query := `
-	SELECT id, name, command, status, vmid, cid, vsock_path, ip, owner, tailscale_hostname, created_at, stopped_at
+	SELECT id, name, command, status, vmid, cid, vsock_path, ip, owner, tailscale_hostname, image, created_at, stopped_at
 	FROM tasks
 	WHERE id = ?
 	`
@@ -234,6 +238,7 @@ func (s *State) GetTask(id string) (*Task, error) {
 		&ip,
 		&owner,
 		&tailscaleHostname,
+		&task.Image,
 		&task.CreatedAt,
 		&stoppedAt,
 	)
@@ -280,13 +285,13 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 
 	if status == "" {
 		query = `
-		SELECT id, name, command, status, vmid, cid, vsock_path, ip, owner, tailscale_hostname, created_at, stopped_at
+		SELECT id, name, command, status, vmid, cid, vsock_path, ip, owner, tailscale_hostname, image, created_at, stopped_at
 		FROM tasks
 		ORDER BY created_at DESC
 		`
 	} else {
 		query = `
-		SELECT id, name, command, status, vmid, cid, vsock_path, ip, owner, tailscale_hostname, created_at, stopped_at
+		SELECT id, name, command, status, vmid, cid, vsock_path, ip, owner, tailscale_hostname, image, created_at, stopped_at
 		FROM tasks
 		WHERE status = ?
 		ORDER BY created_at DESC
@@ -323,6 +328,7 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 			&ip,
 			&owner,
 			&tailscaleHostname,
+			&task.Image,
 			&task.CreatedAt,
 			&stoppedAt,
 		)
@@ -443,7 +449,7 @@ func (s *State) UpdateTaskVMID(id, vmid string) error {
 // GetTaskByCID retrieves a running task by its Firecracker CID.
 func (s *State) GetTaskByCID(cid uint32) (*Task, error) {
 	query := `
-	SELECT id, name, command, status, vmid, cid, vsock_path, ip, owner, tailscale_hostname, created_at, stopped_at
+	SELECT id, name, command, status, vmid, cid, vsock_path, ip, owner, tailscale_hostname, image, created_at, stopped_at
 	FROM tasks
 	WHERE cid = ? AND status = 'running'
 	`
@@ -470,6 +476,7 @@ func (s *State) GetTaskByCID(cid uint32) (*Task, error) {
 		&ip,
 		&owner,
 		&tailscaleHostname,
+		&task.Image,
 		&task.CreatedAt,
 		&stoppedAt,
 	)
