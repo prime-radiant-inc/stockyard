@@ -345,7 +345,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Possibly modify: `README.md` (expected: no change needed)
 - Never modify: `docs/plans/`, `docs/superpowers/plans/`, `docs/superpowers/specs/`, `docs/INITIAL_PROMPT.md` — immutable archives.
 
-- [ ] **Step 1: Grep live docs for the old CLI forms**
+- [x] **Step 1: Grep live docs for the old CLI forms**
 
 Run:
 
@@ -357,7 +357,7 @@ grep -rn -E 'stockyard (snapshots|restore)\b|stockyard snapshot [a-z0-9<]' \
 
 Expected: **no output** (grep exiting 1 is the good outcome here — judge by output, not exit code). This was verified during planning — no live doc invokes the old CLI forms. README/docs mentions of "snapshot" refer to the in-guest `stockyard-snapshot` vsock service, ZFS internals, or research notes; those are not CLI invocations. **Do not edit them.**
 
-- [ ] **Step 2: Handle any unexpected matches**
+- [x] **Step 2: Handle any unexpected matches**
 
 If (and only if) Step 1 produces hits outside the immutable archives, rewrite each to the new form (`stockyard snapshot create ...`, `stockyard snapshot ls ...`, `stockyard snapshot restore ...`) and commit:
 
@@ -377,7 +377,7 @@ If there are no hits (the expected case), make no commit and move on.
 
 No file changes. This task proves the build, the test suites, and the real CLI → daemon wiring through the new group. The smoke runs against an **isolated scratch daemon** — never the real daemon socket.
 
-- [ ] **Step 1: Full build**
+- [x] **Step 1: Full build**
 
 Run:
 
@@ -387,7 +387,7 @@ make build
 
 Expected: exits 0; produces `bin/stockyard`, `bin/stockyardd`, and the guest binaries (`bin/stockyard-shell*`, `bin/stockyard-snapshot*`). Note `bin/stockyard-snapshot` is the unrelated in-guest ZFS coordinator — unchanged by this work.
 
-- [ ] **Step 2: Run the test suites**
+- [x] **Step 2: Run the test suites**
 
 Run:
 
@@ -397,7 +397,7 @@ make test && CGO_ENABLED=0 go test ./cmd/... -v
 
 Expected: both pass. (`make test` covers only `./pkg/...`; the explicit `./cmd/...` invocation is required because neither the Makefile nor CI runs CLI-package tests.)
 
-- [ ] **Step 3: Stand up an isolated scratch daemon (verified recipe)**
+- [x] **Step 3: Stand up an isolated scratch daemon (verified recipe)**
 
 This is the verified scratch-instance recipe (STOCKYARD_CONFIG_DIR isolation; `config.ConfigDir()` in `pkg/config/config.go` checks it first). Known gotchas: the daemon ignores `secrets.provider` and always tries 1Password first with file fallback (errors are swallowed — harmless); never point the CLI at the real daemon socket.
 
@@ -432,7 +432,7 @@ for i in $(seq 1 20); do [ -S "$SCRATCH/stockyardd.sock" ] && break; sleep 0.5; 
 
 Expected: `daemon up`.
 
-- [ ] **Step 4: Smoke the new group (wiring + error paths, not snapshot semantics)**
+- [x] **Step 4: Smoke the new group (wiring + error paths, not snapshot semantics)**
 
 ZFS snapshots are not supported on the macOS backend, so this smoke verifies command wiring and error paths only. Open the block with the guard — it stops the smoke if the scratch daemon isn't up or if `STOCKYARD_URL` is exported (env beats config in `pkg/client/resolve.go:21`, so a set `STOCKYARD_URL` would silently bypass the scratch socket — possibly to a remote ZFS daemon where snapshot commands are live):
 
@@ -476,7 +476,7 @@ STOCKYARD_CONFIG_DIR="$SCRATCH" ./bin/stockyard restore foo bar
 # Expected: exit 1; output CONTAINS 'unknown command "restore" for "stockyard"'
 ```
 
-- [ ] **Step 5: Tear down the scratch instance**
+- [x] **Step 5: Tear down the scratch instance**
 
 ```bash
 SCRATCH=/tmp/stockyard-pri2176-smoke
@@ -486,7 +486,7 @@ rm -rf "$SCRATCH"
 
 Expected: daemon stops; scratch directory removed. Nothing touched the real daemon, socket, or data dir.
 
-- [ ] **Step 6: Confirm working tree is clean and history is right**
+- [x] **Step 6: Confirm working tree is clean and history is right**
 
 ```bash
 git status --short && git log --oneline main..HEAD
