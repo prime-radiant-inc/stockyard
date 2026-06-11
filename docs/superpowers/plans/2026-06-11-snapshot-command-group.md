@@ -40,7 +40,7 @@
 - Modify: `cmd/stockyard/snapshot.go` (full rewrite)
 - Delete: `cmd/stockyard/snapshots.go`, `cmd/stockyard/restore.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `cmd/stockyard/snapshot_test.go` with exactly this content:
 
@@ -142,7 +142,7 @@ func TestOldTopLevelCommandsRemoved(t *testing.T) {
 
 These tests are structural (command metadata, `Args` validators, flag registration) — they never execute `RunE`, so no daemon is needed. This matches the existing CLI test style (`cmd/stockyard/restart_test.go`).
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 
@@ -152,7 +152,7 @@ CGO_ENABLED=0 go test ./cmd/stockyard/ -v 2>&1 | head -20
 
 Expected: BUILD FAILURE — `undefined: snapshotCreateCmd`, `undefined: snapshotLsCmd`, `undefined: snapshotRestoreCmd` (the old `snapshot.go` defines only `snapshotCmd` as the create command). A compile error is the red step here; the whole package fails to build, which is expected.
 
-- [ ] **Step 3: Rewrite `cmd/stockyard/snapshot.go` as the group**
+- [x] **Step 3: Rewrite `cmd/stockyard/snapshot.go` as the group**
 
 Replace the entire contents of `cmd/stockyard/snapshot.go` with exactly this. The three `RunE` bodies are verbatim moves from the old `snapshot.go`, `snapshots.go`, and `restore.go` — only the surrounding command variables, `Use` strings, and the flag variable name (`restoreForce` → `snapshotRestoreForce`) change:
 
@@ -291,7 +291,7 @@ func init() {
 }
 ```
 
-- [ ] **Step 4: Delete the old command files**
+- [x] **Step 4: Delete the old command files**
 
 Run:
 
@@ -301,7 +301,7 @@ git rm cmd/stockyard/snapshots.go cmd/stockyard/restore.go
 
 Expected: both files removed. This must happen in the same task as Step 3 — the old files register the top-level `snapshots`/`restore` commands that `TestOldTopLevelCommandsRemoved` asserts are gone, and `restore.go`'s old `restoreForce`/`restoreCmd` variables would otherwise linger as dead code.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run:
 
@@ -311,7 +311,7 @@ CGO_ENABLED=0 go test ./cmd/stockyard/ -v
 
 Expected: PASS, including all five new `TestSnapshot*`/`TestOldTopLevelCommandsRemoved` tests AND every pre-existing test in the package (`TestRestartCommand_*`, `TestGarbageCollector_*`, etc. — package was green at baseline).
 
-- [ ] **Step 6: Verify the binary builds and gofmt is clean**
+- [x] **Step 6: Verify the binary builds and gofmt is clean**
 
 Run:
 
@@ -321,7 +321,7 @@ CGO_ENABLED=0 go build -o bin/stockyard ./cmd/stockyard && gofmt -l cmd/stockyar
 
 Expected: build succeeds; `gofmt -l` prints nothing. (Deliberately scoped to the two files this task touches — `cmd/stockyard/resources.go` is unformatted on main today; leave it alone.)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add cmd/stockyard/snapshot.go cmd/stockyard/snapshot_test.go
