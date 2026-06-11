@@ -14,8 +14,8 @@ import (
 // fakeRunner records invocations and returns scripted output/errors.
 type fakeRunner struct {
 	calls   [][]string        // each call's argv (name + args)
-	outputs map[string]string // keyed by args[0] (the container subcommand), stdout to return
-	errs    map[string]error  // keyed by args[0], error to return
+	outputs map[string]string // stdout keyed by "args[0]" or "args[0] args[1]" (two-token key wins), e.g. "inspect" or "image ls"
+	errs    map[string]error  // error to return, same key scheme as outputs (errs checked before outputs)
 }
 
 func newFakeRunner() *fakeRunner {
@@ -47,6 +47,7 @@ func (f *fakeRunner) run(ctx context.Context, name string, args ...string) ([]by
 
 func TestAppleContainerBackend_ImplementsInterface(t *testing.T) {
 	var _ Backend = (*AppleContainerBackend)(nil)
+	var _ ImageValidator = (*AppleContainerBackend)(nil)
 }
 
 func TestAppleContainerBackend_NewSetsDefaults(t *testing.T) {
