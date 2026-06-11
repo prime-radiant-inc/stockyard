@@ -34,14 +34,18 @@ var listCmd = &cobra.Command{
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "ID\tNAME\tSTATUS\tCREATED")
+		fmt.Fprintln(w, "ID\tNAME\tSTATUS\tIMAGE\tCREATED")
 		for _, t := range tasks {
 			name := t.Name
 			if name == "" {
 				name = "-"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-				t.Id, name, t.Status, t.CreatedAt)
+			image := t.Image
+			if image == "" {
+				image = "-" // task predates PRI-2150
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+				t.Id, name, t.Status, image, t.CreatedAt)
 		}
 		w.Flush()
 
