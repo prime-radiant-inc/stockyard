@@ -50,6 +50,8 @@ func TestDisplayRef(t *testing.T) {
 		{"stockyard.local ref unchanged", "stockyard.local/stockyard-vm:container", "stockyard.local/stockyard-vm:container"},
 		{"other registry unchanged", "ghcr.io/obra/stockyard-vm:latest", "ghcr.io/obra/stockyard-vm:latest"},
 		{"already short ref unchanged", "alpine:3.21", "alpine:3.21"},
+		{"hub library digest ref trimmed", "docker.io/library/alpine@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "alpine@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+		{"bare digest ref unchanged", "alpine@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "alpine@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
 		{"empty ref unchanged", "", ""},
 	}
 	for _, tc := range cases {
@@ -199,7 +201,7 @@ The `else` (firecracker) branch stays byte-for-byte unchanged.
 Run: `bash -n vm-image/build.sh`
 Expected: exit 0, no output.
 
-Run: `grep -n 'IMAGE_NAME}:container' vm-image/build.sh`
+Run: `grep -n 'IMAGE_NAME}:container' vm-image/build.sh` (exit code 1 is the expected no-match result)
 Expected: no matches (the only `:container` tag is via `CONTAINER_IMAGE_REF`).
 
 Dry-run the container branch with a fake `docker` on PATH (no real build):
@@ -345,7 +347,10 @@ Run: `make build`
 Expected: exit 0; binaries in `bin/` (`bin/stockyard`, `bin/stockyardd`).
 
 Run: `make test`
-Expected: all packages `ok`, including `github.com/obra/stockyard/cmd/stockyard`.
+Expected: all `./pkg/...` packages `ok`. Note: `make test` does NOT cover `cmd/` (it runs `go test ./pkg/...` only — known gap, tracked as PRI-2180), so additionally:
+
+Run: `go test ./cmd/stockyard/ -v`
+Expected: all tests `ok`, including `TestDisplayRef`. Do not widen the Makefile here — that's PRI-2180's scope.
 
 - [ ] **Step 2: Pre-flight the Apple container CLI**
 
@@ -425,7 +430,7 @@ Expected: task gone (or not running).
 
 ```bash
 kill "$(cat /tmp/stockyard-smoke-2178/daemon.pid)"
-container image rm stockyard.local/stockyard-vm:container
+container image rm stockyard.local/stockyard-vm:container   # use `container image delete ...` if `rm` is unrecognized
 rm -rf /tmp/stockyard-smoke-2178
 ```
 
