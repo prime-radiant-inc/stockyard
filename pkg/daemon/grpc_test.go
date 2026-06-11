@@ -3,11 +3,13 @@ package daemon
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	pb "github.com/obra/stockyard/pkg/api/v1"
 	"github.com/obra/stockyard/pkg/config"
 	"github.com/obra/stockyard/pkg/secrets"
+	"github.com/obra/stockyard/pkg/vmbackend"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -39,7 +41,7 @@ func newTestGRPCServer(t *testing.T, withTaskManager bool) *grpcServer {
 	}
 
 	if withTaskManager {
-		d.tasks = NewTaskManager(d, nil) // nil config = no firecracker client
+		d.tasks = NewTaskManager(d, nil) // nil backend = no VM backend
 	}
 
 	return newGRPCServer(d)
@@ -253,5 +255,70 @@ func TestGRPCServer_GetLogs_Unimplemented(t *testing.T) {
 
 	if st.Code() != codes.Unimplemented {
 		t.Errorf("expected Unimplemented code, got %v", st.Code())
+	}
+}
+
+// fakeListerBackend implements vmbackend.Backend trivially plus ImageLister.
+type fakeListerBackend struct {
+	vmbackend.Backend // nil embed: only ListImages is called in these tests
+	images            []vmbackend.ImageInfo
+}
+
+func (f *fakeListerBackend) ListImages(ctx context.Context) ([]vmbackend.ImageInfo, error) {
+	return f.images, nil
+}
+
+func TestGRPCServer_ListImages_ListerBackend(t *testing.T) {
+	s := newTestGRPCServer(t, true)
+	s.daemon.cfg.Backend = "apple-container"
+	s.daemon.tasks = NewTaskManager(s.daemon, &fakeListerBackend{
+		images: []vmbackend.ImageInfo{{Reference: "stockyard-vm:latest", Digest: "sha256:abc", Size: "5.6 GB"}},
+	})
+
+	resp, err := s.ListImages(context.Background(), &pb.ListImagesRequest{})
+	if err != nil {
+		t.Fatalf("ListImages: %v", err)
+	}
+	if len(resp.Images) != 1 || resp.Images[0].Reference != "stockyard-vm:latest" {
+		t.Errorf("unexpected images: %+v", resp.Images)
+	}
+}
+
+func TestGRPCServer_ListImages_UnsupportedBackend(t *testing.T) {
+	s := newTestGRPCServer(t, true) // TaskManager with nil backend
+	s.daemon.cfg.Backend = "firecracker"
+
+	_, err := s.ListImages(context.Background(), &pb.ListImagesRequest{})
+	if status.Code(err) != codes.Unimplemented {
+		t.Fatalf("expected Unimplemented, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "firecracker") {
+		t.Errorf("error should name the backend: %v", err)
+	}
+}
+
+func TestGRPCServer_ImportImage_AppleContainerRedirects(t *testing.T) {
+	s := newTestGRPCServer(t, true)
+	s.daemon.cfg.Backend = "apple-container"
+
+	_, err := s.ImportImage(context.Background(), &pb.ImportImageRequest{Name: "x", RootfsPath: "/tmp/x"})
+	if status.Code(err) != codes.Unimplemented {
+		t.Fatalf("expected Unimplemented, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "container image") {
+		t.Errorf("apple-container should redirect to the container CLI: %v", err)
+	}
+}
+
+func TestGRPCServer_RemoveImage_FirecrackerCitesPhase2(t *testing.T) {
+	s := newTestGRPCServer(t, true)
+	s.daemon.cfg.Backend = "firecracker"
+
+	_, err := s.RemoveImage(context.Background(), &pb.RemoveImageRequest{Name: "x"})
+	if status.Code(err) != codes.Unimplemented {
+		t.Fatalf("expected Unimplemented, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "PRI-2150 phase 2") {
+		t.Errorf("firecracker should cite phase 2: %v", err)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/obra/stockyard/pkg/api/v1"
+	"github.com/obra/stockyard/pkg/vmbackend"
 )
 
 type grpcServer struct {
@@ -185,6 +186,62 @@ func (s *grpcServer) GetLogs(req *pb.GetLogsRequest, stream grpc.ServerStreaming
 	// This gRPC endpoint is not used by the stockyard CLI.
 	// It could be implemented for programmatic access if needed.
 	return status.Error(codes.Unimplemented, "use SSH via Tailscale for log access")
+}
+
+// ListImages enumerates the backend's local image store.
+func (s *grpcServer) ListImages(ctx context.Context, req *pb.ListImagesRequest) (*pb.ListImagesResponse, error) {
+	if s.daemon.tasks == nil {
+		return nil, status.Error(codes.Unavailable, "task manager not initialized")
+	}
+	lister, ok := s.daemon.tasks.backend.(vmbackend.ImageLister)
+	if !ok {
+		return nil, status.Errorf(codes.Unimplemented,
+			"image listing is not supported by the %s backend (PRI-2150 phase 2)", s.backendName())
+	}
+	images, err := lister.ListImages(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "list images: %v", err)
+	}
+	pbImages := make([]*pb.ImageInfo, len(images))
+	for i, img := range images {
+		pbImages[i] = &pb.ImageInfo{
+			Reference: img.Reference,
+			Digest:    img.Digest,
+			Size:      img.Size,
+			CreatedAt: img.CreatedAt,
+		}
+	}
+	return &pb.ListImagesResponse{Images: pbImages}, nil
+}
+
+// ImportImage and RemoveImage are daemon-side guidance until the Firecracker
+// registry (PRI-2150 phase 2). The apple-container store is authoritative and
+// stockyard does not mutate it — that redirect is permanent, not a stopgap.
+// NOTE: the `container` CLI has no `image import`; its verbs are load/pull/rm,
+// so the redirect names the real command, not the RPC verb.
+func (s *grpcServer) ImportImage(ctx context.Context, req *pb.ImportImageRequest) (*pb.ImportImageResponse, error) {
+	return nil, s.imageMutationUnsupported("import", "container image load` or `container image pull")
+}
+
+func (s *grpcServer) RemoveImage(ctx context.Context, req *pb.RemoveImageRequest) (*pb.RemoveImageResponse, error) {
+	return nil, s.imageMutationUnsupported("remove", "container image rm")
+}
+
+func (s *grpcServer) imageMutationUnsupported(verb, containerCmd string) error {
+	if s.backendName() == "apple-container" {
+		return status.Errorf(codes.Unimplemented,
+			"the apple-container image store is managed by the container CLI; use `%s` on the daemon host", containerCmd)
+	}
+	return status.Errorf(codes.Unimplemented,
+		"image %s arrives with the %s image registry (PRI-2150 phase 2)", verb, s.backendName())
+}
+
+// backendName returns the configured backend, naming the default explicitly.
+func (s *grpcServer) backendName() string {
+	if s.daemon.cfg.Backend == "" {
+		return "firecracker"
+	}
+	return s.daemon.cfg.Backend
 }
 
 func taskToProto(t *Task, backend string) *pb.Task {
