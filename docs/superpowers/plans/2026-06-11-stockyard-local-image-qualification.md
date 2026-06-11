@@ -341,7 +341,7 @@ The full vm-image Docker build is NOT required — the smoke aliases an existing
 
 **Isolation rule (non-negotiable):** never touch the real daemon socket or data dir. Every `stockyardd` AND every `stockyard` CLI invocation below carries `STOCKYARD_CONFIG_DIR=/tmp/stockyard-smoke-2178`. (`STOCKYARD_DATA_DIR` alone does NOT isolate.)
 
-- [ ] **Step 1: Build and unit-test**
+- [x] **Step 1: Build and unit-test**
 
 Run: `make build`
 Expected: exit 0; binaries in `bin/` (`bin/stockyard`, `bin/stockyardd`).
@@ -352,7 +352,7 @@ Expected: all `./pkg/...` packages `ok`. Note: `make test` does NOT cover `cmd/`
 Run: `go test ./cmd/stockyard/ -v`
 Expected: all tests `ok`, including `TestDisplayRef`. Do not widen the Makefile here — that's PRI-2180's scope.
 
-- [ ] **Step 2: Pre-flight the Apple container CLI**
+- [x] **Step 2: Pre-flight the Apple container CLI**
 
 Run: `container system status`
 Expected: reports the apiserver running. If not: `container system start`.
@@ -360,12 +360,12 @@ Expected: reports the apiserver running. If not: `container system start`.
 Run: `container image ls`
 Expected: a non-empty local store. Note an existing stockyard-family ref — typically `docker.io/library/stockyard-vm:container` (displayed by Apple's CLI as `stockyard-vm  container`). If `stockyard-vm:container` is absent, any bootable local image (e.g. a `prudence-vm` ref) works for the tag+run steps; substitute it below.
 
-- [ ] **Step 3: Alias an existing image to the qualified name**
+- [x] **Step 3: Alias an existing image to the qualified name**
 
 Run: `container image tag stockyard-vm:container stockyard.local/stockyard-vm:container`
 Expected: exit 0. `container image ls` now also shows `stockyard.local/stockyard-vm` with tag `container`.
 
-- [ ] **Step 4: Create the scratch instance config**
+- [x] **Step 4: Create the scratch instance config**
 
 ```bash
 mkdir -p /tmp/stockyard-smoke-2178/secrets /tmp/stockyard-smoke-2178/data
@@ -383,7 +383,7 @@ EOF
 
 Known gotcha (harmless): the daemon ignores `secrets.provider` and always tries 1Password first with file fallback, errors swallowed. We pass `--no-tailscale` on runs so no secret is needed.
 
-- [ ] **Step 5: Start the scratch daemon**
+- [x] **Step 5: Start the scratch daemon**
 
 ```bash
 STOCKYARD_CONFIG_DIR=/tmp/stockyard-smoke-2178 ./bin/stockyardd > /tmp/stockyard-smoke-2178/daemon.log 2>&1 &
@@ -392,7 +392,7 @@ echo $! > /tmp/stockyard-smoke-2178/daemon.pid
 
 Wait for the socket: `ls /tmp/stockyard-smoke-2178/stockyardd.sock` succeeds within a few seconds. On failure, read `/tmp/stockyard-smoke-2178/daemon.log`.
 
-- [ ] **Step 6: Verify de-noised `image ls` display**
+- [x] **Step 6: Verify de-noised `image ls` display**
 
 Run: `STOCKYARD_CONFIG_DIR=/tmp/stockyard-smoke-2178 ./bin/stockyard image ls`
 
@@ -404,7 +404,7 @@ Expected, all three:
 Check: `STOCKYARD_CONFIG_DIR=/tmp/stockyard-smoke-2178 ./bin/stockyard image ls | grep -c 'docker.io/library/'`
 Expected: `0` (grep exits 1).
 
-- [ ] **Step 7: Boot a task from the qualified ref**
+- [x] **Step 7: Boot a task from the qualified ref**
 
 ```bash
 STOCKYARD_CONFIG_DIR=/tmp/stockyard-smoke-2178 ./bin/stockyard run --image stockyard.local/stockyard-vm:container --no-tailscale --name smoke2178
@@ -415,7 +415,7 @@ Expected: exit 0, prints a task ID. Then:
 Run: `STOCKYARD_CONFIG_DIR=/tmp/stockyard-smoke-2178 ./bin/stockyard list`
 Expected: the `smoke2178` task present and running.
 
-- [ ] **Step 8: Destroy the task**
+- [x] **Step 8: Destroy the task**
 
 ```bash
 STOCKYARD_CONFIG_DIR=/tmp/stockyard-smoke-2178 ./bin/stockyard destroy <task-id-from-step-7> --force
@@ -426,7 +426,7 @@ Expected: exit 0. (Without `--force`, destroy is a dry run — it must be passed
 Run: `STOCKYARD_CONFIG_DIR=/tmp/stockyard-smoke-2178 ./bin/stockyard list`
 Expected: task gone (or not running).
 
-- [ ] **Step 9: Tear down the scratch instance**
+- [x] **Step 9: Tear down the scratch instance**
 
 ```bash
 kill "$(cat /tmp/stockyard-smoke-2178/daemon.pid)"
@@ -436,7 +436,7 @@ rm -rf /tmp/stockyard-smoke-2178
 
 Expected: daemon exits; the alias tag is removed (the underlying image and its original tag remain); scratch dir gone. Verify with `container image ls` (no `stockyard.local/...` row) and `ls /tmp/stockyard-smoke-2178` (no such file).
 
-- [ ] **Step 10: Final check of the branch**
+- [x] **Step 10: Final check of the branch**
 
 Run: `git status --short`
 Expected: clean tree (all work committed in Tasks 1-3; the smoke created no repo files).
