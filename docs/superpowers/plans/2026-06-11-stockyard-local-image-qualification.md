@@ -28,7 +28,7 @@
 - Create: `cmd/stockyard/image_test.go`
 - Modify: `cmd/stockyard/image.go` (helper next to `shortDigest` at line 87; wire-in at line 46)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `cmd/stockyard/image_test.go` with exactly:
 
@@ -64,12 +64,12 @@ func TestDisplayRef(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./cmd/stockyard/ -run TestDisplayRef -v`
 Expected: FAIL to build with `undefined: displayRef`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `cmd/stockyard/image.go`, add immediately below the `shortDigest` function (after line 96):
 
@@ -89,12 +89,12 @@ func displayRef(ref string) string {
 
 (`strings` is already imported in this file.)
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./cmd/stockyard/ -run TestDisplayRef -v`
 Expected: PASS (7 subtests)
 
-- [ ] **Step 5: Wire the helper into the `image ls` table**
+- [x] **Step 5: Wire the helper into the `image ls` table**
 
 In `cmd/stockyard/image.go`, change the row print (currently line 45-46):
 
@@ -110,12 +110,12 @@ to:
 				displayRef(img.Reference), shortDigest(img.Digest), img.Size, created)
 ```
 
-- [ ] **Step 6: Run the full package tests**
+- [x] **Step 6: Run the full package tests**
 
 Run: `go test ./cmd/stockyard/`
 Expected: `ok  	github.com/obra/stockyard/cmd/stockyard`
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add cmd/stockyard/image_test.go cmd/stockyard/image.go
