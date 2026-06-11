@@ -128,7 +128,11 @@ func (b *AppleContainerBackend) buildRunArgs(cfg *VMConfig) []string {
 	for _, k := range metaKeys {
 		args = append(args, "--label", k+"="+cfg.Metadata[k])
 	}
-	args = append(args, b.cfg.Image)
+	image := cfg.Image
+	if image == "" {
+		image = b.cfg.Image
+	}
+	args = append(args, image)
 	return args
 }
 

@@ -290,3 +290,33 @@ func TestAppleContainerBackend_StopVM_IdempotentWhenContainerGone(t *testing.T) 
 		t.Errorf("StopVM on an already-gone container must succeed, got: %v", err)
 	}
 }
+
+func TestAppleContainerBackend_CreateVM_PerTaskImage(t *testing.T) {
+	fr := newFakeRunner()
+	fr.outputs["inspect"] = `[{"status":"running","networks":[{"ipv4Address":"192.168.64.5/24"}],"configuration":{"id":"stockyard-img12345"}}]`
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{
+		Image:    "stockyard-vm:container",
+		StateDir: t.TempDir(),
+	}, fr.run)
+	b.skipLogFollower = true
+
+	_, err := b.CreateVM(context.Background(), &VMConfig{
+		ID:       "img12345",
+		VCPU:     2,
+		MemoryMB: 1024,
+		Image:    "prudence-vm:1.2",
+	})
+	if err != nil {
+		t.Fatalf("CreateVM: %v", err)
+	}
+	if len(fr.calls) == 0 {
+		t.Fatal("expected at least one container call")
+	}
+	joined := strings.Join(fr.calls[0], " ")
+	if !strings.Contains(joined, "prudence-vm:1.2") {
+		t.Errorf("run args missing per-task image; got: %s", joined)
+	}
+	if strings.Contains(joined, "stockyard-vm:container") {
+		t.Errorf("run args used backend default despite per-task image; got: %s", joined)
+	}
+}
