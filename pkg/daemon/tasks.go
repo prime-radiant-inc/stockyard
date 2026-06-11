@@ -41,6 +41,24 @@ type CreateTaskRequest struct {
 	TailscaleAuthKey  string   // Optional: overrides 1Password lookup
 	SSHAuthorizedKeys []string // SSH public keys for VM access
 	DotEnv            []byte   // Raw .env file bytes
+	Image             string   // OCI image ref; empty = daemon default (PRI-2150)
+}
+
+// resolveTaskImage turns a per-task image request into the ref the task will
+// actually run — never the empty string, so the stored record always names a
+// real image. A nil validator means the backend cannot honor per-task images
+// (PRI-2150 phase 1: only apple-container can).
+func resolveTaskImage(ctx context.Context, requested, backendName, defaultImage string, validator vmbackend.ImageValidator) (string, error) {
+	if requested == "" {
+		return defaultImage, nil
+	}
+	if validator == nil {
+		return "", fmt.Errorf("%s backend does not support per-task images yet (PRI-2150 phase 2)", backendName)
+	}
+	if err := validator.ValidateImage(ctx, requested); err != nil {
+		return "", err
+	}
+	return requested, nil
 }
 
 // CreateTask creates a new VM-based task with the given parameters.
@@ -51,6 +69,21 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	}
 	if req.MemoryMB <= 0 {
 		req.MemoryMB = 1024
+	}
+
+	// Resolve the task's image before allocating anything (PRI-2150).
+	backendName := tm.daemon.cfg.Backend
+	if backendName == "" {
+		backendName = "firecracker"
+	}
+	defaultImage := "default" // Firecracker's registry name arrives in phase 2
+	if backendName == "apple-container" {
+		defaultImage = tm.daemon.cfg.AppleContainer.Image
+	}
+	validator, _ := tm.backend.(vmbackend.ImageValidator)
+	resolvedImage, err := resolveTaskImage(ctx, req.Image, backendName, defaultImage, validator)
+	if err != nil {
+		return nil, err
 	}
 
 	// Generate task ID
@@ -178,6 +211,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 			DotEnv:            req.DotEnv,
 			Env:               vmEnv,
 			Metadata:          vmMetadata,
+			Image:             resolvedImage,
 		}
 
 		vm, err := tm.backend.CreateVM(ctx, vmCfg)
@@ -213,6 +247,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		VsockPath:         vmVsockPath,
 		IP:                vmIP,
 		TailscaleHostname: tailscaleHostname,
+		Image:             resolvedImage,
 		CreatedAt:         time.Now(),
 	}
 
