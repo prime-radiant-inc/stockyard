@@ -98,3 +98,22 @@ type ImageValidator interface {
 	// image store, or an error naming the ref and the available images.
 	ValidateImage(ctx context.Context, ref string) error
 }
+
+// ImageInfo describes one image in a backend's local store, for display.
+// Size is a human-readable string (e.g. "4 MB") — backends format it;
+// CreatedAt is best-effort and may be empty.
+type ImageInfo struct {
+	Reference string
+	Digest    string
+	Size      string
+	CreatedAt string
+}
+
+// ImageLister is implemented by backends that can enumerate their local
+// image store (apple-container today; the Firecracker registry in PRI-2150
+// phase 2). Like ImageValidator above, it lives in this non-build-tagged
+// file so daemon code can reference it on all platforms.
+type ImageLister interface {
+	// ListImages returns the images available on this host.
+	ListImages(ctx context.Context) ([]ImageInfo, error)
+}
