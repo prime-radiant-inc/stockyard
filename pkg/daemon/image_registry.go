@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/obra/stockyard/pkg/vmbackend"
@@ -29,6 +30,12 @@ type imageTaskDestroyer interface {
 // base datasets. It implements vmbackend.ImageValidator and ImageLister, so
 // resolveTaskImage and the ListImages RPC work identically to apple-container.
 type imageRegistry struct {
+	// mu serializes Import, Remove, and EnsureDefault. Each of those is a
+	// multi-statement read-modify-write across SQLite AND ZFS; the collision
+	// pre-check is only sound if no other mutator runs between check and create.
+	// ValidateImage and ListImages are intentionally left unlocked (reads; a
+	// stale listing is acceptable).
+	mu         sync.Mutex
 	state      *State
 	zfs        registryZFS
 	destroyer  imageTaskDestroyer
@@ -91,6 +98,9 @@ func (r *imageRegistry) ListImages(ctx context.Context) ([]vmbackend.ImageInfo, 
 // Replacement is orderly scoped scorched-earth: tasks on the image die via
 // the TaskManager, then the dataset, then the row is rewritten.
 func (r *imageRegistry) Import(ctx context.Context, name, rootfsPath, kernelPath string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if name == "" {
 		return fmt.Errorf("image name is required")
 	}
@@ -149,6 +159,9 @@ func (r *imageRegistry) Import(ctx context.Context, name, rootfsPath, kernelPath
 
 // Remove unregisters an image and destroys its dataset and dependents.
 func (r *imageRegistry) Remove(ctx context.Context, name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if name == "default" {
 		return fmt.Errorf("the default image is seeded from daemon config and cannot be removed")
 	}
@@ -169,6 +182,9 @@ func (r *imageRegistry) Remove(ctx context.Context, name string) error {
 // Generalizes the old ensureBaseImage: row missing → create it; snapshot
 // missing → re-import from rootfsPath.
 func (r *imageRegistry) EnsureDefault(ctx context.Context, rootfsPath string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	rec, err := r.state.GetImage("default")
 	if err != nil {
 		rec = &ImageRecord{Name: "default", Dataset: "rootfs", CreatedAt: time.Now()}
@@ -184,21 +200,30 @@ func (r *imageRegistry) EnsureDefault(ctx context.Context, rootfsPath string) er
 		if err := r.zfs.ImportImageRootfs(ctx, r.imagesPath, rec.Dataset, rootfsPath); err != nil {
 			return fmt.Errorf("failed to import base image: %w", err)
 		}
+		// Restat and update the row so SizeBytes reflects the actual file that
+		// was imported. A half-completed prior replace can leave a stale size.
+		if st, serr := os.Stat(rootfsPath); serr == nil {
+			r.state.UpdateImageSize("default", st.Size())
+		}
 		fmt.Println("Base image imported successfully")
 	}
 	return nil
 }
 
 // humanBytes formats like the `container` CLI ("4 MB", "5.6 GB").
+// The unit slice tops out at TB; inputs >= 10^15 (petabyte range) are clamped
+// and rendered as large TB values rather than panicking with an out-of-range
+// index.
 func humanBytes(n int64) string {
 	const unit = 1000
+	units := []string{"kB", "MB", "GB", "TB"}
 	if n < unit {
 		return fmt.Sprintf("%d B", n)
 	}
 	div, exp := int64(unit), 0
-	for v := n / unit; v >= unit; v /= unit {
+	for v := n / unit; v >= unit && exp < len(units)-1; v /= unit {
 		div *= unit
 		exp++
 	}
-	return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/float64(div)), ".0") + " " + []string{"kB", "MB", "GB", "TB"}[exp]
+	return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/float64(div)), ".0") + " " + units[exp]
 }

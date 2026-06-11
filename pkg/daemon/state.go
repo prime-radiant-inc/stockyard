@@ -711,6 +711,18 @@ func (s *State) ListImages() ([]*ImageRecord, error) {
 	return recs, nil
 }
 
+// UpdateImageSize updates the size_bytes field for a registered image.
+// Used by EnsureDefault's self-heal branch to reflect the actual rootfs size
+// after a re-import (the stored value may be stale if the prior import was
+// interrupted before the row was updated).
+func (s *State) UpdateImageSize(name string, sizeBytes int64) error {
+	_, err := s.db.Exec(`UPDATE images SET size_bytes = ? WHERE name = ?`, sizeBytes, name)
+	if err != nil {
+		return fmt.Errorf("failed to update image size: %w", err)
+	}
+	return nil
+}
+
 // DeleteImage removes an image record by name.
 func (s *State) DeleteImage(name string) error {
 	result, err := s.db.Exec(`DELETE FROM images WHERE name = ?`, name)

@@ -197,5 +197,66 @@ func TestRegistry_ListImages(t *testing.T) {
 	}
 }
 
+func TestHumanBytes(t *testing.T) {
+	tests := []struct {
+		n    int64
+		want string
+	}{
+		{10, "10 B"},
+		{1000, "1 kB"},
+		{1234, "1.2 kB"},
+		{5_600_000_000, "5.6 GB"},
+		// 1 PB — must not panic; must end in " TB"
+		{1_000_000_000_000_000, " TB"},
+	}
+	for _, tt := range tests {
+		got := humanBytes(tt.n)
+		if tt.n == 1_000_000_000_000_000 {
+			if !strings.HasSuffix(got, " TB") {
+				t.Errorf("humanBytes(%d) = %q, want suffix \" TB\"", tt.n, got)
+			}
+		} else if got != tt.want {
+			t.Errorf("humanBytes(%d) = %q, want %q", tt.n, got, tt.want)
+		}
+	}
+}
+
+func TestRegistry_EnsureDefault_SizeHonesty(t *testing.T) {
+	r, fz, _ := newTestRegistry(t)
+
+	// Seed with a 10-byte rootfs.
+	rf1 := tempRootfs(t) // 10 bytes ("0123456789")
+	if err := r.EnsureDefault(context.Background(), rf1); err != nil {
+		t.Fatalf("first EnsureDefault: %v", err)
+	}
+	rec, _ := r.state.GetImage("default")
+	if rec.SizeBytes != 10 {
+		t.Fatalf("initial SizeBytes = %d, want 10", rec.SizeBytes)
+	}
+
+	// Simulate a missing snapshot (e.g. half-completed prior replace): flip it
+	// back to absent so EnsureDefault will re-import.
+	fz.snapshots["tank/stockyard/images/rootfs@base"] = false
+
+	// Build a DIFFERENT-SIZED rootfs (42 bytes).
+	rf2 := filepath.Join(t.TempDir(), "rootfs2.ext4")
+	if err := os.WriteFile(rf2, []byte("000000000000000000000000000000000000000000"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.EnsureDefault(context.Background(), rf2); err != nil {
+		t.Fatalf("second EnsureDefault: %v", err)
+	}
+
+	rec, err := r.state.GetImage("default")
+	if err != nil {
+		t.Fatalf("GetImage after re-import: %v", err)
+	}
+	wantSize := int64(42)
+	if rec.SizeBytes != wantSize {
+		t.Errorf("SizeBytes after re-import = %d, want %d", rec.SizeBytes, wantSize)
+	}
+}
+
 var _ vmbackend.ImageValidator = (*imageRegistry)(nil)
 var _ vmbackend.ImageLister = (*imageRegistry)(nil)

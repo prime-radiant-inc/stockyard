@@ -267,7 +267,18 @@ func (m *Manager) SnapshotExists(ctx context.Context, snapshotPath string) bool 
 
 // DestroyDatasetRecursive destroys a dataset (full path incl. pool) together
 // with its snapshots AND dependent clones (zfs destroy -R).
+//
+// If the dataset is already gone, this returns nil (idempotent). A
+// half-completed Import can leave a registry row whose dataset was never
+// created or was already destroyed; treating missing-dataset as success lets
+// a subsequent re-import heal the row without being blocked by a stale destroy
+// failure.
 func (m *Manager) DestroyDatasetRecursive(ctx context.Context, datasetPath string) error {
+	// Probe first: if the dataset does not exist, we are already done.
+	if err := exec.CommandContext(ctx, "zfs", "list", datasetPath).Run(); err != nil {
+		// dataset not found — nothing to destroy
+		return nil
+	}
 	return m.runZFS(ctx, "destroy", "-R", datasetPath)
 }
 
