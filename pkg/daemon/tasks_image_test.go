@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeImageValidator struct {
@@ -56,5 +57,50 @@ func TestResolveTaskImage_ValidRequestResolves(t *testing.T) {
 	}
 	if got != "prudence-vm:1.2" {
 		t.Errorf("resolved = %q, want requested ref", got)
+	}
+}
+
+// TestDestroyTasksByImage verifies that DestroyTasksByImage removes only the
+// tasks whose Image matches, leaves others intact, and is safe with a nil
+// backend (DestroyTask nil-guards all backend/zfs/feed access and ends in
+// state.DeleteTask).
+func TestDestroyTasksByImage(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	d := &Daemon{state: state}
+	tm := NewTaskManager(d, nil) // nil backend: safe per DestroyTask nil-guards
+
+	// Create two tasks with different images.
+	taskTarget := &Task{
+		ID: "task-target", Name: "target", Command: "sh", Status: "running",
+		Image: "my-image", CreatedAt: time.Now(),
+	}
+	taskOther := &Task{
+		ID: "task-other", Name: "other", Command: "sh", Status: "running",
+		Image: "other-image", CreatedAt: time.Now(),
+	}
+	if err := state.CreateTask(taskTarget); err != nil {
+		t.Fatalf("CreateTask target: %v", err)
+	}
+	if err := state.CreateTask(taskOther); err != nil {
+		t.Fatalf("CreateTask other: %v", err)
+	}
+
+	if err := tm.DestroyTasksByImage(context.Background(), "my-image"); err != nil {
+		t.Fatalf("DestroyTasksByImage: %v", err)
+	}
+
+	// Matching task's row must be gone.
+	if _, err := state.GetTask("task-target"); err == nil {
+		t.Error("expected task-target to be deleted, but GetTask succeeded")
+	}
+
+	// Other task's row must survive.
+	if _, err := state.GetTask("task-other"); err != nil {
+		t.Errorf("task-other should survive: %v", err)
 	}
 }

@@ -610,6 +610,24 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 	return tm.daemon.state.DeleteTask(taskID)
 }
 
+// DestroyTasksByImage destroys every task whose resolved image is name.
+// Used by the image registry's scoped scorched-earth replace/remove.
+func (tm *TaskManager) DestroyTasksByImage(ctx context.Context, image string) error {
+	tasks, err := tm.daemon.state.ListTasks("")
+	if err != nil {
+		return err
+	}
+	for _, t := range tasks {
+		if t.Image != image {
+			continue
+		}
+		if err := tm.DestroyTask(ctx, t.ID); err != nil {
+			return fmt.Errorf("destroy task %s: %w", t.ID, err)
+		}
+	}
+	return nil
+}
+
 // Close closes the task manager and releases resources.
 func (tm *TaskManager) Close() error {
 	if tm.backend != nil {
