@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+func TestTaskToProto_Image(t *testing.T) {
+	pt := taskToProto(&Task{ID: "img00001", Image: "prudence-vm:1.2"}, "apple-container")
+	if pt.Image != "prudence-vm:1.2" {
+		t.Errorf("Image = %q, want %q", pt.Image, "prudence-vm:1.2")
+	}
+}
+
 func TestTaskToProto_PopulatesBackendAndVMID(t *testing.T) {
 	task := &Task{
 		ID:        "abc12345",

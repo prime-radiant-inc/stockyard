@@ -80,6 +80,9 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	if backendName == "apple-container" {
 		defaultImage = tm.daemon.cfg.AppleContainer.Image
 	}
+	// A nil tm.backend here means a backendless test daemon — real daemons
+	// fail at startup if their backend can't be constructed — so a nil
+	// validator can only misattribute the rejection message in tests.
 	validator, _ := tm.backend.(vmbackend.ImageValidator)
 	resolvedImage, err := resolveTaskImage(ctx, req.Image, backendName, defaultImage, validator)
 	if err != nil {
