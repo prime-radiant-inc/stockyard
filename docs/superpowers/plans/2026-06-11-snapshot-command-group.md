@@ -316,10 +316,10 @@ Expected: PASS, including all five new `TestSnapshot*`/`TestOldTopLevelCommandsR
 Run:
 
 ```bash
-CGO_ENABLED=0 go build -o bin/stockyard ./cmd/stockyard && gofmt -l cmd/stockyard/
+CGO_ENABLED=0 go build -o bin/stockyard ./cmd/stockyard && gofmt -l cmd/stockyard/snapshot.go cmd/stockyard/snapshot_test.go
 ```
 
-Expected: build succeeds; `gofmt -l` prints nothing.
+Expected: build succeeds; `gofmt -l` prints nothing. (Deliberately scoped to the two files this task touches — `cmd/stockyard/resources.go` is unformatted on main today; leave it alone.)
 
 - [ ] **Step 7: Commit**
 
@@ -329,7 +329,10 @@ git commit -m "refactor(PRI-2176): consolidate snapshot commands into 'stockyard
 
 stockyard snapshot create|ls|restore replaces the flat top-level
 snapshot/snapshots/restore commands. Clean break: old forms removed,
-no aliases. CLI-layer only; gRPC, pkg/client, and daemon unchanged."
+no aliases. CLI-layer only; gRPC, pkg/client, and daemon unchanged.
+
+Co-Authored-By: <YourBobName>@<first8-of-session-id> (claude-fable-5)
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 (The `git rm` from Step 4 is already staged; `git add` picks up the rest.)
@@ -352,7 +355,7 @@ grep -rn -E 'stockyard (snapshots|restore)\b|stockyard snapshot [a-z0-9<]' \
   | grep -v 'docs/plans/' | grep -v 'docs/superpowers/' | grep -v 'docs/INITIAL_PROMPT.md'
 ```
 
-Expected: **no output.** This was verified during planning — no live doc invokes the old CLI forms. README/docs mentions of "snapshot" refer to the in-guest `stockyard-snapshot` vsock service, ZFS internals, or research notes; those are not CLI invocations. **Do not edit them.**
+Expected: **no output** (grep exiting 1 is the good outcome here — judge by output, not exit code). This was verified during planning — no live doc invokes the old CLI forms. README/docs mentions of "snapshot" refer to the in-guest `stockyard-snapshot` vsock service, ZFS internals, or research notes; those are not CLI invocations. **Do not edit them.**
 
 - [ ] **Step 2: Handle any unexpected matches**
 
@@ -360,7 +363,10 @@ If (and only if) Step 1 produces hits outside the immutable archives, rewrite ea
 
 ```bash
 git add README.md docs/
-git commit -m "docs(PRI-2176): update snapshot command forms to new group syntax"
+git commit -m "docs(PRI-2176): update snapshot command forms to new group syntax
+
+Co-Authored-By: <YourBobName>@<first8-of-session-id> (claude-fable-5)
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 If there are no hits (the expected case), make no commit and move on.
@@ -395,14 +401,15 @@ Expected: both pass. (`make test` covers only `./pkg/...`; the explicit `./cmd/.
 
 This is the verified scratch-instance recipe (STOCKYARD_CONFIG_DIR isolation; `config.ConfigDir()` in `pkg/config/config.go` checks it first). Known gotchas: the daemon ignores `secrets.provider` and always tries 1Password first with file fallback (errors are swallowed — harmless); never point the CLI at the real daemon socket.
 
-```bash
-SCRATCH=$(mktemp -d /tmp/stockyard-pri2176-smoke.XXXXXX)
-mkdir -p "$SCRATCH/secrets" "$SCRATCH/data"
+**State does not survive between separate shell invocations.** Every block in Steps 3–5 therefore re-derives its state from the fixed path `/tmp/stockyard-pri2176-smoke` and a pidfile — an empty `$SCRATCH` would make `STOCKYARD_CONFIG_DIR=""` silently fall through to the *real* config (`pkg/config/config.go:159`), and the real daemon returns the same ZFS error, falsely passing the checks. The Step 4 guard exists to catch exactly that.
 
-# Pick an existing image reference. The smoke never boots a VM, but use a real ref.
-container image ls
-# If the list is empty, run: container system start   # then re-check
-IMAGE_REF=<a REFERENCE value from the listing above>
+First pick an existing image reference: run `container image ls` (if empty: `container system start`, then re-check) and substitute it for `IMAGE_REF` below. The smoke never boots a VM, but the daemon config wants a real ref.
+
+```bash
+SCRATCH=/tmp/stockyard-pri2176-smoke
+rm -rf "$SCRATCH"
+mkdir -p "$SCRATCH/secrets" "$SCRATCH/data"
+IMAGE_REF="docker.io/library/stockyard-vm:container"   # <- replace with a real REFERENCE from 'container image ls'
 
 cat > "$SCRATCH/config.json" <<EOF
 {
@@ -416,7 +423,7 @@ cat > "$SCRATCH/config.json" <<EOF
 EOF
 
 STOCKYARD_CONFIG_DIR="$SCRATCH" ./bin/stockyardd > "$SCRATCH/daemon.log" 2>&1 &
-DAEMON_PID=$!
+echo $! > "$SCRATCH/daemon.pid"
 
 # Wait for the socket (up to ~10s)
 for i in $(seq 1 20); do [ -S "$SCRATCH/stockyardd.sock" ] && break; sleep 0.5; done
@@ -427,9 +434,13 @@ Expected: `daemon up`.
 
 - [ ] **Step 4: Smoke the new group (wiring + error paths, not snapshot semantics)**
 
-ZFS snapshots are not supported on the macOS backend, so this smoke verifies command wiring and error paths only. Run each check with `STOCKYARD_CONFIG_DIR="$SCRATCH"`:
+ZFS snapshots are not supported on the macOS backend, so this smoke verifies command wiring and error paths only. Open the block with the guard — it stops the smoke if the scratch daemon isn't up or if `STOCKYARD_URL` is exported (env beats config in `pkg/client/resolve.go:21`, so a set `STOCKYARD_URL` would silently bypass the scratch socket — possibly to a remote ZFS daemon where snapshot commands are live):
 
 ```bash
+SCRATCH=/tmp/stockyard-pri2176-smoke
+[ -S "$SCRATCH/stockyardd.sock" ] || { echo "scratch daemon not up — STOP, redo Step 3"; exit 1; }
+[ -z "${STOCKYARD_URL:-}" ] || { echo "STOCKYARD_URL is set and would bypass the scratch socket — unset it first"; exit 1; }
+
 # 1. Group help lists the three subcommands
 STOCKYARD_CONFIG_DIR="$SCRATCH" ./bin/stockyard snapshot --help
 # Expected: exit 0; "Available Commands:" shows create, ls, restore
@@ -457,17 +468,19 @@ STOCKYARD_CONFIG_DIR="$SCRATCH" ./bin/stockyard snapshot some-task-id
 
 # 6. Old top-level 'snapshots' is gone
 STOCKYARD_CONFIG_DIR="$SCRATCH" ./bin/stockyard snapshots foo
-# Expected: exit 1; 'unknown command "snapshots" for "stockyard"'
+# Expected: exit 1; output CONTAINS 'unknown command "snapshots" for "stockyard"'
+# (cobra appends a 'Did you mean this?  snapshot' suggestion — that's fine)
 
 # 7. Old top-level 'restore' is gone
 STOCKYARD_CONFIG_DIR="$SCRATCH" ./bin/stockyard restore foo bar
-# Expected: exit 1; 'unknown command "restore" for "stockyard"'
+# Expected: exit 1; output CONTAINS 'unknown command "restore" for "stockyard"'
 ```
 
 - [ ] **Step 5: Tear down the scratch instance**
 
 ```bash
-kill "$DAEMON_PID"
+SCRATCH=/tmp/stockyard-pri2176-smoke
+kill "$(cat "$SCRATCH/daemon.pid")"
 rm -rf "$SCRATCH"
 ```
 
