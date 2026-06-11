@@ -168,10 +168,13 @@ type ImageRecord struct {
 }
 
 func (s *State) CreateImage(rec *ImageRecord) error
-func (s *State) GetImage(name string) (*ImageRecord, error)   // error when absent
-func (s *State) ListImages() ([]*ImageRecord, error)          // ordered by name
+func (s *State) GetImage(name string) (*ImageRecord, error)            // error when absent
+func (s *State) GetImageByDataset(dataset string) (*ImageRecord, error) // error when absent; collision pre-check
+func (s *State) ListImages() ([]*ImageRecord, error)                   // ordered by name
 func (s *State) DeleteImage(name string) error
 ```
+
+Extend the roundtrip test: after `GetImage`, also `GetImageByDataset("prudence-vm-1.2")` returns the same record, and a missing dataset errors.
 
 Implement with the file's existing query/Scan conventions (INSERT 5 cols; SELECT name, dataset, kernel_path, size_bytes, created_at).
 
@@ -247,12 +250,16 @@ func (r *imageRegistry) ValidateImage(ctx context.Context, ref string) error {
 	recs, lsErr := r.state.ListImages()
 	available := "(could not list registered images)"
 	if lsErr == nil {
-		names := make([]string, len(recs))
-		for i, rec := range recs {
-			names[i] = rec.Name
+		if len(recs) == 0 {
+			available = "(none registered)"
+		} else {
+			names := make([]string, len(recs))
+			for i, rec := range recs {
+				names[i] = rec.Name
+			}
+			sort.Strings(names)
+			available = strings.Join(names, "\n")
 		}
-		sort.Strings(names)
-		available = strings.Join(names, "\n")
 	}
 	return fmt.Errorf("image %q not found on host; available images:\n%s", ref, available)
 }
@@ -297,6 +304,16 @@ func (r *imageRegistry) Import(ctx context.Context, name, rootfsPath, kernelPath
 		dataset = "rootfs" // the pre-registry location; zero migration
 	}
 
+	// Collision check BEFORE any ZFS mutation. `zfs create -p` succeeds
+	// silently on an existing dataset, so without this a sanitization
+	// collision (e.g. importing "rootfs" while "default" owns dataset
+	// "rootfs") would overwrite the other image's live rootfs.ext4 and the
+	// import's failure cleanup would then destroy it. Data loss; never
+	// touch ZFS until the name→dataset mapping is known-free.
+	if other, err := r.state.GetImageByDataset(dataset); err == nil && other.Name != name {
+		return fmt.Errorf("image name %q sanitizes to dataset %q, already used by image %q; choose a different name", name, dataset, other.Name)
+	}
+
 	if existing, err := r.state.GetImage(name); err == nil {
 		if err := r.destroyer.DestroyTasksByImage(ctx, name); err != nil {
 			return fmt.Errorf("destroy tasks on %q: %w", name, err)
@@ -317,8 +334,8 @@ func (r *imageRegistry) Import(ctx context.Context, name, rootfsPath, kernelPath
 		SizeBytes: st.Size(), CreatedAt: time.Now(),
 	}
 	if err := r.state.CreateImage(rec); err != nil {
-		// Likely a sanitization collision (UNIQUE dataset). Clean up the
-		// dataset we just made so the store and ZFS stay consistent.
+		// Unexpected (collisions are pre-checked above): keep store and ZFS
+		// consistent by removing the dataset this import just created.
 		r.zfs.DestroyDatasetRecursive(ctx, r.datasetPathFor(rec))
 		return fmt.Errorf("register image %q (dataset %q): %w", name, dataset, err)
 	}
@@ -489,16 +506,33 @@ func TestRegistry_ReimportScorchesScoped(t *testing.T) {
 	}
 }
 
-func TestRegistry_DatasetCollisionFailsAndCleansUp(t *testing.T) {
+func TestRegistry_DatasetCollisionFailsBeforeZFS(t *testing.T) {
 	r, fz, _ := newTestRegistry(t)
 	r.Import(context.Background(), "a:b", tempRootfs(t), "") // dataset a-b
-	err := r.Import(context.Background(), "a/b", tempRootfs(t), "") // also a-b
-	if err == nil {
-		t.Fatal("expected collision error")
+	err := r.Import(context.Background(), "a/b", tempRootfs(t), "") // also sanitizes to a-b
+	if err == nil || !strings.Contains(err.Error(), `already used by image "a:b"`) {
+		t.Fatalf("expected legible collision error, got %v", err)
 	}
-	// The just-created dataset for the failed import must be destroyed again.
-	if len(fz.destroyed) != 1 {
-		t.Errorf("expected cleanup destroy, got %v", fz.destroyed)
+	// The collision must be caught BEFORE any ZFS mutation: exactly the
+	// first import's calls, zero destroys.
+	if len(fz.imported) != 1 || len(fz.destroyed) != 0 {
+		t.Errorf("ZFS touched on collision: imported=%v destroyed=%v", fz.imported, fz.destroyed)
+	}
+}
+
+func TestRegistry_ImportNameCollidingWithDefaultDataset(t *testing.T) {
+	r, fz, _ := newTestRegistry(t)
+	if err := r.EnsureDefault(context.Background(), tempRootfs(t)); err != nil {
+		t.Fatal(err)
+	}
+	preImports := len(fz.imported)
+	// "rootfs" sanitizes to dataset "rootfs" — owned by "default".
+	err := r.Import(context.Background(), "rootfs", tempRootfs(t), "")
+	if err == nil || !strings.Contains(err.Error(), `already used by image "default"`) {
+		t.Fatalf("expected default-dataset collision error, got %v", err)
+	}
+	if len(fz.imported) != preImports || len(fz.destroyed) != 0 {
+		t.Errorf("ZFS touched on default collision: imported=%v destroyed=%v", fz.imported, fz.destroyed)
 	}
 }
 
@@ -548,21 +582,30 @@ func TestRegistry_EnsureDefault(t *testing.T) {
 
 func TestRegistry_ListImages(t *testing.T) {
 	r, _, _ := newTestRegistry(t)
-	r.Import(context.Background(), "z:1", tempRootfs(t), "/k.bin")
-	// Stat of /k.bin would fail; bypass: import with empty kernel then test list.
+	if err := r.Import(context.Background(), "z:1", tempRootfs(t), ""); err != nil {
+		t.Fatal(err)
+	}
 	infos, err := r.ListImages(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = infos
+	if len(infos) != 1 {
+		t.Fatalf("expected 1 image, got %d", len(infos))
+	}
+	got := infos[0]
+	if got.Reference != "z:1" || got.Size != "10 B" || got.Digest != "" {
+		t.Errorf("unexpected ImageInfo: %+v", got)
+	}
+	if _, err := time.Parse(time.RFC3339, got.CreatedAt); err != nil {
+		t.Errorf("CreatedAt not RFC3339: %q", got.CreatedAt)
+	}
 }
 
 var _ vmbackend.ImageValidator = (*imageRegistry)(nil)
 var _ vmbackend.ImageLister = (*imageRegistry)(nil)
-var _ = fmt.Sprintf // keep fmt if otherwise unused
 ```
 
-NOTE for implementer: the `TestRegistry_ListImages` sketch above is sloppy (kernel stat will fail) — fix it properly: import with empty kernel path, then assert `infos[0].Reference == "z:1"`, `infos[0].Size == "10 B"`, `infos[0].Digest == ""`, CreatedAt parses as RFC3339. Drop the `var _ = fmt.Sprintf` line if fmt is used.
+(Test-file imports: context, os, path/filepath, strings, testing, time, vmbackend — drop fmt unless used.)
 
 - [ ] **Step 3:** `go test ./pkg/daemon/ -run TestRegistry -v` — all green; full package green. Commit: `feat(PRI-2150): imageRegistry — ZFS-backed named images with orderly replace`
 
@@ -596,7 +639,7 @@ func (tm *TaskManager) DestroyTasksByImage(ctx context.Context, image string) er
 }
 ```
 
-- [ ] Test with the in-memory state: create two task rows with different images via `state.CreateTask`, a TaskManager with nil backend, call DestroyTasksByImage, assert only the matching task got destroyed (status updated). Read how DestroyTask behaves with nil backend first — if it requires a backend, fake the minimal backend the same way grpc_test.go does.
+- [ ] Test with the in-memory state: create two task rows with different images via `state.CreateTask`, a TaskManager with nil backend (DestroyTask nil-guards every backend/zfs/feed access and ends in `state.DeleteTask` — the row is REMOVED, not status-flipped), call DestroyTasksByImage, then assert the matching task's `GetTask` errors (row gone) and the other task's row survives.
 - [ ] Full `go test ./pkg/daemon/` green. Commit: `feat(PRI-2150): TaskManager.DestroyTasksByImage for scoped image replacement`
 
 ---
@@ -633,7 +676,7 @@ func (tm *TaskManager) DestroyTasksByImage(ctx context.Context, image string) er
 - Modify: `pkg/daemon/daemon.go`, `pkg/daemon/tasks.go`, `pkg/daemon/grpc.go`
 - Test: extend `pkg/daemon/grpc_test.go`
 
-- [ ] **daemon.go:** in the firecracker branch of backend construction, after the zfs manager exists, build `d.images = &imageRegistry{state: d.state, zfs: d.zfs, destroyer: <set after NewTaskManager>, pool: cfg.ZFS.Pool, imagesPath: cfg.ZFS.ImagesPath}` (add field `images *imageRegistry` to Daemon; set `d.images.destroyer = d.tasks` right after `d.tasks = NewTaskManager(...)`). Replace `ensureBaseImage(ctx)` call with `d.images.EnsureDefault(ctx, d.cfg.Firecracker.RootfsPath)` (delete the old ensureBaseImage function). Guard: only when `d.zfs != nil` (mirror the existing ensureBaseImage call-site condition).
+- [ ] **daemon.go:** add field `images *imageRegistry` to Daemon. Construct it inside `case "", "firecracker":` but OUTSIDE the `if cfg.Firecracker.KernelPath != "" && ...` conditional (state and zfs are initialized at :83-96, before backend construction; a kernel-path-less config must still get a registry or must safely skip — and the EnsureDefault call-site must not nil-panic): `d.images = &imageRegistry{state: d.state, zfs: d.zfs, pool: cfg.ZFS.Pool, imagesPath: cfg.ZFS.ImagesPath}` guarded by `d.zfs != nil`. Set `d.images.destroyer = d.tasks` right after `d.tasks = NewTaskManager(...)` (guard `d.images != nil`). Replace the `ensureBaseImage(ctx)` call (line ~282) with `d.images.EnsureDefault(ctx, d.cfg.Firecracker.RootfsPath)` guarded by `d.images != nil` (replacing the backend-name condition), and delete the old `ensureBaseImage` function.
 - [ ] **tasks.go CreateTask:** validator selection becomes registry-aware, and the resolved image maps to snapshot/kernel:
 
 Replace
@@ -665,7 +708,9 @@ and after `resolvedImage` is computed, before the vmCfg literal:
 	}
 ```
 
-then add to the vmCfg literal: `RootfsSnapshot: rootfsSnapshot,` and set `KernelPath: imageKernel,` (KernelPath empty keeps the client-side fallback to the configured kernel — verify the literal doesn't already set KernelPath; it doesn't today).
+then add to the vmCfg literal: `RootfsSnapshot: rootfsSnapshot,` and set `KernelPath: imageKernel,` (KernelPath empty keeps the client-side fallback to the configured kernel — verified: the literal doesn't set KernelPath today).
+
+**Known limitation (state it in the commit message and the contract doc):** per-image kernels apply at CREATE only. `RestartTask` rebuilds a minimal VMConfig (tasks.go:435-439) without KernelPath, so a restarted task boots the shared kernel. Full kernel-pairing semantics (incl. restart and boot args) remain the deferred phase-2 design point in the spec — this ships the minimal create-time pairing only.
 
 - [ ] **grpc.go:** route the mutation RPCs to the registry when present:
 
@@ -711,25 +756,38 @@ func (s *grpcServer) ImportImage(ctx context.Context, req *pb.ImportImageRequest
 
 Per spec: "the deploy target shrinks to build → copy artifact to host → `stockyard image import`. The hand-rolled ZFS surgery leaves the Makefile; the daemon owns its store." Cannot be executed on macOS — make the edits, verify `make -n deploy IMAGE_NAME=foo` renders sensible commands, leave runtime proof to the Linux smoke.
 
-- [ ] Rework `deploy`:
+**CRITICAL naming constraint:** `IMAGE_NAME` is ALREADY taken — `build.sh:19` and `convert-to-rootfs.sh:18` consume it as the *Docker* image name, and make exports command-line variables to recipe sub-shells, so `make deploy IMAGE_NAME=foo` would break the build pipeline. The registry name variable is `REGISTRY_IMAGE`. Also: `deploy` and `deploy-alpine` must NOT share a `rootfs` prerequisite chain — both variants write `output/rootfs.ext4`, so an alias that re-triggers `rootfs` would clobber the Alpine artifact with the Ubuntu build. Factor a prerequisite-free `deploy-image` target.
+
+- [ ] Rework deployment targets:
 
 ```makefile
 # Deployment paths
 INSTALL_DIR := /var/lib/stockyard
-IMAGE_NAME ?= default
+REGISTRY_IMAGE ?= default
 STOCKYARD_BIN ?= $(abspath ..)/bin/stockyard
 
-deploy: rootfs
-	@echo "=== Deploying image '$(IMAGE_NAME)' ==="
+# Install the already-built output/rootfs.ext4 under the registry name.
+# No build prerequisite on purpose: deploy/deploy-alpine choose what to build.
+deploy-image:
+	@echo "=== Deploying image '$(REGISTRY_IMAGE)' ==="
 	sudo cp output/vmlinux.bin $(INSTALL_DIR)/vmlinux.bin
-	sudo cp output/rootfs.ext4 $(INSTALL_DIR)/rootfs-$(IMAGE_NAME).ext4
-	sudo $(STOCKYARD_BIN) image import $(IMAGE_NAME) --rootfs $(INSTALL_DIR)/rootfs-$(IMAGE_NAME).ext4
+	sudo cp output/rootfs.ext4 $(INSTALL_DIR)/rootfs-$(REGISTRY_IMAGE).ext4
+ifeq ($(REGISTRY_IMAGE),default)
+	sudo cp output/rootfs.ext4 $(INSTALL_DIR)/rootfs.ext4  # legacy path: config rootfs_path, startup self-heal
+endif
+	sudo $(STOCKYARD_BIN) image import $(REGISTRY_IMAGE) --rootfs $(INSTALL_DIR)/rootfs-$(REGISTRY_IMAGE).ext4
 	@echo "=== Deployment Complete ==="
+
+deploy: rootfs
+	$(MAKE) deploy-image
+
+deploy-alpine: rootfs-alpine
+	$(MAKE) deploy-image REGISTRY_IMAGE=alpine
 ```
 
-Notes for the implementer: keep the existing `rootfs` build dependency; DELETE the systemctl stop/start, pkill, and `zfs destroy -R` steps (the daemon now does orderly scoped replacement while running — that's the point); for `IMAGE_NAME=default` ALSO keep copying to the legacy `$(INSTALL_DIR)/rootfs.ext4` (the daemon config's `rootfs_path` points there for startup self-heal). `deploy-alpine` becomes a thin alias: `$(MAKE) deploy IMAGE_NAME=alpine` after its variant build (keep `rootfs-alpine` as its dependency). Update the help text accordingly (remove the "destroys all existing VMs" warning; replacement now only destroys tasks on the replaced image).
+Notes for the implementer: DELETE the old deploy/deploy-alpine bodies entirely — systemctl stop/start, pkill, and `zfs destroy -R` all go (the daemon does orderly scoped replacement while running; that's the point of phase 2). Update `.PHONY` and the help text (remove the "destroys all existing VMs" warning; replacement destroys only tasks on the replaced image; document `REGISTRY_IMAGE`).
 
-- [ ] Verify with `make -n -C vm-image deploy` and `make -n -C vm-image deploy IMAGE_NAME=alpine` (dry-run renders; no sudo executed). Commit: `feat(PRI-2150): vm-image deploy registers images via stockyard image import`
+- [ ] Verify with `make -n -C vm-image deploy-image`, `make -n -C vm-image deploy-image REGISTRY_IMAGE=alpine` (dry-run renders, conditional copy appears only for default; no sudo executed). Commit: `feat(PRI-2150): vm-image deploy registers images via stockyard image import`
 
 ---
 
