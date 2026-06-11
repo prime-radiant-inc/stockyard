@@ -1,18 +1,26 @@
 # Stockyard VM Image Build
 #
 # Usage:
-#   make          - Build everything (docker image + rootfs)
-#   make docker   - Build Docker image only
-#   make rootfs   - Convert to Firecracker rootfs (requires sudo)
-#   make deploy   - Full deploy: build, stop daemon, install, restart (requires sudo)
-#   make clean    - Remove build artifacts
-#   make help     - Show this help
+#   make                       - Build everything (docker image + rootfs)
+#   make docker                - Build Docker image only
+#   make rootfs                - Convert to Firecracker rootfs (requires sudo)
+#   make deploy                - Build + register default image via `stockyard image import`
+#   make deploy-image          - Register the already-built output/rootfs.ext4 (no build step)
+#   make deploy-image REGISTRY_IMAGE=foo  - Register under a custom name
+#   make clean                 - Remove build artifacts
+#   make help                  - Show this help
 
-.PHONY: all build-deps docker rootfs deploy clean help docker-alpine rootfs-alpine deploy-alpine container-image
+.PHONY: all build-deps docker rootfs deploy deploy-image clean help docker-alpine rootfs-alpine deploy-alpine container-image
 
 # Deployment paths
 INSTALL_DIR := /var/lib/stockyard
-ZFS_SNAPSHOT := tank/stockyard/images/rootfs@base
+# REGISTRY_IMAGE: the name used in `stockyard image import`.
+# Set to "default" for the canonical base image, or any other name for named
+# images (e.g. REGISTRY_IMAGE=alpine for the Alpine variant).
+# Do NOT use IMAGE_NAME here — build.sh and convert-to-rootfs.sh own that variable
+# for the Docker image name and make exports command-line vars to sub-shells.
+REGISTRY_IMAGE ?= default
+STOCKYARD_BIN ?= $(abspath ..)/bin/stockyard
 
 # Default target: build everything
 all: rootfs
@@ -25,51 +33,24 @@ docker:
 rootfs: docker
 	@sudo ./convert-to-rootfs.sh
 
-# Full deployment pipeline (requires sudo)
-# This is the COMPLETE process - no steps should be skipped
-# WARNING: This destroys all existing VMs to deploy fresh image
-deploy: rootfs
-	@echo ""
-	@echo "=== Deploying to $(INSTALL_DIR) ==="
-	@echo ""
-	@echo "Step 1: Stopping stockyardd daemon..."
-	sudo systemctl stop stockyardd
-	@echo ""
-	@echo "Step 2: Killing any remaining firecracker processes..."
-	@sudo pkill -9 firecracker 2>/dev/null || true
-	@sleep 1
-	@echo ""
-	@echo "Step 3: Copying rootfs.ext4..."
-	sudo cp output/rootfs.ext4 $(INSTALL_DIR)/rootfs.ext4
-	@echo ""
-	@echo "Step 4: Copying vmlinux.bin..."
+# Install the already-built output/rootfs.ext4 under the registry name.
+# No build prerequisite on purpose: deploy and deploy-alpine choose what to
+# build; this target only installs and registers the result.
+# The daemon handles orderly replacement (destroys only tasks on the replaced
+# image, then re-imports) — no need to stop/restart the daemon or touch ZFS.
+deploy-image:
+	@echo "=== Deploying image '$(REGISTRY_IMAGE)' ==="
 	sudo cp output/vmlinux.bin $(INSTALL_DIR)/vmlinux.bin
-	@echo ""
-	@echo "Step 5: Destroying ZFS base snapshot and VM clones..."
-	@# Use -R to recursively destroy dependent clones (VM filesystems)
-	@if sudo zfs list -t snapshot $(ZFS_SNAPSHOT) >/dev/null 2>&1; then \
-		echo "Destroying $(ZFS_SNAPSHOT) and dependent clones..."; \
-		sudo zfs destroy -R $(ZFS_SNAPSHOT) && echo "Destroyed $(ZFS_SNAPSHOT)" || \
-		echo "WARNING: Failed to destroy snapshot (may have active mounts)"; \
-	else \
-		echo "Snapshot $(ZFS_SNAPSHOT) does not exist, skipping destroy"; \
-	fi
-	@echo ""
-	@echo "Step 6: Restarting stockyardd daemon..."
-	sudo systemctl start stockyardd
-	@sleep 2
-	@echo ""
-	@echo "Step 7: Verifying daemon is running..."
-	@if systemctl is-active --quiet stockyardd; then \
-		echo "stockyardd is running"; \
-		systemctl status stockyardd --no-pager | head -5; \
-	else \
-		echo "ERROR: stockyardd failed to start!"; \
-		systemctl status stockyardd --no-pager; \
-		exit 1; \
-	fi
-	@echo ""
+	sudo cp output/rootfs.ext4 $(INSTALL_DIR)/rootfs-$(REGISTRY_IMAGE).ext4
+ifeq ($(REGISTRY_IMAGE),default)
+	sudo cp output/rootfs.ext4 $(INSTALL_DIR)/rootfs.ext4  # legacy path: config rootfs_path, startup self-heal
+endif
+	sudo $(STOCKYARD_BIN) image import $(REGISTRY_IMAGE) --rootfs $(INSTALL_DIR)/rootfs-$(REGISTRY_IMAGE).ext4
 	@echo "=== Deployment Complete ==="
+
+# Build and deploy the default (Ubuntu) image.
+deploy: rootfs
+	$(MAKE) deploy-image
 
 # ============================================================================
 # Alpine variant targets (Linux Firecracker — separate from the default Ubuntu
@@ -84,48 +65,9 @@ docker-alpine:
 rootfs-alpine: docker-alpine
 	@sudo IMAGE_TAG=alpine ./convert-to-rootfs.sh
 
-# Full Alpine deployment pipeline (requires sudo)
+# Build and deploy the Alpine variant image.
 deploy-alpine: rootfs-alpine
-	@echo ""
-	@echo "=== Deploying Alpine image to $(INSTALL_DIR) ==="
-	@echo ""
-	@echo "Step 1: Stopping stockyardd daemon..."
-	sudo systemctl stop stockyardd
-	@echo ""
-	@echo "Step 2: Killing any remaining firecracker processes..."
-	@sudo pkill -9 firecracker 2>/dev/null || true
-	@sleep 1
-	@echo ""
-	@echo "Step 3: Copying rootfs.ext4..."
-	sudo cp output/rootfs.ext4 $(INSTALL_DIR)/rootfs.ext4
-	@echo ""
-	@echo "Step 4: Copying vmlinux.bin..."
-	sudo cp output/vmlinux.bin $(INSTALL_DIR)/vmlinux.bin
-	@echo ""
-	@echo "Step 5: Destroying ZFS base snapshot and VM clones..."
-	@if sudo zfs list -t snapshot $(ZFS_SNAPSHOT) >/dev/null 2>&1; then \
-		echo "Destroying $(ZFS_SNAPSHOT) and dependent clones..."; \
-		sudo zfs destroy -R $(ZFS_SNAPSHOT) && echo "Destroyed $(ZFS_SNAPSHOT)" || \
-		echo "WARNING: Failed to destroy snapshot (may have active mounts)"; \
-	else \
-		echo "Snapshot $(ZFS_SNAPSHOT) does not exist, skipping destroy"; \
-	fi
-	@echo ""
-	@echo "Step 6: Restarting stockyardd daemon..."
-	sudo systemctl start stockyardd
-	@sleep 2
-	@echo ""
-	@echo "Step 7: Verifying daemon is running..."
-	@if systemctl is-active --quiet stockyardd; then \
-		echo "stockyardd is running"; \
-		systemctl status stockyardd --no-pager | head -5; \
-	else \
-		echo "ERROR: stockyardd failed to start!"; \
-		systemctl status stockyardd --no-pager; \
-		exit 1; \
-	fi
-	@echo ""
-	@echo "=== Alpine Deployment Complete ==="
+	$(MAKE) deploy-image REGISTRY_IMAGE=alpine
 
 # Build the Apple `container` OCI image (arm64). Requires Docker + BuildKit.
 container-image:
@@ -141,33 +83,31 @@ help:
 	@echo "Stockyard VM Image Build"
 	@echo ""
 	@echo "Targets:"
-	@echo "  make                  Build everything (docker + rootfs)"
-	@echo "  make docker           Build Docker image only"
-	@echo "  make rootfs           Convert to Firecracker rootfs (requires sudo)"
-	@echo "  make deploy           Full deploy: build + install + restart daemon (requires sudo)"
-	@echo "  make docker-alpine    Build Alpine-variant Docker image (Linux Firecracker)"
-	@echo "  make rootfs-alpine    Convert Alpine image to Firecracker rootfs (requires sudo)"
-	@echo "  make deploy-alpine    Full Alpine deploy (requires sudo)"
-	@echo "  make container-image  Build the Apple container OCI image (arm64)"
-	@echo "  make clean            Remove build artifacts"
-	@echo "  make help             Show this help"
+	@echo "  make                            Build everything (docker + rootfs)"
+	@echo "  make docker                     Build Docker image only"
+	@echo "  make rootfs                     Convert to Firecracker rootfs (requires sudo)"
+	@echo "  make deploy                     Build + register default image (requires sudo)"
+	@echo "  make deploy-image               Register output/rootfs.ext4 as REGISTRY_IMAGE (no build step)"
+	@echo "  make deploy-image REGISTRY_IMAGE=foo  Register under a custom name"
+	@echo "  make docker-alpine              Build Alpine-variant Docker image (Linux Firecracker)"
+	@echo "  make rootfs-alpine              Convert Alpine image to Firecracker rootfs (requires sudo)"
+	@echo "  make deploy-alpine              Build + register Alpine image (requires sudo)"
+	@echo "  make container-image            Build the Apple container OCI image (arm64)"
+	@echo "  make clean                      Remove build artifacts"
+	@echo "  make help                       Show this help"
 	@echo ""
-	@echo "Deploy process (make deploy):"
-	@echo "  1. Build Docker image"
-	@echo "  2. Convert to rootfs"
-	@echo "  3. Stop stockyardd daemon"
-	@echo "  4. Kill any remaining firecracker processes"
-	@echo "  5. Copy rootfs.ext4 and vmlinux.bin to $(INSTALL_DIR)"
-	@echo "  6. Destroy ZFS base snapshot AND all VM clones (DESTRUCTIVE!)"
-	@echo "  7. Restart stockyardd daemon"
-	@echo "  8. Verify daemon is running"
-	@echo ""
-	@echo "WARNING: 'make deploy' destroys all existing VMs!"
+	@echo "Deploy process (make deploy / make deploy-image):"
+	@echo "  1. Copy vmlinux.bin and rootfs.ext4 to $(INSTALL_DIR)"
+	@echo "  2. Run: stockyard image import <REGISTRY_IMAGE> --rootfs ..."
+	@echo "  The daemon handles replacement atomically: it destroys only the tasks"
+	@echo "  running the replaced image, then re-imports. No daemon restart needed."
 	@echo ""
 	@echo "Configuration (environment variables):"
-	@echo "  VM_USER       VM username (default: mooby)"
-	@echo "  IMAGE_NAME    Docker image name (default: stockyard-vm)"
-	@echo "  IMAGE_TAG     Docker image tag (default: latest)"
-	@echo "  ROOTFS_SIZE   Rootfs size (default: 10G)"
+	@echo "  REGISTRY_IMAGE   Registry name for this image (default: default)"
+	@echo "  STOCKYARD_BIN    Path to stockyard binary (default: ../bin/stockyard)"
+	@echo "  VM_USER          VM username (default: mooby)"
+	@echo "  IMAGE_NAME       Docker image name (default: stockyard-vm) — owned by build.sh"
+	@echo "  IMAGE_TAG        Docker image tag (default: latest) — owned by convert-to-rootfs.sh"
+	@echo "  ROOTFS_SIZE      Rootfs size (default: 10G)"
 	@echo ""
 	@echo "Output: output/rootfs.ext4, output/vmlinux.bin"
