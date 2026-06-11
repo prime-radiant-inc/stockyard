@@ -235,7 +235,7 @@ git commit -m "feat(PRI-2178): qualify Apple container image as stockyard.local/
 - Modify: `docs/image-contract.md` (Image families section, lines 41-46)
 - Modify: `README.md` (apple-container backend paragraph, line 101)
 
-- [ ] **Step 1: vm-image/Makefile — comment and help text**
+- [x] **Step 1: vm-image/Makefile — comment and help text**
 
 Change the `container-image` comment (currently line 72) from:
 
@@ -274,7 +274,7 @@ to:
 	@echo "  IMAGE_NAME       Docker image name (default: stockyard-vm) — owned by build.sh; the container target tags it stockyard.local/<IMAGE_NAME>:container"
 ```
 
-- [ ] **Step 2: docs/image-contract.md — qualified naming + transition note**
+- [x] **Step 2: docs/image-contract.md — qualified naming + transition note**
 
 Replace the "Image families" section (currently lines 41-46):
 
@@ -310,7 +310,7 @@ Linux Firecracker registry names are unaffected: images there are named at
 `container image tag stockyard-vm:container stockyard.local/stockyard-vm:container`.
 ```
 
-- [ ] **Step 3: README.md — name the qualified image in the backend paragraph**
+- [x] **Step 3: README.md — name the qualified image in the backend paragraph**
 
 Change the paragraph at line 101 from:
 
@@ -324,7 +324,7 @@ to:
 The top-level `backend` key selects the VM backend. Valid values are `"firecracker"` (default, Linux) and `"apple-container"` (macOS). The apple-container backend skips the Firecracker-only setup steps — no ZFS, no kernel/rootfs install — and uses Apple's `container` CLI to manage VMs. Its task image is set via `apple_container.image` (e.g. `"stockyard.local/stockyard-vm:container"`, built by `make container-image`).
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add vm-image/Makefile docs/image-contract.md README.md

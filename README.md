@@ -98,7 +98,7 @@ To enable remote access, configure the daemon to listen on TCP:
 
 When `grpc_addr` is set, the daemon listens on both the Unix socket (for local access) and TCP (for remote access).
 
-The top-level `backend` key selects the VM backend. Valid values are `"firecracker"` (default, Linux) and `"apple-container"` (macOS). The apple-container backend skips the Firecracker-only setup steps — no ZFS, no kernel/rootfs install — and uses Apple's `container` CLI to manage VMs.
+The top-level `backend` key selects the VM backend. Valid values are `"firecracker"` (default, Linux) and `"apple-container"` (macOS). The apple-container backend skips the Firecracker-only setup steps — no ZFS, no kernel/rootfs install — and uses Apple's `container` CLI to manage VMs. Its task image is set via `apple_container.image` (e.g. `"stockyard.local/stockyard-vm:container"`, built by `make container-image`).
 
 **Note:** For secure remote access, use Tailscale or a reverse proxy with TLS. The daemon does not yet support TLS directly.
 
