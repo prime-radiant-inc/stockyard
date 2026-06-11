@@ -201,11 +201,24 @@ func (m *Manager) DestroyDatasetByPath(ctx context.Context, datasetPath string) 
 	return m.runZFS(ctx, "destroy", "-r", fullPath)
 }
 
-// ImportRootfsImage imports a rootfs.ext4 file into ZFS and creates the base snapshot.
-// Creates: pool/imagesPath/rootfs dataset with rootfs.ext4 file and @base snapshot.
-// imagesPath is the full path under the pool, e.g., "stockyard/images"
-func (m *Manager) ImportRootfsImage(ctx context.Context, imagesPath, srcPath string) error {
-	datasetPath := fmt.Sprintf("%s/%s/rootfs", m.PoolName, imagesPath)
+// SanitizeDatasetComponent maps an image name (an OCI-style ref) to a single
+// safe ZFS dataset component: [a-zA-Z0-9._-] pass through, everything else
+// (notably '/' and ':') becomes '-'.
+func SanitizeDatasetComponent(name string) string {
+	return strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+			return r
+		}
+		return '-'
+	}, name)
+}
+
+// ImportImageRootfs imports a rootfs file into pool/imagesPath/<dataset> as
+// rootfs.ext4 and snapshots @base. Generalizes the single-image import for
+// the PRI-2150 phase-2 registry.
+func (m *Manager) ImportImageRootfs(ctx context.Context, imagesPath, dataset, srcPath string) error {
+	datasetPath := fmt.Sprintf("%s/%s/%s", m.PoolName, imagesPath, dataset)
 
 	// Create the dataset
 	if err := m.runZFS(ctx, "create", "-p", datasetPath); err != nil {
@@ -244,6 +257,25 @@ func (m *Manager) ImportRootfsImage(ctx context.Context, imagesPath, srcPath str
 
 	success = true
 	return nil
+}
+
+// SnapshotExists reports whether the named snapshot (full path incl. pool)
+// exists.
+func (m *Manager) SnapshotExists(ctx context.Context, snapshotPath string) bool {
+	return exec.CommandContext(ctx, "zfs", "list", "-t", "snapshot", snapshotPath).Run() == nil
+}
+
+// DestroyDatasetRecursive destroys a dataset (full path incl. pool) together
+// with its snapshots AND dependent clones (zfs destroy -R).
+func (m *Manager) DestroyDatasetRecursive(ctx context.Context, datasetPath string) error {
+	return m.runZFS(ctx, "destroy", "-R", datasetPath)
+}
+
+// ImportRootfsImage imports a rootfs.ext4 file into ZFS and creates the base snapshot.
+// Creates: pool/imagesPath/rootfs dataset with rootfs.ext4 file and @base snapshot.
+// imagesPath is the full path under the pool, e.g., "stockyard/images"
+func (m *Manager) ImportRootfsImage(ctx context.Context, imagesPath, srcPath string) error {
+	return m.ImportImageRootfs(ctx, imagesPath, "rootfs", srcPath)
 }
 
 // copyFile copies a file from src to dst using buffered I/O.
