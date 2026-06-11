@@ -17,6 +17,10 @@ service Stockyard {
     rpc RestoreSnapshot(RestoreSnapshotRequest) returns (RestoreSnapshotResponse);
 
     rpc GetLogs(GetLogsRequest) returns (stream LogEntry);
+
+    rpc ListImages(ListImagesRequest) returns (ListImagesResponse);
+    rpc ImportImage(ImportImageRequest) returns (ImportImageResponse);
+    rpc RemoveImage(RemoveImageRequest) returns (RemoveImageResponse);
 }
 
 message CreateTaskRequest {
@@ -124,3 +128,30 @@ message Snapshot {
     string label = 2;
     string created_at = 3;
 }
+
+message ListImagesRequest {}
+
+message ListImagesResponse {
+    repeated ImageInfo images = 1;
+}
+
+message ImageInfo {
+    string reference = 1;   // OCI ref, as the store reports it
+    string digest = 2;      // e.g. "sha256:48b0..."
+    string size = 3;        // Human-readable ("4 MB"); display-only
+    string created_at = 4;  // Best-effort; empty if the image carries no created annotation
+}
+
+message ImportImageRequest {
+    string name = 1;         // Registry name (OCI-style ref)
+    string rootfs_path = 2;  // Path on the daemon host
+    string kernel_path = 3;  // Optional; empty = shared default kernel
+}
+
+message ImportImageResponse {}
+
+message RemoveImageRequest {
+    string name = 1;
+}
+
+message RemoveImageResponse {}

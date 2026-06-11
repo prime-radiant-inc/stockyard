@@ -149,8 +149,11 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	var vmDatasetPath string // Track ZFS dataset for cleanup on failure
 	if c.zfs != nil {
 		// Use ZFS clone for copy-on-write rootfs
-		// Full snapshot path: tank/stockyard/images/rootfs@base
-		snapshotPath := fmt.Sprintf("%s/%s/rootfs@base", c.zfs.PoolName, c.config.ImagesPath)
+		snapshotPath := config.RootfsSnapshot
+		if snapshotPath == "" {
+			// Pre-registry default: the single base image location.
+			snapshotPath = fmt.Sprintf("%s/%s/rootfs@base", c.zfs.PoolName, c.config.ImagesPath)
+		}
 		// Full clone target: tank/stockyard/vms/<vmID>
 		vmDatasetPath = fmt.Sprintf("%s/%s/%s", c.zfs.PoolName, c.config.VMsPath, config.ID)
 

@@ -104,6 +104,27 @@ func (c *Client) ListTasks(ctx context.Context, status string) ([]*pb.Task, erro
 	return resp.Tasks, nil
 }
 
+// ListImages returns the images available in the daemon's image store.
+func (c *Client) ListImages(ctx context.Context) ([]*pb.ImageInfo, error) {
+	resp, err := c.client.ListImages(ctx, &pb.ListImagesRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Images, nil
+}
+
+// ImportImage registers a rootfs (and optional kernel) under name.
+func (c *Client) ImportImage(ctx context.Context, name, rootfsPath, kernelPath string) error {
+	_, err := c.client.ImportImage(ctx, &pb.ImportImageRequest{Name: name, RootfsPath: rootfsPath, KernelPath: kernelPath})
+	return err
+}
+
+// RemoveImage removes a registered image by name.
+func (c *Client) RemoveImage(ctx context.Context, name string) error {
+	_, err := c.client.RemoveImage(ctx, &pb.RemoveImageRequest{Name: name})
+	return err
+}
+
 // StopTask stops a running task.
 func (c *Client) StopTask(ctx context.Context, taskID string) error {
 	_, err := c.client.StopTask(ctx, &pb.StopTaskRequest{TaskId: taskID})

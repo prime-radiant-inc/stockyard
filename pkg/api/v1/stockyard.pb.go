@@ -1157,6 +1157,330 @@ func (x *Snapshot) GetCreatedAt() string {
 	return ""
 }
 
+type ListImagesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListImagesRequest) Reset() {
+	*x = ListImagesRequest{}
+	mi := &file_api_stockyard_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListImagesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListImagesRequest) ProtoMessage() {}
+
+func (x *ListImagesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_stockyard_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListImagesRequest.ProtoReflect.Descriptor instead.
+func (*ListImagesRequest) Descriptor() ([]byte, []int) {
+	return file_api_stockyard_proto_rawDescGZIP(), []int{22}
+}
+
+type ListImagesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Images        []*ImageInfo           `protobuf:"bytes,1,rep,name=images,proto3" json:"images,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListImagesResponse) Reset() {
+	*x = ListImagesResponse{}
+	mi := &file_api_stockyard_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListImagesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListImagesResponse) ProtoMessage() {}
+
+func (x *ListImagesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_stockyard_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListImagesResponse.ProtoReflect.Descriptor instead.
+func (*ListImagesResponse) Descriptor() ([]byte, []int) {
+	return file_api_stockyard_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ListImagesResponse) GetImages() []*ImageInfo {
+	if x != nil {
+		return x.Images
+	}
+	return nil
+}
+
+type ImageInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Reference     string                 `protobuf:"bytes,1,opt,name=reference,proto3" json:"reference,omitempty"`                  // OCI ref, as the store reports it
+	Digest        string                 `protobuf:"bytes,2,opt,name=digest,proto3" json:"digest,omitempty"`                        // e.g. "sha256:48b0..."
+	Size          string                 `protobuf:"bytes,3,opt,name=size,proto3" json:"size,omitempty"`                            // Human-readable ("4 MB"); display-only
+	CreatedAt     string                 `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // Best-effort; empty if the image carries no created annotation
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImageInfo) Reset() {
+	*x = ImageInfo{}
+	mi := &file_api_stockyard_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImageInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImageInfo) ProtoMessage() {}
+
+func (x *ImageInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_api_stockyard_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImageInfo.ProtoReflect.Descriptor instead.
+func (*ImageInfo) Descriptor() ([]byte, []int) {
+	return file_api_stockyard_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *ImageInfo) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *ImageInfo) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+func (x *ImageInfo) GetSize() string {
+	if x != nil {
+		return x.Size
+	}
+	return ""
+}
+
+func (x *ImageInfo) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+type ImportImageRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                               // Registry name (OCI-style ref)
+	RootfsPath    string                 `protobuf:"bytes,2,opt,name=rootfs_path,json=rootfsPath,proto3" json:"rootfs_path,omitempty"` // Path on the daemon host
+	KernelPath    string                 `protobuf:"bytes,3,opt,name=kernel_path,json=kernelPath,proto3" json:"kernel_path,omitempty"` // Optional; empty = shared default kernel
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportImageRequest) Reset() {
+	*x = ImportImageRequest{}
+	mi := &file_api_stockyard_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportImageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportImageRequest) ProtoMessage() {}
+
+func (x *ImportImageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_stockyard_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportImageRequest.ProtoReflect.Descriptor instead.
+func (*ImportImageRequest) Descriptor() ([]byte, []int) {
+	return file_api_stockyard_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *ImportImageRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ImportImageRequest) GetRootfsPath() string {
+	if x != nil {
+		return x.RootfsPath
+	}
+	return ""
+}
+
+func (x *ImportImageRequest) GetKernelPath() string {
+	if x != nil {
+		return x.KernelPath
+	}
+	return ""
+}
+
+type ImportImageResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportImageResponse) Reset() {
+	*x = ImportImageResponse{}
+	mi := &file_api_stockyard_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportImageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportImageResponse) ProtoMessage() {}
+
+func (x *ImportImageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_stockyard_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportImageResponse.ProtoReflect.Descriptor instead.
+func (*ImportImageResponse) Descriptor() ([]byte, []int) {
+	return file_api_stockyard_proto_rawDescGZIP(), []int{26}
+}
+
+type RemoveImageRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveImageRequest) Reset() {
+	*x = RemoveImageRequest{}
+	mi := &file_api_stockyard_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveImageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveImageRequest) ProtoMessage() {}
+
+func (x *RemoveImageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_stockyard_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveImageRequest.ProtoReflect.Descriptor instead.
+func (*RemoveImageRequest) Descriptor() ([]byte, []int) {
+	return file_api_stockyard_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *RemoveImageRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type RemoveImageResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveImageResponse) Reset() {
+	*x = RemoveImageResponse{}
+	mi := &file_api_stockyard_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveImageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveImageResponse) ProtoMessage() {}
+
+func (x *RemoveImageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_stockyard_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveImageResponse.ProtoReflect.Descriptor instead.
+func (*RemoveImageResponse) Descriptor() ([]byte, []int) {
+	return file_api_stockyard_proto_rawDescGZIP(), []int{28}
+}
+
 var File_api_stockyard_proto protoreflect.FileDescriptor
 
 const file_api_stockyard_proto_rawDesc = "" +
@@ -1235,7 +1559,26 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\tR\tcreatedAt2\xbf\x06\n" +
+	"created_at\x18\x03 \x01(\tR\tcreatedAt\"\x13\n" +
+	"\x11ListImagesRequest\"E\n" +
+	"\x12ListImagesResponse\x12/\n" +
+	"\x06images\x18\x01 \x03(\v2\x17.stockyard.v1.ImageInfoR\x06images\"t\n" +
+	"\tImageInfo\x12\x1c\n" +
+	"\treference\x18\x01 \x01(\tR\treference\x12\x16\n" +
+	"\x06digest\x18\x02 \x01(\tR\x06digest\x12\x12\n" +
+	"\x04size\x18\x03 \x01(\tR\x04size\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x04 \x01(\tR\tcreatedAt\"j\n" +
+	"\x12ImportImageRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1f\n" +
+	"\vrootfs_path\x18\x02 \x01(\tR\n" +
+	"rootfsPath\x12\x1f\n" +
+	"\vkernel_path\x18\x03 \x01(\tR\n" +
+	"kernelPath\"\x15\n" +
+	"\x13ImportImageResponse\"(\n" +
+	"\x12RemoveImageRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x15\n" +
+	"\x13RemoveImageResponse2\xb8\b\n" +
 	"\tStockyard\x12O\n" +
 	"\n" +
 	"CreateTask\x12\x1f.stockyard.v1.CreateTaskRequest\x1a .stockyard.v1.CreateTaskResponse\x12F\n" +
@@ -1247,7 +1590,11 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"\x0eCreateSnapshot\x12#.stockyard.v1.CreateSnapshotRequest\x1a$.stockyard.v1.CreateSnapshotResponse\x12X\n" +
 	"\rListSnapshots\x12\".stockyard.v1.ListSnapshotsRequest\x1a#.stockyard.v1.ListSnapshotsResponse\x12^\n" +
 	"\x0fRestoreSnapshot\x12$.stockyard.v1.RestoreSnapshotRequest\x1a%.stockyard.v1.RestoreSnapshotResponse\x12A\n" +
-	"\aGetLogs\x12\x1c.stockyard.v1.GetLogsRequest\x1a\x16.stockyard.v1.LogEntry0\x01B&Z$github.com/obra/stockyard/pkg/api/v1b\x06proto3"
+	"\aGetLogs\x12\x1c.stockyard.v1.GetLogsRequest\x1a\x16.stockyard.v1.LogEntry0\x01\x12O\n" +
+	"\n" +
+	"ListImages\x12\x1f.stockyard.v1.ListImagesRequest\x1a .stockyard.v1.ListImagesResponse\x12R\n" +
+	"\vImportImage\x12 .stockyard.v1.ImportImageRequest\x1a!.stockyard.v1.ImportImageResponse\x12R\n" +
+	"\vRemoveImage\x12 .stockyard.v1.RemoveImageRequest\x1a!.stockyard.v1.RemoveImageResponseB&Z$github.com/obra/stockyard/pkg/api/v1b\x06proto3"
 
 var (
 	file_api_stockyard_proto_rawDescOnce sync.Once
@@ -1261,7 +1608,7 @@ func file_api_stockyard_proto_rawDescGZIP() []byte {
 	return file_api_stockyard_proto_rawDescData
 }
 
-var file_api_stockyard_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_api_stockyard_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_api_stockyard_proto_goTypes = []any{
 	(*CreateTaskRequest)(nil),       // 0: stockyard.v1.CreateTaskRequest
 	(*CreateTaskResponse)(nil),      // 1: stockyard.v1.CreateTaskResponse
@@ -1285,38 +1632,52 @@ var file_api_stockyard_proto_goTypes = []any{
 	(*LogEntry)(nil),                // 19: stockyard.v1.LogEntry
 	(*Task)(nil),                    // 20: stockyard.v1.Task
 	(*Snapshot)(nil),                // 21: stockyard.v1.Snapshot
-	nil,                             // 22: stockyard.v1.CreateTaskRequest.VmEnvEntry
+	(*ListImagesRequest)(nil),       // 22: stockyard.v1.ListImagesRequest
+	(*ListImagesResponse)(nil),      // 23: stockyard.v1.ListImagesResponse
+	(*ImageInfo)(nil),               // 24: stockyard.v1.ImageInfo
+	(*ImportImageRequest)(nil),      // 25: stockyard.v1.ImportImageRequest
+	(*ImportImageResponse)(nil),     // 26: stockyard.v1.ImportImageResponse
+	(*RemoveImageRequest)(nil),      // 27: stockyard.v1.RemoveImageRequest
+	(*RemoveImageResponse)(nil),     // 28: stockyard.v1.RemoveImageResponse
+	nil,                             // 29: stockyard.v1.CreateTaskRequest.VmEnvEntry
 }
 var file_api_stockyard_proto_depIdxs = []int32{
-	22, // 0: stockyard.v1.CreateTaskRequest.vm_env:type_name -> stockyard.v1.CreateTaskRequest.VmEnvEntry
+	29, // 0: stockyard.v1.CreateTaskRequest.vm_env:type_name -> stockyard.v1.CreateTaskRequest.VmEnvEntry
 	20, // 1: stockyard.v1.GetTaskResponse.task:type_name -> stockyard.v1.Task
 	20, // 2: stockyard.v1.ListTasksResponse.tasks:type_name -> stockyard.v1.Task
 	21, // 3: stockyard.v1.ListSnapshotsResponse.snapshots:type_name -> stockyard.v1.Snapshot
-	0,  // 4: stockyard.v1.Stockyard.CreateTask:input_type -> stockyard.v1.CreateTaskRequest
-	2,  // 5: stockyard.v1.Stockyard.GetTask:input_type -> stockyard.v1.GetTaskRequest
-	4,  // 6: stockyard.v1.Stockyard.ListTasks:input_type -> stockyard.v1.ListTasksRequest
-	6,  // 7: stockyard.v1.Stockyard.StopTask:input_type -> stockyard.v1.StopTaskRequest
-	8,  // 8: stockyard.v1.Stockyard.RestartTask:input_type -> stockyard.v1.RestartTaskRequest
-	10, // 9: stockyard.v1.Stockyard.DestroyTask:input_type -> stockyard.v1.DestroyTaskRequest
-	12, // 10: stockyard.v1.Stockyard.CreateSnapshot:input_type -> stockyard.v1.CreateSnapshotRequest
-	14, // 11: stockyard.v1.Stockyard.ListSnapshots:input_type -> stockyard.v1.ListSnapshotsRequest
-	16, // 12: stockyard.v1.Stockyard.RestoreSnapshot:input_type -> stockyard.v1.RestoreSnapshotRequest
-	18, // 13: stockyard.v1.Stockyard.GetLogs:input_type -> stockyard.v1.GetLogsRequest
-	1,  // 14: stockyard.v1.Stockyard.CreateTask:output_type -> stockyard.v1.CreateTaskResponse
-	3,  // 15: stockyard.v1.Stockyard.GetTask:output_type -> stockyard.v1.GetTaskResponse
-	5,  // 16: stockyard.v1.Stockyard.ListTasks:output_type -> stockyard.v1.ListTasksResponse
-	7,  // 17: stockyard.v1.Stockyard.StopTask:output_type -> stockyard.v1.StopTaskResponse
-	9,  // 18: stockyard.v1.Stockyard.RestartTask:output_type -> stockyard.v1.RestartTaskResponse
-	11, // 19: stockyard.v1.Stockyard.DestroyTask:output_type -> stockyard.v1.DestroyTaskResponse
-	13, // 20: stockyard.v1.Stockyard.CreateSnapshot:output_type -> stockyard.v1.CreateSnapshotResponse
-	15, // 21: stockyard.v1.Stockyard.ListSnapshots:output_type -> stockyard.v1.ListSnapshotsResponse
-	17, // 22: stockyard.v1.Stockyard.RestoreSnapshot:output_type -> stockyard.v1.RestoreSnapshotResponse
-	19, // 23: stockyard.v1.Stockyard.GetLogs:output_type -> stockyard.v1.LogEntry
-	14, // [14:24] is the sub-list for method output_type
-	4,  // [4:14] is the sub-list for method input_type
-	4,  // [4:4] is the sub-list for extension type_name
-	4,  // [4:4] is the sub-list for extension extendee
-	0,  // [0:4] is the sub-list for field type_name
+	24, // 4: stockyard.v1.ListImagesResponse.images:type_name -> stockyard.v1.ImageInfo
+	0,  // 5: stockyard.v1.Stockyard.CreateTask:input_type -> stockyard.v1.CreateTaskRequest
+	2,  // 6: stockyard.v1.Stockyard.GetTask:input_type -> stockyard.v1.GetTaskRequest
+	4,  // 7: stockyard.v1.Stockyard.ListTasks:input_type -> stockyard.v1.ListTasksRequest
+	6,  // 8: stockyard.v1.Stockyard.StopTask:input_type -> stockyard.v1.StopTaskRequest
+	8,  // 9: stockyard.v1.Stockyard.RestartTask:input_type -> stockyard.v1.RestartTaskRequest
+	10, // 10: stockyard.v1.Stockyard.DestroyTask:input_type -> stockyard.v1.DestroyTaskRequest
+	12, // 11: stockyard.v1.Stockyard.CreateSnapshot:input_type -> stockyard.v1.CreateSnapshotRequest
+	14, // 12: stockyard.v1.Stockyard.ListSnapshots:input_type -> stockyard.v1.ListSnapshotsRequest
+	16, // 13: stockyard.v1.Stockyard.RestoreSnapshot:input_type -> stockyard.v1.RestoreSnapshotRequest
+	18, // 14: stockyard.v1.Stockyard.GetLogs:input_type -> stockyard.v1.GetLogsRequest
+	22, // 15: stockyard.v1.Stockyard.ListImages:input_type -> stockyard.v1.ListImagesRequest
+	25, // 16: stockyard.v1.Stockyard.ImportImage:input_type -> stockyard.v1.ImportImageRequest
+	27, // 17: stockyard.v1.Stockyard.RemoveImage:input_type -> stockyard.v1.RemoveImageRequest
+	1,  // 18: stockyard.v1.Stockyard.CreateTask:output_type -> stockyard.v1.CreateTaskResponse
+	3,  // 19: stockyard.v1.Stockyard.GetTask:output_type -> stockyard.v1.GetTaskResponse
+	5,  // 20: stockyard.v1.Stockyard.ListTasks:output_type -> stockyard.v1.ListTasksResponse
+	7,  // 21: stockyard.v1.Stockyard.StopTask:output_type -> stockyard.v1.StopTaskResponse
+	9,  // 22: stockyard.v1.Stockyard.RestartTask:output_type -> stockyard.v1.RestartTaskResponse
+	11, // 23: stockyard.v1.Stockyard.DestroyTask:output_type -> stockyard.v1.DestroyTaskResponse
+	13, // 24: stockyard.v1.Stockyard.CreateSnapshot:output_type -> stockyard.v1.CreateSnapshotResponse
+	15, // 25: stockyard.v1.Stockyard.ListSnapshots:output_type -> stockyard.v1.ListSnapshotsResponse
+	17, // 26: stockyard.v1.Stockyard.RestoreSnapshot:output_type -> stockyard.v1.RestoreSnapshotResponse
+	19, // 27: stockyard.v1.Stockyard.GetLogs:output_type -> stockyard.v1.LogEntry
+	23, // 28: stockyard.v1.Stockyard.ListImages:output_type -> stockyard.v1.ListImagesResponse
+	26, // 29: stockyard.v1.Stockyard.ImportImage:output_type -> stockyard.v1.ImportImageResponse
+	28, // 30: stockyard.v1.Stockyard.RemoveImage:output_type -> stockyard.v1.RemoveImageResponse
+	18, // [18:31] is the sub-list for method output_type
+	5,  // [5:18] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_api_stockyard_proto_init() }
@@ -1330,7 +1691,7 @@ func file_api_stockyard_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_stockyard_proto_rawDesc), len(file_api_stockyard_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   23,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

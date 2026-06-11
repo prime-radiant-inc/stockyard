@@ -393,6 +393,41 @@ func (b *AppleContainerBackend) EnsureLogFollower(vmID string) error {
 	return b.startLogFollower(vmID)
 }
 
+// imageListJSON is the subset of `container image ls --format json` we use
+// (verified against the 0.12.x CLI). Parse defensively; annotations are
+// present only on some images.
+type imageListJSON struct {
+	FullSize   string `json:"fullSize"`
+	Descriptor struct {
+		Digest      string            `json:"digest"`
+		Annotations map[string]string `json:"annotations"`
+	} `json:"descriptor"`
+	Reference string `json:"reference"`
+}
+
+// ListImages enumerates the local `container` image store.
+// Implements vmbackend.ImageLister.
+func (b *AppleContainerBackend) ListImages(ctx context.Context) ([]ImageInfo, error) {
+	out, err := b.run(ctx, b.cfg.ContainerBin, "image", "ls", "--format", "json")
+	if err != nil {
+		return nil, fmt.Errorf("container image ls: %w", err)
+	}
+	var arr []imageListJSON
+	if err := json.Unmarshal(out, &arr); err != nil {
+		return nil, fmt.Errorf("parse container image ls JSON: %w", err)
+	}
+	images := make([]ImageInfo, 0, len(arr))
+	for _, img := range arr {
+		images = append(images, ImageInfo{
+			Reference: img.Reference,
+			Digest:    img.Descriptor.Digest,
+			Size:      img.FullSize,
+			CreatedAt: img.Descriptor.Annotations["org.opencontainers.image.created"],
+		})
+	}
+	return images, nil
+}
+
 // vmStateDir returns the per-VM state directory (holds captured logs).
 func (b *AppleContainerBackend) vmStateDir(id string) string {
 	return filepath.Join(b.cfg.StateDir, id)

@@ -29,6 +29,9 @@ const (
 	Stockyard_ListSnapshots_FullMethodName   = "/stockyard.v1.Stockyard/ListSnapshots"
 	Stockyard_RestoreSnapshot_FullMethodName = "/stockyard.v1.Stockyard/RestoreSnapshot"
 	Stockyard_GetLogs_FullMethodName         = "/stockyard.v1.Stockyard/GetLogs"
+	Stockyard_ListImages_FullMethodName      = "/stockyard.v1.Stockyard/ListImages"
+	Stockyard_ImportImage_FullMethodName     = "/stockyard.v1.Stockyard/ImportImage"
+	Stockyard_RemoveImage_FullMethodName     = "/stockyard.v1.Stockyard/RemoveImage"
 )
 
 // StockyardClient is the client API for Stockyard service.
@@ -45,6 +48,9 @@ type StockyardClient interface {
 	ListSnapshots(ctx context.Context, in *ListSnapshotsRequest, opts ...grpc.CallOption) (*ListSnapshotsResponse, error)
 	RestoreSnapshot(ctx context.Context, in *RestoreSnapshotRequest, opts ...grpc.CallOption) (*RestoreSnapshotResponse, error)
 	GetLogs(ctx context.Context, in *GetLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogEntry], error)
+	ListImages(ctx context.Context, in *ListImagesRequest, opts ...grpc.CallOption) (*ListImagesResponse, error)
+	ImportImage(ctx context.Context, in *ImportImageRequest, opts ...grpc.CallOption) (*ImportImageResponse, error)
+	RemoveImage(ctx context.Context, in *RemoveImageRequest, opts ...grpc.CallOption) (*RemoveImageResponse, error)
 }
 
 type stockyardClient struct {
@@ -164,6 +170,36 @@ func (c *stockyardClient) GetLogs(ctx context.Context, in *GetLogsRequest, opts 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Stockyard_GetLogsClient = grpc.ServerStreamingClient[LogEntry]
 
+func (c *stockyardClient) ListImages(ctx context.Context, in *ListImagesRequest, opts ...grpc.CallOption) (*ListImagesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListImagesResponse)
+	err := c.cc.Invoke(ctx, Stockyard_ListImages_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *stockyardClient) ImportImage(ctx context.Context, in *ImportImageRequest, opts ...grpc.CallOption) (*ImportImageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImportImageResponse)
+	err := c.cc.Invoke(ctx, Stockyard_ImportImage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *stockyardClient) RemoveImage(ctx context.Context, in *RemoveImageRequest, opts ...grpc.CallOption) (*RemoveImageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RemoveImageResponse)
+	err := c.cc.Invoke(ctx, Stockyard_RemoveImage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StockyardServer is the server API for Stockyard service.
 // All implementations must embed UnimplementedStockyardServer
 // for forward compatibility.
@@ -178,6 +214,9 @@ type StockyardServer interface {
 	ListSnapshots(context.Context, *ListSnapshotsRequest) (*ListSnapshotsResponse, error)
 	RestoreSnapshot(context.Context, *RestoreSnapshotRequest) (*RestoreSnapshotResponse, error)
 	GetLogs(*GetLogsRequest, grpc.ServerStreamingServer[LogEntry]) error
+	ListImages(context.Context, *ListImagesRequest) (*ListImagesResponse, error)
+	ImportImage(context.Context, *ImportImageRequest) (*ImportImageResponse, error)
+	RemoveImage(context.Context, *RemoveImageRequest) (*RemoveImageResponse, error)
 	mustEmbedUnimplementedStockyardServer()
 }
 
@@ -217,6 +256,15 @@ func (UnimplementedStockyardServer) RestoreSnapshot(context.Context, *RestoreSna
 }
 func (UnimplementedStockyardServer) GetLogs(*GetLogsRequest, grpc.ServerStreamingServer[LogEntry]) error {
 	return status.Error(codes.Unimplemented, "method GetLogs not implemented")
+}
+func (UnimplementedStockyardServer) ListImages(context.Context, *ListImagesRequest) (*ListImagesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListImages not implemented")
+}
+func (UnimplementedStockyardServer) ImportImage(context.Context, *ImportImageRequest) (*ImportImageResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ImportImage not implemented")
+}
+func (UnimplementedStockyardServer) RemoveImage(context.Context, *RemoveImageRequest) (*RemoveImageResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveImage not implemented")
 }
 func (UnimplementedStockyardServer) mustEmbedUnimplementedStockyardServer() {}
 func (UnimplementedStockyardServer) testEmbeddedByValue()                   {}
@@ -412,6 +460,60 @@ func _Stockyard_GetLogs_Handler(srv interface{}, stream grpc.ServerStream) error
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Stockyard_GetLogsServer = grpc.ServerStreamingServer[LogEntry]
 
+func _Stockyard_ListImages_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListImagesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StockyardServer).ListImages(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Stockyard_ListImages_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StockyardServer).ListImages(ctx, req.(*ListImagesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Stockyard_ImportImage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImportImageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StockyardServer).ImportImage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Stockyard_ImportImage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StockyardServer).ImportImage(ctx, req.(*ImportImageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Stockyard_RemoveImage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveImageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StockyardServer).RemoveImage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Stockyard_RemoveImage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StockyardServer).RemoveImage(ctx, req.(*RemoveImageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Stockyard_ServiceDesc is the grpc.ServiceDesc for Stockyard service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -454,6 +556,18 @@ var Stockyard_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RestoreSnapshot",
 			Handler:    _Stockyard_RestoreSnapshot_Handler,
+		},
+		{
+			MethodName: "ListImages",
+			Handler:    _Stockyard_ListImages_Handler,
+		},
+		{
+			MethodName: "ImportImage",
+			Handler:    _Stockyard_ImportImage_Handler,
+		},
+		{
+			MethodName: "RemoveImage",
+			Handler:    _Stockyard_RemoveImage_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -88,6 +88,20 @@ func TestCloneSnapshotTargetPath(t *testing.T) {
 	}
 }
 
+func TestSanitizeDatasetComponent(t *testing.T) {
+	cases := map[string]string{
+		"prudence-vm:1.2":           "prudence-vm-1.2",
+		"docker.io/library/foo:dev": "docker.io-library-foo-dev",
+		"simple":                    "simple",
+		"UPPER_ok.too":              "UPPER_ok.too",
+	}
+	for in, want := range cases {
+		if got := SanitizeDatasetComponent(in); got != want {
+			t.Errorf("SanitizeDatasetComponent(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestCloneTargetPathForMountpoint(t *testing.T) {
 	m := NewManager("tank", "stockyard")
 

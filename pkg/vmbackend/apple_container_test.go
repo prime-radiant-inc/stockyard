@@ -48,6 +48,7 @@ func (f *fakeRunner) run(ctx context.Context, name string, args ...string) ([]by
 func TestAppleContainerBackend_ImplementsInterface(t *testing.T) {
 	var _ Backend = (*AppleContainerBackend)(nil)
 	var _ ImageValidator = (*AppleContainerBackend)(nil)
+	var _ ImageLister = (*AppleContainerBackend)(nil)
 }
 
 func TestAppleContainerBackend_NewSetsDefaults(t *testing.T) {
@@ -362,5 +363,43 @@ func TestAppleContainerBackend_ValidateImage_NotFound(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error missing %q; got: %v", want, err)
 		}
+	}
+}
+
+func TestAppleContainerBackend_ListImages(t *testing.T) {
+	fr := newFakeRunner()
+	fr.outputs["image ls"] = `[
+	  {"fullSize":"4 MB","descriptor":{"size":9218,"mediaType":"application/vnd.oci.image.index.v1+json","digest":"sha256:48b0309c"},"reference":"docker.io/library/alpine:3.21"},
+	  {"fullSize":"655.6 MB","descriptor":{"size":375,"digest":"sha256:ec1a1519","annotations":{"org.opencontainers.image.created":"2026-06-04T21:02:14Z"}},"reference":"docker.io/library/prudence-vm:dev"}
+	]`
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{Image: "stockyard-vm:latest"}, fr.run)
+
+	images, err := b.ListImages(context.Background())
+	if err != nil {
+		t.Fatalf("ListImages: %v", err)
+	}
+	if len(images) != 2 {
+		t.Fatalf("expected 2 images, got %d", len(images))
+	}
+	joined := strings.Join(fr.calls[0], " ")
+	if !strings.Contains(joined, "image ls --format json") {
+		t.Errorf("expected `image ls --format json` call; got: %s", joined)
+	}
+	want := ImageInfo{Reference: "docker.io/library/alpine:3.21", Digest: "sha256:48b0309c", Size: "4 MB", CreatedAt: ""}
+	if images[0] != want {
+		t.Errorf("images[0] = %+v, want %+v", images[0], want)
+	}
+	if images[1].CreatedAt != "2026-06-04T21:02:14Z" {
+		t.Errorf("images[1].CreatedAt = %q, want created annotation", images[1].CreatedAt)
+	}
+}
+
+func TestAppleContainerBackend_ListImages_Error(t *testing.T) {
+	fr := newFakeRunner()
+	fr.errs["image ls"] = fmt.Errorf("container daemon down")
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{Image: "stockyard-vm:latest"}, fr.run)
+
+	if _, err := b.ListImages(context.Background()); err == nil {
+		t.Fatal("expected error when image ls fails")
 	}
 }

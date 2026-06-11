@@ -2,8 +2,8 @@
 
 What an OCI image must provide to run as a stockyard task. Stockyard resolves
 images strictly on-host — macOS against `container`'s image store, Linux
-against stockyard's registered-image store (phase 2, PRI-2150) — and never
-pulls from a registry.
+against stockyard's Firecracker image registry (managed via
+`stockyard image import`) — and never pulls from a registry.
 
 ## Minimal tier: the task runs
 
@@ -15,6 +15,13 @@ pulls from a registry.
 - **Linux (Firecracker):** the rootfs must contain a bootable `/sbin/init` —
   `stockyard-vm` ships systemd. Firecracker boot args pass no `init=`
   (`pkg/firecracker/client.go`), so the rootfs alone decides what runs.
+  Images are registered with `stockyard image import <name> --rootfs <path>`
+  and stored in the ZFS-backed image registry. A per-image kernel path can be
+  specified at import time with `--kernel`; if omitted the daemon's shared
+  kernel is used. **Known limitation:** per-image kernel selection applies at
+  task CREATE time only. A restarted task (`stockyard restart`) boots from the
+  shared kernel. Full kernel-pairing semantics on restart are a planned
+  enhancement.
 
 There is deliberately no command override (`CreateTaskRequest` field 2 is
 reserved — it was a command once, and it stays dead). If your image needs a
