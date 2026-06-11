@@ -136,6 +136,21 @@ func (b *AppleContainerBackend) buildRunArgs(cfg *VMConfig) []string {
 	return args
 }
 
+// ValidateImage reports whether ref exists in the local `container` image
+// store. On a miss the error lists the store's contents so callers can show
+// what is available. Resolution is strictly on-host: no pulls, ever.
+// Implements vmbackend.ImageValidator.
+func (b *AppleContainerBackend) ValidateImage(ctx context.Context, ref string) error {
+	if _, err := b.run(ctx, b.cfg.ContainerBin, "image", "inspect", ref); err == nil {
+		return nil
+	}
+	available := "(could not list images)"
+	if out, lsErr := b.run(ctx, b.cfg.ContainerBin, "image", "ls"); lsErr == nil {
+		available = strings.TrimSpace(string(out))
+	}
+	return fmt.Errorf("image %q not found on host; available images:\n%s", ref, available)
+}
+
 // startLogFollower spawns `container logs -f` redirecting into the per-VM
 // stdout.log / stderr.log so the daemon's logTailer works unchanged.
 func (b *AppleContainerBackend) startLogFollower(id string) error {
