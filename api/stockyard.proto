@@ -29,6 +29,7 @@ message CreateTaskRequest {
     string tailscale_auth_key = 7;  // Optional: override 1Password lookup
     repeated string ssh_authorized_keys = 8;  // SSH public keys for VM access
     bytes dotenv = 9;  // Raw .env file bytes for VM
+    string image = 10;  // OCI image ref; empty = daemon default (PRI-2150)
 }
 
 message CreateTaskResponse {
@@ -115,6 +116,7 @@ message Task {
     string ip = 7;
     string backend = 8;
     string vm_id = 9;
+    string image = 10;  // Resolved OCI image ref the task runs (PRI-2150)
 }
 
 message Snapshot {

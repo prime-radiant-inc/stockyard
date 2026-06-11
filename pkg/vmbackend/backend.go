@@ -41,6 +41,7 @@ type VMConfig struct {
 	MemoryMB          int32
 	KernelPath        string
 	RootfsPath        string // Path to this VM's writable rootfs image
+	Image             string // Per-task OCI image ref; empty = backend's configured default (PRI-2150)
 	SSHAuthorizedKeys []string
 	CloudInitData     string // Base64-encoded cloud-init user-data
 	DotEnv            []byte
@@ -84,4 +85,16 @@ type LogFollowerEnsurer interface {
 	// EnsureLogFollower starts a log follower for vmID if one is not already
 	// running. It is a no-op (returns nil) if a follower is already tracked.
 	EnsureLogFollower(vmID string) error
+}
+
+// ImageValidator is implemented by backends that support per-task image
+// selection (VMConfig.Image). The daemon type-asserts a Backend to this
+// interface when a task requests a specific image; backends that do not
+// implement it cause the request to be rejected before any resources are
+// allocated. Like LogFollowerEnsurer above, it lives in this non-build-
+// tagged file so daemon code can reference it on all platforms.
+type ImageValidator interface {
+	// ValidateImage returns nil if ref is present in the backend's local
+	// image store, or an error naming the ref and the available images.
+	ValidateImage(ctx context.Context, ref string) error
 }

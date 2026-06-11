@@ -31,6 +31,7 @@ type CreateTaskRequest struct {
 	TailscaleAuthKey  string                 `protobuf:"bytes,7,opt,name=tailscale_auth_key,json=tailscaleAuthKey,proto3" json:"tailscale_auth_key,omitempty"`    // Optional: override 1Password lookup
 	SshAuthorizedKeys []string               `protobuf:"bytes,8,rep,name=ssh_authorized_keys,json=sshAuthorizedKeys,proto3" json:"ssh_authorized_keys,omitempty"` // SSH public keys for VM access
 	Dotenv            []byte                 `protobuf:"bytes,9,opt,name=dotenv,proto3" json:"dotenv,omitempty"`                                                  // Raw .env file bytes for VM
+	Image             string                 `protobuf:"bytes,10,opt,name=image,proto3" json:"image,omitempty"`                                                   // OCI image ref; empty = daemon default (PRI-2150)
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -119,6 +120,13 @@ func (x *CreateTaskRequest) GetDotenv() []byte {
 		return x.Dotenv
 	}
 	return nil
+}
+
+func (x *CreateTaskRequest) GetImage() string {
+	if x != nil {
+		return x.Image
+	}
+	return ""
 }
 
 type CreateTaskResponse struct {
@@ -984,6 +992,7 @@ type Task struct {
 	Ip                string                 `protobuf:"bytes,7,opt,name=ip,proto3" json:"ip,omitempty"`
 	Backend           string                 `protobuf:"bytes,8,opt,name=backend,proto3" json:"backend,omitempty"`
 	VmId              string                 `protobuf:"bytes,9,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
+	Image             string                 `protobuf:"bytes,10,opt,name=image,proto3" json:"image,omitempty"` // Resolved OCI image ref the task runs (PRI-2150)
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1081,6 +1090,13 @@ func (x *Task) GetVmId() string {
 	return ""
 }
 
+func (x *Task) GetImage() string {
+	if x != nil {
+		return x.Image
+	}
+	return ""
+}
+
 type Snapshot struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -1145,7 +1161,7 @@ var File_api_stockyard_proto protoreflect.FileDescriptor
 
 const file_api_stockyard_proto_rawDesc = "" +
 	"\n" +
-	"\x13api/stockyard.proto\x12\fstockyard.v1\"\xef\x02\n" +
+	"\x13api/stockyard.proto\x12\fstockyard.v1\"\x85\x03\n" +
 	"\x11CreateTaskRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12A\n" +
 	"\x06vm_env\x18\x03 \x03(\v2*.stockyard.v1.CreateTaskRequest.VmEnvEntryR\x05vmEnv\x12\x12\n" +
@@ -1154,7 +1170,9 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"\fno_tailscale\x18\x06 \x01(\bR\vnoTailscale\x12,\n" +
 	"\x12tailscale_auth_key\x18\a \x01(\tR\x10tailscaleAuthKey\x12.\n" +
 	"\x13ssh_authorized_keys\x18\b \x03(\tR\x11sshAuthorizedKeys\x12\x16\n" +
-	"\x06dotenv\x18\t \x01(\fR\x06dotenv\x1a8\n" +
+	"\x06dotenv\x18\t \x01(\fR\x06dotenv\x12\x14\n" +
+	"\x05image\x18\n" +
+	" \x01(\tR\x05image\x1a8\n" +
 	"\n" +
 	"VmEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
@@ -1198,7 +1216,7 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"\x04tail\x18\x03 \x01(\x05R\x04tail\"<\n" +
 	"\bLogEntry\x12\x1c\n" +
 	"\ttimestamp\x18\x01 \x01(\tR\ttimestamp\x12\x12\n" +
-	"\x04line\x18\x02 \x01(\tR\x04line\"\xee\x01\n" +
+	"\x04line\x18\x02 \x01(\tR\x04line\"\x84\x02\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
@@ -1210,7 +1228,9 @@ const file_api_stockyard_proto_rawDesc = "" +
 	"stopped_at\x18\x06 \x01(\tR\tstoppedAt\x12\x0e\n" +
 	"\x02ip\x18\a \x01(\tR\x02ip\x12\x18\n" +
 	"\abackend\x18\b \x01(\tR\abackend\x12\x13\n" +
-	"\x05vm_id\x18\t \x01(\tR\x04vmId\"S\n" +
+	"\x05vm_id\x18\t \x01(\tR\x04vmId\x12\x14\n" +
+	"\x05image\x18\n" +
+	" \x01(\tR\x05image\"S\n" +
 	"\bSnapshot\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12\x1d\n" +

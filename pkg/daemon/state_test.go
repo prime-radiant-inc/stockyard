@@ -611,6 +611,31 @@ func TestState_Owner_EmptyByDefault(t *testing.T) {
 	}
 }
 
+func TestTaskImageRoundtrip(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	defer state.Close()
+
+	task := &Task{
+		ID:        "img00001",
+		Status:    "running",
+		Image:     "prudence-vm:1.2",
+		CreatedAt: time.Now(),
+	}
+	if err := state.CreateTask(task); err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+	got, err := state.GetTask("img00001")
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.Image != "prudence-vm:1.2" {
+		t.Errorf("Image = %q, want %q", got.Image, "prudence-vm:1.2")
+	}
+}
+
 func TestState_BusyTimeoutConfigured(t *testing.T) {
 	state, err := NewStateInMemory()
 	if err != nil {

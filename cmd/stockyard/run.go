@@ -20,6 +20,7 @@ var (
 	runTailscaleAuthKey string
 	runEnv              []string
 	runEnvFile          string
+	runImage            string
 )
 
 var runCmd = &cobra.Command{
@@ -68,6 +69,7 @@ Use 'stockyard attach' to get an interactive shell.`,
 			TailscaleAuthKey:  runTailscaleAuthKey,
 			SshAuthorizedKeys: sshKeys,
 			Dotenv:            dotenv,
+			Image:             runImage,
 		}
 
 		fmt.Printf("Creating task...\n")
@@ -133,5 +135,6 @@ func init() {
 	runCmd.Flags().StringVar(&runTailscaleAuthKey, "tailscale-auth-key", "", "Tailscale auth key (overrides 1Password)")
 	runCmd.Flags().StringArrayVar(&runEnv, "env", nil, "Environment variables (KEY=value)")
 	runCmd.Flags().StringVar(&runEnvFile, "env-file", "", "Path to .env file to include in the VM")
+	runCmd.Flags().StringVar(&runImage, "image", "", "OCI image ref for the task (default: daemon-configured image)")
 	rootCmd.AddCommand(runCmd)
 }

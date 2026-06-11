@@ -5,6 +5,7 @@ package vmbackend
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -13,8 +14,8 @@ import (
 // fakeRunner records invocations and returns scripted output/errors.
 type fakeRunner struct {
 	calls   [][]string        // each call's argv (name + args)
-	outputs map[string]string // keyed by args[0] (the container subcommand), stdout to return
-	errs    map[string]error  // keyed by args[0], error to return
+	outputs map[string]string // stdout keyed by "args[0]" or "args[0] args[1]" (two-token key wins), e.g. "inspect" or "image ls"
+	errs    map[string]error  // error to return, same key scheme as outputs (errs checked before outputs)
 }
 
 func newFakeRunner() *fakeRunner {
@@ -26,6 +27,17 @@ func (f *fakeRunner) run(ctx context.Context, name string, args ...string) ([]by
 	if len(args) == 0 {
 		return nil, nil
 	}
+	// Prefer a two-token key ("image inspect") so subcommand families like
+	// `container image ...` can be scripted per verb; fall back to args[0].
+	if len(args) > 1 {
+		two := args[0] + " " + args[1]
+		if err, ok := f.errs[two]; ok {
+			return []byte(f.outputs[two]), err
+		}
+		if out, ok := f.outputs[two]; ok {
+			return []byte(out), nil
+		}
+	}
 	sub := args[0]
 	if err, ok := f.errs[sub]; ok {
 		return []byte(f.outputs[sub]), err
@@ -35,6 +47,7 @@ func (f *fakeRunner) run(ctx context.Context, name string, args ...string) ([]by
 
 func TestAppleContainerBackend_ImplementsInterface(t *testing.T) {
 	var _ Backend = (*AppleContainerBackend)(nil)
+	var _ ImageValidator = (*AppleContainerBackend)(nil)
 }
 
 func TestAppleContainerBackend_NewSetsDefaults(t *testing.T) {
@@ -288,5 +301,66 @@ func TestAppleContainerBackend_StopVM_IdempotentWhenContainerGone(t *testing.T) 
 	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
 	if err := b.StopVM(context.Background(), "abc12345"); err != nil {
 		t.Errorf("StopVM on an already-gone container must succeed, got: %v", err)
+	}
+}
+
+func TestAppleContainerBackend_CreateVM_PerTaskImage(t *testing.T) {
+	fr := newFakeRunner()
+	fr.outputs["inspect"] = `[{"status":"running","networks":[{"ipv4Address":"192.168.64.5/24"}],"configuration":{"id":"stockyard-img12345"}}]`
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{
+		Image:    "stockyard-vm:container",
+		StateDir: t.TempDir(),
+	}, fr.run)
+	b.skipLogFollower = true
+
+	_, err := b.CreateVM(context.Background(), &VMConfig{
+		ID:       "img12345",
+		VCPU:     2,
+		MemoryMB: 1024,
+		Image:    "prudence-vm:1.2",
+	})
+	if err != nil {
+		t.Fatalf("CreateVM: %v", err)
+	}
+	if len(fr.calls) == 0 {
+		t.Fatal("expected at least one container call")
+	}
+	joined := strings.Join(fr.calls[0], " ")
+	if !strings.Contains(joined, "prudence-vm:1.2") {
+		t.Errorf("run args missing per-task image; got: %s", joined)
+	}
+	if strings.Contains(joined, "stockyard-vm:container") {
+		t.Errorf("run args used backend default despite per-task image; got: %s", joined)
+	}
+}
+
+func TestAppleContainerBackend_ValidateImage_Found(t *testing.T) {
+	fr := newFakeRunner()
+	fr.outputs["image inspect"] = `[{"name":"prudence-vm:1.2"}]`
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{Image: "stockyard-vm:latest"}, fr.run)
+
+	if err := b.ValidateImage(context.Background(), "prudence-vm:1.2"); err != nil {
+		t.Fatalf("ValidateImage: %v", err)
+	}
+	joined := strings.Join(fr.calls[0], " ")
+	if !strings.Contains(joined, "image inspect prudence-vm:1.2") {
+		t.Errorf("expected `image inspect <ref>` call; got: %s", joined)
+	}
+}
+
+func TestAppleContainerBackend_ValidateImage_NotFound(t *testing.T) {
+	fr := newFakeRunner()
+	fr.errs["image inspect"] = fmt.Errorf("image not found")
+	fr.outputs["image ls"] = "NAME          TAG\nstockyard-vm  latest"
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{Image: "stockyard-vm:latest"}, fr.run)
+
+	err := b.ValidateImage(context.Background(), "nope:missing")
+	if err == nil {
+		t.Fatal("expected error for missing image")
+	}
+	for _, want := range []string{`"nope:missing"`, "stockyard-vm  latest"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error missing %q; got: %v", want, err)
+		}
 	}
 }

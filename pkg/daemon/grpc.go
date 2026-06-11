@@ -40,6 +40,7 @@ func (s *grpcServer) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) 
 		TailscaleAuthKey:  req.TailscaleAuthKey,
 		SSHAuthorizedKeys: req.SshAuthorizedKeys,
 		DotEnv:            req.Dotenv,
+		Image:             req.Image,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create task: %v", err)
@@ -195,6 +196,7 @@ func taskToProto(t *Task, backend string) *pb.Task {
 		Ip:                t.IP,
 		Backend:           backend,
 		VmId:              t.VMID,
+		Image:             t.Image,
 		CreatedAt:         t.CreatedAt.Format(time.RFC3339),
 	}
 	if t.StoppedAt != nil {
