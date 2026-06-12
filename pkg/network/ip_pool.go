@@ -46,9 +46,11 @@ func NewIPPool(cidr, gateway string) (*IPPool, error) {
 	return pool, nil
 }
 
-// NewIPPoolFromGateway creates an IP pool from a gateway IP and prefix length.
-// This is more robust than parsing CIDR from config strings.
-func NewIPPoolFromGateway(gateway string, prefixLen int) (*IPPool, error) {
+// SubnetForGateway computes the IPv4 network that contains gateway, masked
+// to prefixLen. This is the derivation NewIPPoolFromGateway uses to size the
+// VM IP pool; anything that displays "the VM subnet" should go through it so
+// the displayed value tracks the pool's actual network.
+func SubnetForGateway(gateway string, prefixLen int) (*net.IPNet, error) {
 	gwIP := net.ParseIP(gateway)
 	if gwIP == nil {
 		return nil, fmt.Errorf("invalid gateway IP: %s", gateway)
@@ -57,14 +59,16 @@ func NewIPPoolFromGateway(gateway string, prefixLen int) (*IPPool, error) {
 	if gwIP == nil {
 		return nil, fmt.Errorf("gateway must be IPv4: %s", gateway)
 	}
-
-	// Calculate network address from gateway
 	mask := net.CIDRMask(prefixLen, 32)
-	networkIP := gwIP.Mask(mask)
+	return &net.IPNet{IP: gwIP.Mask(mask), Mask: mask}, nil
+}
 
-	ipNet := &net.IPNet{
-		IP:   networkIP,
-		Mask: mask,
+// NewIPPoolFromGateway creates an IP pool from a gateway IP and prefix length.
+// This is more robust than parsing CIDR from config strings.
+func NewIPPoolFromGateway(gateway string, prefixLen int) (*IPPool, error) {
+	ipNet, err := SubnetForGateway(gateway, prefixLen)
+	if err != nil {
+		return nil, err
 	}
 
 	pool := &IPPool{
