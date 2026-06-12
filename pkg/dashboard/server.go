@@ -23,6 +23,7 @@ type Server struct {
 	terminalManager *TerminalManager
 	terminalHandler *TerminalHandler
 	vmUser          string
+	vmSubnet        string
 }
 
 // NewServer creates a new dashboard HTTP server.
@@ -54,6 +55,14 @@ func NewServer(daemon DaemonAPI, vmUser string, containerBin string) *Server {
 	s.templates, _ = LoadTemplates()
 	s.registerRoutes()
 	return s
+}
+
+// SetVMSubnet sets the VM subnet string shown on the settings page. The
+// daemon derives it from the configured vm_gateway (network.SubnetForGateway
+// masked to the same prefix the IP pool uses) and sets it once before the
+// HTTP server starts; it is display-only.
+func (s *Server) SetVMSubnet(subnet string) {
+	s.vmSubnet = subnet
 }
 
 func (s *Server) registerRoutes() {
@@ -477,7 +486,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"ZFSPool":    "tank",
 		"ZFSVMsPath": "stockyard/vms",
 		"BridgeName": "flbr0",
-		"VMSubnet":   "10.0.100.0/24",
+		"VMSubnet":   s.vmSubnet,
 	}
 
 	// Check if template exists, fallback for testing

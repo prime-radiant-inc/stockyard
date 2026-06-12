@@ -606,3 +606,23 @@ func TestServer_FleetPage_WithAdapter(t *testing.T) {
 		t.Error("expected running status in output")
 	}
 }
+
+func TestServer_SettingsShowsDerivedVMSubnet(t *testing.T) {
+	srv := NewServer(nil, "", "")
+	srv.SetVMSubnet("10.7.7.0/24")
+
+	req := httptest.NewRequest("GET", "/settings", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "10.7.7.0/24") {
+		t.Errorf("settings page should show the subnet set by the daemon; body:\n%s", body)
+	}
+	if strings.Contains(body, "10.0.100.0/24") {
+		t.Errorf("settings page still contains the old hardcoded literal")
+	}
+}

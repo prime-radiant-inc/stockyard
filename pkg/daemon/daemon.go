@@ -24,6 +24,11 @@ import (
 	"github.com/obra/stockyard/pkg/zfs"
 )
 
+// vmSubnetPrefixLen is the prefix length of the VM network. The IP pool and
+// the dashboard's displayed subnet are both derived from
+// firecracker.vm_gateway masked to this length — one source of truth.
+const vmSubnetPrefixLen = 24
+
 // Daemon is the core daemon process that manages workspaces and tasks.
 type Daemon struct {
 	cfg       *config.Config
@@ -158,7 +163,7 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 
 		// Initialize IP pool for static VM IPs
 		// Use the gateway and a /24 prefix (standard for VM networks)
-		ipPool, err := network.NewIPPoolFromGateway(cfg.Firecracker.VMGateway, 24)
+		ipPool, err := network.NewIPPoolFromGateway(cfg.Firecracker.VMGateway, vmSubnetPrefixLen)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create IP pool: %w", err)
 		}
@@ -364,6 +369,9 @@ func (d *Daemon) Start(ctx context.Context) error {
 		facade := NewDashboardFacade(d.state, d.tasks, d.zfs, d.cfg.Backend)
 		adapter := dashboard.NewDaemonAdapter(facade)
 		d.dashboardServer = dashboard.NewServer(adapter, d.cfg.VM.User, d.cfg.AppleContainer.ContainerBin)
+		if subnet, err := network.SubnetForGateway(d.cfg.Firecracker.VMGateway, vmSubnetPrefixLen); err == nil {
+			d.dashboardServer.SetVMSubnet(subnet.String())
+		}
 		tsClient := tailscale.NewLocalClient()
 		handler := dashboard.AuthMiddleware(d.dashboardServer, tsClient)
 
