@@ -27,10 +27,9 @@ type VMConfig struct {
 }
 
 type SecretsConfig struct {
-	Provider string `json:"provider"`
-	Vault    string `json:"vault"`  // For 1password provider
-	Prefix   string `json:"prefix"` // For 1password provider
-	Dir      string `json:"dir"`    // For file provider
+	Vault  string `json:"vault"`  // 1Password vault name
+	Prefix string `json:"prefix"` // 1Password item prefix (the instance ID)
+	Dir    string `json:"dir"`    // Directory for the file-based fallback provider
 }
 
 type DaemonConfig struct {
@@ -50,7 +49,6 @@ type FirecrackerConfig struct {
 	KernelPath     string `json:"kernel_path"`
 	RootfsPath     string `json:"rootfs_path"`
 	BridgeName     string `json:"bridge_name"`
-	VMSubnet       string `json:"vm_subnet"`
 	VMGateway      string `json:"vm_gateway"`
 	DHCPRangeStart string `json:"dhcp_range_start"`
 	DHCPRangeEnd   string `json:"dhcp_range_end"`
@@ -66,8 +64,7 @@ type HTTPConfig struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Secrets: SecretsConfig{
-			Provider: "1password",
-			Vault:    "Stockyard",
+			Vault: "Stockyard",
 		},
 		Daemon: DaemonConfig{
 			SocketPath: DefaultSocketPath,
@@ -83,7 +80,6 @@ func DefaultConfig() *Config {
 			KernelPath:     "/var/lib/stockyard/vmlinux.bin",
 			RootfsPath:     "/var/lib/stockyard/rootfs.ext4",
 			BridgeName:     "flbr0",
-			VMSubnet:       "10.0.100.0/24",
 			VMGateway:      "10.0.100.1",
 			DHCPRangeStart: "10.0.100.2",
 			DHCPRangeEnd:   "10.0.100.254",

@@ -150,3 +150,34 @@ func TestIPPoolKernelIPArgs(t *testing.T) {
 		t.Error("expected empty string for non-existent VM")
 	}
 }
+
+func TestSubnetForGateway(t *testing.T) {
+	tests := []struct {
+		gateway   string
+		prefixLen int
+		want      string
+		wantErr   bool
+	}{
+		{"10.0.100.1", 24, "10.0.100.0/24", false},
+		{"192.168.7.254", 24, "192.168.7.0/24", false},
+		{"10.0.100.1", 16, "10.0.0.0/16", false},
+		{"not-an-ip", 24, "", true},
+		{"fe80::1", 24, "", true}, // IPv6: To4() fails, same as NewIPPoolFromGateway
+	}
+	for _, tt := range tests {
+		got, err := SubnetForGateway(tt.gateway, tt.prefixLen)
+		if tt.wantErr {
+			if err == nil {
+				t.Errorf("SubnetForGateway(%q, %d): expected error, got %v", tt.gateway, tt.prefixLen, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("SubnetForGateway(%q, %d): unexpected error: %v", tt.gateway, tt.prefixLen, err)
+			continue
+		}
+		if got.String() != tt.want {
+			t.Errorf("SubnetForGateway(%q, %d) = %q, want %q", tt.gateway, tt.prefixLen, got.String(), tt.want)
+		}
+	}
+}

@@ -128,32 +128,28 @@ tank/stockyard/
 - 10 VMs use ~1.5GB instead of ~40GB
 - Automatic cleanup on VM deletion
 
-The daemon auto-imports the base image on first startup from `Firecracker.RootfsPath` config.
+The registry's `default` image is seeded from the `firecracker.rootfs_path`
+config on daemon startup (self-heal); day-to-day, images are registered
+explicitly through the image registry — no manual `zfs` commands and no
+daemon restart.
 
 ### Initial Setup
 
-After building, install both the rootfs and kernel:
-
 ```bash
-# Build the image
-make
-
-# Install rootfs to ZFS (for copy-on-write cloning)
-sudo cp output/rootfs.ext4 /tank/stockyard/images/rootfs/rootfs.ext4
-sudo zfs snapshot tank/stockyard/images/rootfs@base
-
-# Install kernel
-sudo cp output/vmlinux.bin /var/lib/stockyard/vmlinux.bin
+# Build, install, and register the default image (kernel + rootfs):
+make deploy
 ```
+
+This copies `output/vmlinux.bin` and `output/rootfs.ext4` to
+`/var/lib/stockyard/` and registers the rootfs via
+`stockyard image import default`. The daemon imports it into ZFS itself.
 
 ### Updating
 
-When rebuilding the image, destroy the old snapshot first:
+Re-run the same target. The daemon replaces the image atomically: it
+destroys only the tasks running the replaced image, then re-imports.
 
 ```bash
-make
-sudo zfs destroy tank/stockyard/images/rootfs@base
-sudo cp output/rootfs.ext4 /tank/stockyard/images/rootfs/rootfs.ext4
-sudo zfs snapshot tank/stockyard/images/rootfs@base
-sudo cp output/vmlinux.bin /var/lib/stockyard/vmlinux.bin
+make deploy                              # rebuild + replace 'default'
+make deploy-image REGISTRY_IMAGE=<name>  # register an already-built rootfs under a name
 ```
