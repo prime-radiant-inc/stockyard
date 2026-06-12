@@ -58,7 +58,7 @@ Task order matters twice: Task 2 (delete configure.go) **must precede** Task 3 (
 - Modify: `cmd/stockyard/init.go` (full rewrite, shown below)
 - Modify: `cmd/stockyard/init_test.go` (full rewrite, shown below)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Replace the entire contents of `cmd/stockyard/init_test.go` with:
 
@@ -304,12 +304,12 @@ func TestInitCommand_NextStepsAreTruthful(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `CGO_ENABLED=0 go test ./cmd/stockyard/ -run 'TestInit|TestDefaultBackend' -v`
 Expected: **compile failure** — `undefined: initBackend`, `undefined: initImage`, `undefined: defaultBackend`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Replace the entire contents of `cmd/stockyard/init.go` with:
 
@@ -460,12 +460,12 @@ Notes on intent, so nobody "fixes" these during review:
 - `fmt.Printf` became `fmt.Fprintf(cmd.OutOrStdout(), ...)`: behavior-identical for users (cobra's default out is os.Stdout) but lets tests capture output.
 - Per the spec, re-running `init` without `--backend` rewrites `backend` to the **platform default** — it does not preserve a hand-edited value. The instance-overwrite warning is the existing guard for "init on a configured machine".
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `CGO_ENABLED=0 go test ./cmd/stockyard/ -v`
 Expected: PASS — all `TestInit*`/`TestDefaultBackend` tests plus the pre-existing CLI tests (attach, gc, image, resources, restart, snapshot).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cmd/stockyard/init.go cmd/stockyard/init_test.go
@@ -490,28 +490,28 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 configure.go has no tests of its own, and it is the only consumer of `github.com/AlecAivazis/survey/v2` (Verified Facts #3). This task must run **before** Task 3: configure.go reads `cfg.Secrets.Provider` at lines 38/40/43, so the field cannot be removed while the file exists.
 
-- [ ] **Step 1: Delete the file**
+- [x] **Step 1: Delete the file**
 
 ```bash
 git rm cmd/stockyard/configure.go
 ```
 
-- [ ] **Step 2: Verify nothing else references the command or the dependency**
+- [x] **Step 2: Verify nothing else references the command or the dependency**
 
 Run: `rg -n "configureCmd|survey" --type go cmd/ pkg/`
 Expected: no matches. (A match means a new consumer appeared since this plan was written — stop and reassess.)
 
-- [ ] **Step 3: Tidy the module**
+- [x] **Step 3: Tidy the module**
 
 Run: `go mod tidy`
 Expected: `go.mod` no longer lists `github.com/AlecAivazis/survey/v2`; its indirect-only deps (`kballard/go-shellquote`, `mgutz/ansi`, `mattn/go-colorable`, and possibly others) drop from `go.mod`/`go.sum` if nothing else needs them. Do not hand-edit either file beyond what tidy produces.
 
-- [ ] **Step 4: Build and test**
+- [x] **Step 4: Build and test**
 
 Run: `CGO_ENABLED=0 go build ./... && CGO_ENABLED=0 go test ./cmd/... -v`
 Expected: build OK; CLI tests PASS. `./bin` is unaffected until `make build` in Task 7.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add go.mod go.sum
@@ -535,7 +535,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 No migration is needed: `LoadFromDir` uses plain `json.Unmarshal` into the struct (no `DisallowUnknownFields`), so old config.json files containing the removed keys keep loading and the keys disappear on the next `Save()`. The regression test below pins that.
 
-- [ ] **Step 1: Update the tests first**
+- [x] **Step 1: Update the tests first**
 
 In `pkg/config/config_test.go`, make these exact changes:
 
@@ -601,12 +601,12 @@ func TestLoadConfig_IgnoresRemovedFields(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the config tests**
+- [x] **Step 2: Run the config tests**
 
 Run: `CGO_ENABLED=0 go test ./pkg/config/ -v`
 Expected: PASS (including the new regression test — it is valid both before and after the removal; the real "red" for a deletion is the compiler check in Step 4).
 
-- [ ] **Step 3: Remove the fields**
+- [x] **Step 3: Remove the fields**
 
 In `pkg/config/config.go`:
 
@@ -649,7 +649,7 @@ and delete the Firecracker seed line:
 			VMSubnet:       "10.0.100.0/24",
 ```
 
-- [ ] **Step 4: Compile-prove no readers remain, then test**
+- [x] **Step 4: Compile-prove no readers remain, then test**
 
 Run: `CGO_ENABLED=0 go build ./... && rg -n "Secrets\.Provider|VMSubnet|vm_subnet" --type go cmd/ pkg/`
 Expected: build OK; exactly three classes of rg hits remain, all benign — (1) the dashboard's `"VMSubnet"` map key at `pkg/dashboard/server.go:480` (a template key, renamed nowhere — its *value* changes in Task 5), (2) the comment line in `pkg/config/config_test.go`'s `TestLoadConfig_IgnoresRemovedFields` naming the removed fields, and (3) that test's legacy JSON literal `"vm_subnet": ...`. The test hits are the regression test added in Step 1 doing its job — do NOT "fix" them by stripping the legacy keys from the test; that would gut it.
@@ -657,7 +657,7 @@ Expected: build OK; exactly three classes of rg hits remain, all benign — (1) 
 Run: `CGO_ENABLED=0 go test ./pkg/config/ -v && CGO_ENABLED=0 go test ./pkg/... ./cmd/...`
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pkg/config/config.go pkg/config/config_test.go
@@ -680,7 +680,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Modify: `pkg/network/ip_pool.go:49-79`
 - Modify: `pkg/network/ip_pool_test.go` (append one test)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `pkg/network/ip_pool_test.go`:
 
@@ -717,12 +717,12 @@ func TestSubnetForGateway(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `CGO_ENABLED=0 go test ./pkg/network/ -run TestSubnetForGateway -v`
 Expected: **compile failure** — `undefined: SubnetForGateway`.
 
-- [ ] **Step 3: Implement, and refactor `NewIPPoolFromGateway` onto it**
+- [x] **Step 3: Implement, and refactor `NewIPPoolFromGateway` onto it**
 
 In `pkg/network/ip_pool.go`, replace `NewIPPoolFromGateway` (lines 49-79) with:
 
@@ -764,12 +764,12 @@ func NewIPPoolFromGateway(gateway string, prefixLen int) (*IPPool, error) {
 }
 ```
 
-- [ ] **Step 4: Run the package tests (refactor guard)**
+- [x] **Step 4: Run the package tests (refactor guard)**
 
 Run: `CGO_ENABLED=0 go test ./pkg/network/ -v`
 Expected: PASS — `TestSubnetForGateway` plus the pre-existing `TestNewIPPoolFromGateway` (253 available IPs, gateway preserved), proving the refactor changed nothing.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pkg/network/ip_pool.go pkg/network/ip_pool_test.go
@@ -793,7 +793,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 Threading rationale (Verified Facts #4): the settings handler is fully hardcoded and the `Server` has no config; the daemon owns `cfg` at the single `NewServer` call site. A setter avoids touching 38 `NewServer(...)` test call sites and keeps `pkg/dashboard` free of a `pkg/network` import. `SetVMSubnet` is called once, before `http.Server` starts serving (both happen inside the same `if d.cfg.HTTP.Enabled` block in `Daemon.Start`), so no synchronization is needed.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `pkg/dashboard/server_test.go`:
 
@@ -821,12 +821,12 @@ func TestServer_SettingsShowsDerivedVMSubnet(t *testing.T) {
 
 (Templates are embedded — Verified Facts #10 — so this renders the real settings.html, and `httptest`/`strings` are already imported by this file.)
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `CGO_ENABLED=0 go test ./pkg/dashboard/ -run TestServer_SettingsShowsDerivedVMSubnet -v`
 Expected: **compile failure** — `srv.SetVMSubnet undefined`.
 
-- [ ] **Step 3: Implement the dashboard side**
+- [x] **Step 3: Implement the dashboard side**
 
 In `pkg/dashboard/server.go`:
 
@@ -863,12 +863,12 @@ with:
 
 (The `"VMSubnet"` map key stays — `templates/settings.html:53` renders `{{.VMSubnet}}`. When the setter was never called — e.g. other tests — the page shows an empty value instead of a fabricated one; the other hardcoded settings values are out of scope per the spec.)
 
-- [ ] **Step 4: Run the dashboard tests**
+- [x] **Step 4: Run the dashboard tests**
 
 Run: `CGO_ENABLED=0 go test ./pkg/dashboard/ -v`
 Expected: PASS, including the new test.
 
-- [ ] **Step 5: Wire the daemon**
+- [x] **Step 5: Wire the daemon**
 
 In `pkg/daemon/daemon.go`:
 
@@ -904,12 +904,12 @@ with:
 
 (`network` is already imported by daemon.go. On an unparseable gateway the display stays empty rather than lying; the IP-pool path at line 161 still hard-errors as before. With default config the displayed value is identical to the old literal: 10.0.100.1/24 → "10.0.100.0/24".)
 
-- [ ] **Step 6: Build and run the full package tests**
+- [x] **Step 6: Build and run the full package tests**
 
 Run: `CGO_ENABLED=0 go build ./... && CGO_ENABLED=0 go test ./pkg/...`
 Expected: build OK, all PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add pkg/dashboard/server.go pkg/dashboard/server_test.go pkg/daemon/daemon.go
@@ -935,7 +935,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 No code; no TDD. `docs/image-contract.md` was audited and is already correct post-PRI-2178 — leave it alone. `vm-image/macos/README.md` named in the spec **does not exist** (Verified Facts #8); the macOS story is covered by the root README and image-contract.md. Archival docs that mention `stockyard configure` (`docs/INITIAL_PROMPT.md`, `docs/plans/2026-01-16-*`) are historical artifacts — deliberately untouched.
 
-- [ ] **Step 1: Rewrite CLAUDE.md's build/deploy/test sections**
+- [x] **Step 1: Rewrite CLAUDE.md's build/deploy/test sections**
 
 Replace everything in `CLAUDE.md` from `# Stockyard Development Guide` down to (but not including) `## Project Structure` with:
 
@@ -981,7 +981,7 @@ make container-image                                 # macOS: build the Apple co
 
 Leave the `## Project Structure` section exactly as it is.
 
-- [ ] **Step 2: Update the README backend paragraph**
+- [x] **Step 2: Update the README backend paragraph**
 
 In `README.md`, replace the paragraph at line 101 ("The top-level `backend` key selects the VM backend. ...") with:
 
@@ -989,7 +989,7 @@ In `README.md`, replace the paragraph at line 101 ("The top-level `backend` key 
 The top-level `backend` key selects the VM backend; `stockyard init --backend` writes it explicitly. Valid values are `"firecracker"` (Linux) and `"apple-container"` (macOS); an empty value means firecracker. The apple-container backend skips the Firecracker-only setup steps — no ZFS, no kernel/rootfs install — and uses Apple's `container` CLI to manage VMs. `apple_container.image` (seeded by `stockyard init --image`) is the daemon's *default* task image, overridable per task with `stockyard run --image` (e.g. `"stockyard.local/stockyard-vm:container"`, built by `make container-image`). On the Firecracker side, `firecracker.rootfs_path` seeds the image registry's `default` image; additional images are registered with `stockyard image import`.
 ```
 
-- [ ] **Step 3: Fix vm-image/README.md's pre-registry drift**
+- [x] **Step 3: Fix vm-image/README.md's pre-registry drift**
 
 In `vm-image/README.md`, replace from the line `The daemon auto-imports the base image on first startup from \`Firecracker.RootfsPath\` config.` (line 131) through the end of the `### Updating` section (line 159) with:
 
@@ -1023,12 +1023,12 @@ make deploy-image REGISTRY_IMAGE=<name>  # register an already-built rootfs unde
 
 (The "Quick Start"/"Individual Targets"/kernel sections above line 131 match today's Makefile — verified — and stay as they are. The manual `sudo cp` + `zfs snapshot` instructions being deleted are the pre-PRI-2150 flow.)
 
-- [ ] **Step 4: Sanity-check the docs against reality**
+- [x] **Step 4: Sanity-check the docs against reality**
 
 Run: `rg -n "deploy-daemon|make deploy " CLAUDE.md README.md vm-image/README.md; rg -n "deploy:|deploy-image:|container-image:" vm-image/Makefile Makefile`
 Expected: first rg finds no phantom root-level targets (vm-image/README.md's `make deploy` lines refer to the vm-image Makefile where those targets exist); second rg confirms the referenced targets exist (`deploy`, `deploy-image` in vm-image/Makefile; `container-image` in both).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CLAUDE.md README.md vm-image/README.md
@@ -1052,7 +1052,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 No file changes. Proves the build, both test suites, and the real `init` → config.json → daemon → `image ls` path. The smoke runs against an **isolated scratch instance** — never the real daemon socket. Scaffolding is hardened the same way as the PRI-2176 plan: fixed scratch path, pidfile, and a guard step, because **state does not survive between separate shell invocations** — an empty `$SCRATCH` would make `STOCKYARD_CONFIG_DIR=""` silently fall through to the real config (`pkg/config/config.go:159`).
 
-- [ ] **Step 1: Full build**
+- [x] **Step 1: Full build**
 
 Run:
 
@@ -1062,7 +1062,7 @@ make build
 
 Expected: exit 0; produces `bin/stockyard`, `bin/stockyardd`, and the guest binaries.
 
-- [ ] **Step 2: Run both test suites**
+- [x] **Step 2: Run both test suites**
 
 Run:
 
@@ -1072,7 +1072,7 @@ make test && CGO_ENABLED=0 go test ./cmd/... -v
 
 Expected: both pass. (`make test` covers only `./pkg/...`; the explicit `./cmd/...` run is required because neither the Makefile nor CI runs CLI-package tests.)
 
-- [ ] **Step 3: Cross-compile check (linux)**
+- [x] **Step 3: Cross-compile check (linux)**
 
 Run:
 
@@ -1082,7 +1082,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./...
 
 Expected: exit 0. (init.go's `runtime.GOOS` branch and the daemon's linux-only files must still compile.)
 
-- [ ] **Step 4: Smoke the new init against a fresh scratch config dir**
+- [x] **Step 4: Smoke the new init against a fresh scratch config dir**
 
 Preconditions: Apple's container service must be running — `container image ls` should answer (if not: `container system start`). Pick a real image reference from `container image ls` and substitute it for `IMAGE_REF`.
 
@@ -1135,7 +1135,7 @@ grep -A2 '"apple_container"' "$SCRATCH/config.json"
 # Expected: "image": "<IMAGE_REF>"
 ```
 
-- [ ] **Step 5: Start the scratch daemon on the init-produced config**
+- [x] **Step 5: Start the scratch daemon on the init-produced config**
 
 `init` writes the **default** daemon paths (the real socket and `/var/lib/stockyard`), so point them at the scratch dir before starting (this is the documented scratch-instance recipe, and exactly why the Step 6 guard exists):
 
@@ -1162,7 +1162,7 @@ for i in $(seq 1 20); do [ -S "$SCRATCH/stockyardd.sock" ] && break; sleep 0.5; 
 
 Expected: `daemon up`. (Startup fail-fasts if `apple_container.image` is empty or `container system status` fails — both were satisfied in Step 4. If it fails, the log says which.)
 
-- [ ] **Step 6: Guarded daemon-path check — `image ls` answers**
+- [x] **Step 6: Guarded daemon-path check — `image ls` answers**
 
 ```bash
 SCRATCH=/tmp/stockyard-pri2177-smoke
@@ -1176,7 +1176,7 @@ STOCKYARD_CONFIG_DIR="$SCRATCH" ./bin/stockyard image ls
 # a working daemon end to end.
 ```
 
-- [ ] **Step 7: Tear down the scratch instance**
+- [x] **Step 7: Tear down the scratch instance**
 
 ```bash
 SCRATCH=/tmp/stockyard-pri2177-smoke
@@ -1186,7 +1186,7 @@ rm -rf "$SCRATCH" /tmp/stockyard-pri2177-smoke-fc
 
 Expected: daemon stops; scratch dirs removed. Nothing touched the real daemon, socket, or data dir.
 
-- [ ] **Step 8: Confirm working tree and history**
+- [x] **Step 8: Confirm working tree and history**
 
 ```bash
 git status --short && git log --oneline main..HEAD
