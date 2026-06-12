@@ -652,7 +652,7 @@ and delete the Firecracker seed line:
 - [ ] **Step 4: Compile-prove no readers remain, then test**
 
 Run: `CGO_ENABLED=0 go build ./... && rg -n "Secrets\.Provider|VMSubnet|vm_subnet" --type go cmd/ pkg/`
-Expected: build OK; the only rg hit is the dashboard's `"VMSubnet"` map key at `pkg/dashboard/server.go:480` (a template key, renamed nowhere — its *value* changes in Task 5).
+Expected: build OK; exactly three classes of rg hits remain, all benign — (1) the dashboard's `"VMSubnet"` map key at `pkg/dashboard/server.go:480` (a template key, renamed nowhere — its *value* changes in Task 5), (2) the comment line in `pkg/config/config_test.go`'s `TestLoadConfig_IgnoresRemovedFields` naming the removed fields, and (3) that test's legacy JSON literal `"vm_subnet": ...`. The test hits are the regression test added in Step 1 doing its job — do NOT "fix" them by stripping the legacy keys from the test; that would gut it.
 
 Run: `CGO_ENABLED=0 go test ./pkg/config/ -v && CGO_ENABLED=0 go test ./pkg/... ./cmd/...`
 Expected: all PASS.
@@ -933,7 +933,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Modify: `README.md:101` (backend paragraph)
 - Modify: `vm-image/README.md:113-159` (ZFS/Initial Setup/Updating sections)
 
-No code; no TDD. `docs/image-contract.md` was audited and is already correct post-PRI-2178 — leave it alone. `vm-image/macos/README.md` named in the spec **does not exist** (Verified Facts #8); the macOS story is covered by the root README and image-contract.md.
+No code; no TDD. `docs/image-contract.md` was audited and is already correct post-PRI-2178 — leave it alone. `vm-image/macos/README.md` named in the spec **does not exist** (Verified Facts #8); the macOS story is covered by the root README and image-contract.md. Archival docs that mention `stockyard configure` (`docs/INITIAL_PROMPT.md`, `docs/plans/2026-01-16-*`) are historical artifacts — deliberately untouched.
 
 - [ ] **Step 1: Rewrite CLAUDE.md's build/deploy/test sections**
 
@@ -1192,7 +1192,7 @@ Expected: daemon stops; scratch dirs removed. Nothing touched the real daemon, s
 git status --short && git log --oneline main..HEAD
 ```
 
-Expected: empty status; the plan/spec docs commits plus the five code/docs commits from Tasks 1-6 on branch `matt/pri-2177-configcli-cleanup-pass-dead-config-fields-stale`. **Do not push; do not open a PR** — hand back for review.
+Expected: empty status; the plan/spec docs commits plus the six code/docs commits from Tasks 1-6 (one each) on branch `matt/pri-2177-configcli-cleanup-pass-dead-config-fields-stale`. **Do not push; do not open a PR** — hand back for review.
 
 ---
 
