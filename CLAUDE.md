@@ -7,20 +7,33 @@ make build          # Build all binaries to bin/
 make build-guest    # Build guest binaries for VM (static Linux binaries)
 ```
 
-## Deploying (Linux)
-
-```bash
-make deploy-daemon  # Build, install, and restart daemon via systemctl
-make deploy-image   # Build and deploy VM image
-make deploy         # Full deployment (daemon + image)
-```
-
 ## Testing
 
 ```bash
-make test           # Run all tests
-go test ./pkg/...   # Run package tests
+make test           # Package tests (./pkg/... only)
+go test ./cmd/...   # CLI tests — NOT covered by make test or CI; run them
 ```
+
+## Deploying VM Images
+
+There are no root-Makefile deploy targets, and image deploys never restart
+the daemon: both targets below register through `stockyard image import`,
+and the daemon replaces images live (destroying only tasks on the replaced
+image).
+
+```bash
+make -C vm-image deploy                              # Linux: build + register the default Firecracker image
+make -C vm-image deploy-image REGISTRY_IMAGE=<name>  # Linux: register an already-built rootfs under a name
+make container-image                                 # macOS: build the Apple container OCI image
+                                                     #        (stockyard.local/stockyard-vm:container)
+```
+
+## Config Semantics Worth Knowing
+
+- `firecracker.rootfs_path` — the seed for the image registry's `default`
+  image (startup self-heal); also gates Firecracker backend construction.
+- `apple_container.image` — the daemon's default task image on macOS,
+  overridable per task with `stockyard run --image`.
 
 ## Project Structure
 
