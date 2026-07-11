@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/obra/stockyard/pkg/consolearchive"
 )
 
 // DefaultSocketPath is the default Unix socket path for the daemon.
@@ -20,6 +23,7 @@ type Config struct {
 	VM             VMConfig             `json:"vm"`
 	HTTP           HTTPConfig           `json:"http"`
 	AppleContainer AppleContainerConfig `json:"apple_container"`
+	ConsoleArchive ConsoleArchiveConfig `json:"console_archive"`
 }
 
 type VMConfig struct {
@@ -63,6 +67,17 @@ type HTTPConfig struct {
 	Addr    string `json:"addr"`
 }
 
+// ConsoleArchiveConfig bounds the host-local archive of VM console logs
+// preserved when a VM's state directory is removed. Archiving is opt-in:
+// it is off unless Enabled is set.
+type ConsoleArchiveConfig struct {
+	Enabled       bool   `json:"enabled"`
+	Dir           string `json:"dir"`
+	MaxTotalBytes int64  `json:"max_total_bytes"`
+	MaxAgeDays    int    `json:"max_age_days"`
+	MaxEntryBytes int64  `json:"max_entry_bytes"`
+}
+
 func DefaultConfig() *Config {
 	return &Config{
 		Secrets: SecretsConfig{
@@ -98,6 +113,12 @@ func DefaultConfig() *Config {
 		},
 		AppleContainer: AppleContainerConfig{
 			ContainerBin: "container",
+		},
+		ConsoleArchive: ConsoleArchiveConfig{
+			Dir:           "/var/lib/stockyard/console-archive",
+			MaxTotalBytes: 1 << 30,
+			MaxAgeDays:    14,
+			MaxEntryBytes: 64 << 20,
 		},
 	}
 }
@@ -188,4 +209,20 @@ func (c *Config) VMDir() string {
 // DHCPLeaseFile returns the path to the DHCP lease file.
 func (c *Config) DHCPLeaseFile() string {
 	return filepath.Join(c.Daemon.DataDir, "dnsmasq.leases")
+}
+
+// ConsoleArchiver builds the console-log archiver from config. Archiving is
+// opt-in: it returns nil (archiving off) unless Enabled is set and a Dir is
+// configured. Callers treat nil as "skip".
+func (c *Config) ConsoleArchiver() *consolearchive.Archiver {
+	ca := c.ConsoleArchive
+	if !ca.Enabled || ca.Dir == "" {
+		return nil
+	}
+	return &consolearchive.Archiver{
+		Dir:           ca.Dir,
+		MaxTotalBytes: ca.MaxTotalBytes,
+		MaxAge:        time.Duration(ca.MaxAgeDays) * 24 * time.Hour,
+		MaxEntryBytes: ca.MaxEntryBytes,
+	}
 }

@@ -96,16 +96,18 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 	}
 
 	// Initialize task manager with VM backend
+	consoleArchiver := cfg.ConsoleArchiver()
 	var backend vmbackend.Backend
 	switch cfg.Backend {
 	case "", "firecracker":
 		if cfg.Firecracker.KernelPath != "" && cfg.Firecracker.RootfsPath != "" {
 			fcCfg := firecracker.ClientConfig{
-				KernelPath: cfg.Firecracker.KernelPath,
-				RootfsPath: cfg.Firecracker.RootfsPath,
-				BridgeName: cfg.Firecracker.BridgeName,
-				ImagesPath: cfg.ZFS.ImagesPath,
-				VMsPath:    cfg.ZFS.VMsPath,
+				KernelPath:     cfg.Firecracker.KernelPath,
+				RootfsPath:     cfg.Firecracker.RootfsPath,
+				BridgeName:     cfg.Firecracker.BridgeName,
+				ImagesPath:     cfg.ZFS.ImagesPath,
+				VMsPath:        cfg.ZFS.VMsPath,
+				ConsoleArchive: consoleArchiver,
 			}
 			client, err := firecracker.NewClient(fcCfg, d.zfs)
 			if err != nil {
@@ -136,6 +138,12 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 	d.tasks = NewTaskManager(d, backend)
 	if d.images != nil {
 		d.images.destroyer = d.tasks
+	}
+
+	// Sweep console-archive retention at startup so a crash's staging
+	// leftovers are cleaned even if no VM is destroyed for a while.
+	if consoleArchiver != nil {
+		_ = consoleArchiver.Prune() // outcome logged by the archiver
 	}
 
 	// DHCP and IP pool are only needed for Firecracker backend

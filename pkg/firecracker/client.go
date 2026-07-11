@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/obra/stockyard/pkg/consolearchive"
 	"github.com/obra/stockyard/pkg/zfs"
 )
 
@@ -32,6 +33,10 @@ type ClientConfig struct {
 	RootfsPath     string
 	ImagesPath     string // ZFS dataset path for images (e.g., "stockyard/images")
 	VMsPath        string // ZFS dataset path for VMs (e.g., "stockyard/vms")
+
+	// ConsoleArchive preserves console logs before DeleteVM removes the VM
+	// state directory. Nil disables archiving.
+	ConsoleArchive *consolearchive.Archiver
 }
 
 // trackedProc holds a running Firecracker process and a channel that closes
@@ -464,6 +469,12 @@ func (c *Client) DeleteVM(ctx context.Context, namespace, id string) error {
 	// Clean up tap device
 	if data, err := os.ReadFile(filepath.Join(vmDir, "tap_name")); err == nil {
 		c.network.DeleteTap(string(data))
+	}
+
+	// Preserve console logs before the state directory is removed
+	// (best-effort; the archiver logs every outcome).
+	if c.config.ConsoleArchive != nil {
+		_ = c.config.ConsoleArchive.ArchiveVMDir(vmDir, id, "delete_vm")
 	}
 
 	// Destroy ZFS clone dataset if using ZFS

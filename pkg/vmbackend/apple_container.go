@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/obra/stockyard/pkg/consolearchive"
 )
 
 // AppleContainerConfig configures the Apple `container` backend.
@@ -20,6 +22,9 @@ type AppleContainerConfig struct {
 	ContainerBin string // Path to the `container` binary (default: "container")
 	Image        string // OCI image reference for task containers
 	StateDir     string // Directory holding per-VM state (captured log files)
+	// ConsoleArchive preserves captured logs before DeleteVM removes StateDir.
+	// Nil disables archiving.
+	ConsoleArchive *consolearchive.Archiver
 }
 
 // commandRunner runs an external command and returns its combined behaviour.
@@ -38,7 +43,8 @@ func execRunner(ctx context.Context, name string, args ...string) ([]byte, error
 
 // logFollower tracks a `container logs -f` process so it can be killed later.
 type logFollower struct {
-	cmd *exec.Cmd
+	cmd  *exec.Cmd
+	done chan struct{}
 }
 
 // AppleContainerBackend implements Backend by shelling out to Apple's `container` CLI.
@@ -176,13 +182,15 @@ func (b *AppleContainerBackend) startLogFollower(id string) error {
 		stderrF.Close()
 		return fmt.Errorf("start log follower: %w", err)
 	}
+	done := make(chan struct{})
 	go func() {
-		cmd.Wait()
-		stdoutF.Close()
-		stderrF.Close()
+		_ = cmd.Wait()
+		_ = stdoutF.Close()
+		_ = stderrF.Close()
+		close(done)
 	}()
 	b.mu.Lock()
-	b.followers[id] = &logFollower{cmd: cmd}
+	b.followers[id] = &logFollower{cmd: cmd, done: done}
 	b.mu.Unlock()
 	return nil
 }
@@ -194,7 +202,10 @@ func (b *AppleContainerBackend) stopLogFollower(id string) {
 	delete(b.followers, id)
 	b.mu.Unlock()
 	if ok && f.cmd.Process != nil {
-		f.cmd.Process.Kill()
+		_ = f.cmd.Process.Kill()
+	}
+	if ok && f.done != nil {
+		<-f.done
 	}
 }
 
@@ -291,7 +302,11 @@ func (b *AppleContainerBackend) DeleteVM(ctx context.Context, id string) error {
 			return fmt.Errorf("container rm: %w", err)
 		}
 	}
-	os.RemoveAll(b.vmStateDir(id))
+	vmDir := b.vmStateDir(id)
+	if b.cfg.ConsoleArchive != nil {
+		_ = b.cfg.ConsoleArchive.ArchiveVMDir(vmDir, id, "delete_vm")
+	}
+	_ = os.RemoveAll(vmDir)
 	return nil
 }
 

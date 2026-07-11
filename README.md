@@ -102,6 +102,36 @@ The top-level `backend` key selects the VM backend. Valid values are `"firecrack
 
 **Note:** For secure remote access, use Tailscale or a reverse proxy with TLS. The daemon does not yet support TLS directly.
 
+#### Console log archive
+
+When a VM is destroyed, its console logs (`stdout.log`, `stderr.log`) are the
+only record of a VM that failed to boot. When enabled, the daemon preserves
+them in a bounded host-local archive before removing the VM state directory.
+Each entry is `<archive dir>/<utc-timestamp>-<vm-id>-<random-suffix>/`
+containing the console files and a `meta.json`; in-progress entries use a
+`.staging-` prefix so a partial archive is distinguishable. Archiving is
+best-effort and never blocks a destroy; outcomes are logged with
+`console_archive_*` tokens.
+
+Archiving is **opt-in** — it is off unless `enabled` is set:
+
+```json
+{
+  "console_archive": {
+    "enabled": true,
+    "dir": "/var/lib/stockyard/console-archive",
+    "max_total_bytes": 1073741824,
+    "max_age_days": 14,
+    "max_entry_bytes": 67108864
+  }
+}
+```
+
+Only `enabled` is required to turn archiving on; the other values above are
+the defaults. Files larger than `max_entry_bytes` keep their head and tail
+with a truncation marker between them. Retention prunes expired entries and
+then the oldest entries until the archive fits `max_total_bytes`.
+
 ## VM Services
 
 VMs ship with `llm-proxy` (port 12071) — an outbound HTTP proxy that logs Anthropic/OpenAI API traffic. It runs in-guest on both backends.
