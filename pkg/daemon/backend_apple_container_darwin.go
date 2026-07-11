@@ -33,9 +33,10 @@ func createAppleContainerBackend(cfg *config.Config) (vmbackend.Backend, error) 
 	}
 
 	acCfg := vmbackend.AppleContainerConfig{
-		ContainerBin: bin,
-		Image:        cfg.AppleContainer.Image,
-		StateDir:     cfg.Daemon.DataDir + "/vms/stockyard",
+		ContainerBin:   bin,
+		Image:          cfg.AppleContainer.Image,
+		StateDir:       cfg.Daemon.DataDir + "/vms/stockyard",
+		ConsoleArchive: cfg.ConsoleArchiver(),
 	}
 	return vmbackend.NewAppleContainerBackend(acCfg), nil
 }

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadConfig_DefaultsWhenNoFile(t *testing.T) {
@@ -128,5 +129,81 @@ func TestConfig_GRPCAddrDefault(t *testing.T) {
 
 	if cfg.Daemon.GRPCAddr != "" {
 		t.Errorf("expected GRPCAddr to be empty by default, got %q", cfg.Daemon.GRPCAddr)
+	}
+}
+
+func TestDefaultConfigConsoleArchive(t *testing.T) {
+	ca := DefaultConfig().ConsoleArchive
+	if ca.Dir != "/var/lib/stockyard/console-archive" {
+		t.Errorf("dir = %q", ca.Dir)
+	}
+	if ca.MaxTotalBytes != 1<<30 {
+		t.Errorf("max_total_bytes = %d", ca.MaxTotalBytes)
+	}
+	if ca.MaxAgeDays != 14 {
+		t.Errorf("max_age_days = %d", ca.MaxAgeDays)
+	}
+	if ca.MaxEntryBytes != 64<<20 {
+		t.Errorf("max_entry_bytes = %d", ca.MaxEntryBytes)
+	}
+	if ca.Enabled {
+		t.Error("console archive should default to disabled (opt-in)")
+	}
+}
+
+func TestConsoleArchiverFromConfig(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ConsoleArchive.Enabled = true
+	a := cfg.ConsoleArchiver()
+	if a == nil {
+		t.Fatal("expected an archiver when enabled with the default config")
+	}
+	if a.Dir != cfg.ConsoleArchive.Dir {
+		t.Errorf("dir = %q", a.Dir)
+	}
+	if a.MaxAge != 14*24*time.Hour {
+		t.Errorf("max age = %v", a.MaxAge)
+	}
+	if a.MaxTotalBytes != 1<<30 || a.MaxEntryBytes != 64<<20 {
+		t.Errorf("bounds = %d/%d", a.MaxTotalBytes, a.MaxEntryBytes)
+	}
+}
+
+func TestConsoleArchiverEnableGating(t *testing.T) {
+	// Default (opt-in, not enabled) yields no archiver.
+	if DefaultConfig().ConsoleArchiver() != nil {
+		t.Error("default (not enabled) must yield a nil archiver")
+	}
+	// Enabled but no dir yields no archiver.
+	cfg := DefaultConfig()
+	cfg.ConsoleArchive.Enabled = true
+	cfg.ConsoleArchive.Dir = ""
+	if cfg.ConsoleArchiver() != nil {
+		t.Error("empty dir must yield a nil archiver even when enabled")
+	}
+	// Enabled with a dir yields an archiver.
+	cfg = DefaultConfig()
+	cfg.ConsoleArchive.Enabled = true
+	if cfg.ConsoleArchiver() == nil {
+		t.Error("enabled with a dir must yield an archiver")
+	}
+}
+
+func TestLoadFromDirPartialConsoleArchive(t *testing.T) {
+	dir := t.TempDir()
+	err := os.WriteFile(filepath.Join(dir, "config.json"),
+		[]byte(`{"console_archive":{"enabled":true}}`), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadFromDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.ConsoleArchive.Enabled {
+		t.Error("expected enabled=true from file")
+	}
+	if cfg.ConsoleArchive.Dir != "/var/lib/stockyard/console-archive" {
+		t.Errorf("unset keys must keep defaults, dir = %q", cfg.ConsoleArchive.Dir)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/obra/stockyard/pkg/config"
+	"github.com/obra/stockyard/pkg/consolearchive"
 )
 
 func TestGarbageCollector_FindOrphanVMDirs_Empty(t *testing.T) {
@@ -293,6 +294,38 @@ func TestGarbageCollector_BuildTapToTaskMap_DistinguishesSimilarPrefixes(t *test
 	// tap-abcdef12 belongs to the second VM
 	if taskID := tapToTask["tap-abcdef12"]; taskID != "12345678-bbbb-2222-2222-222222222222" {
 		t.Errorf("tap-abcdef12 should map to second UUID, got %q", taskID)
+	}
+}
+
+func TestGarbageCollector_CleanVMDir_ArchivesConsole(t *testing.T) {
+	tmpDir := t.TempDir()
+	archiveDir := t.TempDir()
+
+	vmDir := filepath.Join(tmpDir, "vm1234")
+	_ = os.Mkdir(vmDir, 0755)
+	_ = os.WriteFile(filepath.Join(vmDir, "stdout.log"), []byte("boot output"), 0644)
+
+	gc := &GarbageCollector{
+		cfg:      config.DefaultConfig(),
+		vmDir:    tmpDir,
+		archiver: &consolearchive.Archiver{Dir: archiveDir, Logf: func(string, ...any) {}},
+	}
+
+	item := CleanupItem{ID: "vm1234", Type: "vm-dir", Path: vmDir}
+	if err := gc.cleanVMDir(item); err != nil {
+		t.Fatalf("cleanVMDir failed: %v", err)
+	}
+
+	if _, err := os.Stat(vmDir); !os.IsNotExist(err) {
+		t.Error("expected VM directory to be removed")
+	}
+	matches, _ := filepath.Glob(filepath.Join(archiveDir, "*-vm1234-*", "stdout.log"))
+	if len(matches) != 1 {
+		t.Fatalf("expected one archived stdout.log, got %v", matches)
+	}
+	data, err := os.ReadFile(matches[0])
+	if err != nil || string(data) != "boot output" {
+		t.Errorf("archived console = %q, err %v", data, err)
 	}
 }
 

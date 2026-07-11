@@ -6,9 +6,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/obra/stockyard/pkg/consolearchive"
 )
 
 // fakeRunner records invocations and returns scripted output/errors.
@@ -181,6 +186,40 @@ func TestAppleContainerBackend_StopVM(t *testing.T) {
 	}
 }
 
+func TestAppleContainerBackend_StopLogFollowerWaitsForCleanup(t *testing.T) {
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, newFakeRunner().run)
+	cmd := exec.Command("sleep", "60")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start sleep: %v", err)
+	}
+	done := make(chan struct{})
+	b.mu.Lock()
+	b.followers["abc12345"] = &logFollower{cmd: cmd, done: done}
+	b.mu.Unlock()
+
+	stopped := make(chan struct{})
+	go func() {
+		b.stopLogFollower("abc12345")
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+		t.Fatal("stopLogFollower returned before follower cleanup completed")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	if err := cmd.Wait(); err == nil {
+		t.Error("expected follower process to be killed")
+	}
+	close(done)
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("stopLogFollower did not return after follower cleanup completed")
+	}
+}
+
 func TestAppleContainerBackend_DeleteVM(t *testing.T) {
 	fr := newFakeRunner()
 	b := newAppleContainerBackendWithRunner(AppleContainerConfig{StateDir: t.TempDir()}, fr.run)
@@ -200,6 +239,62 @@ func TestAppleContainerBackend_DeleteVM(t *testing.T) {
 	}
 	if !sawStop || !sawRm {
 		t.Errorf("DeleteVM should stop and rm; sawStop=%v sawRm=%v", sawStop, sawRm)
+	}
+}
+
+func TestAppleContainerBackend_DeleteVMArchivesConsole(t *testing.T) {
+	stateDir := t.TempDir()
+	archiveDir := t.TempDir()
+	vmDir := filepath.Join(stateDir, "abc12345")
+	if err := os.MkdirAll(vmDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vmDir, "stdout.log"), []byte("boot output"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{
+		StateDir: stateDir,
+		ConsoleArchive: &consolearchive.Archiver{
+			Dir:  archiveDir,
+			Logf: func(string, ...any) {},
+		},
+	}, newFakeRunner().run)
+
+	if err := b.DeleteVM(context.Background(), "abc12345"); err != nil {
+		t.Fatalf("DeleteVM: %v", err)
+	}
+	matches, _ := filepath.Glob(filepath.Join(archiveDir, "*-abc12345-*", "stdout.log"))
+	if len(matches) != 1 {
+		t.Fatalf("expected archived stdout.log, got %v", matches)
+	}
+}
+
+func TestAppleContainerBackend_DeleteVMSucceedsWhenArchiveFails(t *testing.T) {
+	stateDir := t.TempDir()
+	vmDir := filepath.Join(stateDir, "abc12345")
+	if err := os.MkdirAll(vmDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vmDir, "stdout.log"), []byte("boot output"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b := newAppleContainerBackendWithRunner(AppleContainerConfig{
+		StateDir: stateDir,
+		ConsoleArchive: &consolearchive.Archiver{
+			Dir:  filepath.Join(blocker, "archive"),
+			Logf: func(string, ...any) {},
+		},
+	}, newFakeRunner().run)
+
+	if err := b.DeleteVM(context.Background(), "abc12345"); err != nil {
+		t.Fatalf("DeleteVM must succeed despite archive failure: %v", err)
+	}
+	if _, err := os.Stat(vmDir); !os.IsNotExist(err) {
+		t.Errorf("VM state directory should be removed, stat error: %v", err)
 	}
 }
 

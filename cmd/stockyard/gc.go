@@ -13,6 +13,7 @@ import (
 
 	"github.com/obra/stockyard/pkg/client"
 	"github.com/obra/stockyard/pkg/config"
+	"github.com/obra/stockyard/pkg/consolearchive"
 	"github.com/obra/stockyard/pkg/vmutil"
 	"github.com/spf13/cobra"
 )
@@ -64,6 +65,7 @@ Note: This command will NOT clean up running VMs - they must be stopped first.`,
 			cleanAll:     gcAll,
 			cleanOrphans: gcOrphans,
 			verbose:      gcVerbose,
+			archiver:     cfg.ConsoleArchiver(),
 		}
 
 		// Get task list from daemon
@@ -126,6 +128,7 @@ type GarbageCollector struct {
 	cleanOrphans bool
 	client       *client.Client
 	verbose      bool
+	archiver     *consolearchive.Archiver
 }
 
 func (gc *GarbageCollector) loadTasks() error {
@@ -452,6 +455,12 @@ func (gc *GarbageCollector) cleanVMDir(item CleanupItem) error {
 	if data, err := os.ReadFile(tapFile); err == nil {
 		tapName := strings.TrimSpace(string(data))
 		_ = exec.Command("ip", "link", "delete", tapName).Run()
+	}
+
+	// Preserve console logs before the directory is removed (best-effort;
+	// the archiver logs every outcome).
+	if gc.archiver != nil {
+		_ = gc.archiver.ArchiveVMDir(item.Path, item.ID, "gc_orphan")
 	}
 
 	// Remove directory
