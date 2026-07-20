@@ -3,6 +3,7 @@ package zfs
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -23,7 +24,14 @@ type Manager struct {
 // ZFS's exact missing-dataset result is absence; every other failed read is
 // unsafe to treat as cleanup proof.
 func (m *Manager) DatasetExists(ctx context.Context, taskID string) (bool, error) {
-	dataset := m.DatasetPath(taskID)
+	return m.DatasetPathExists(ctx, m.DatasetPath(taskID))
+}
+
+// DatasetPathExists reports whether an exact fully-qualified dataset exists.
+func (m *Manager) DatasetPathExists(ctx context.Context, dataset string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	stdout, stderr, err := m.runCommand(ctx, "list", "-H", "-o", "name", dataset)
 	if err == nil {
 		if strings.TrimSpace(string(stdout)) != dataset {
@@ -31,7 +39,8 @@ func (m *Manager) DatasetExists(ctx context.Context, taskID string) (bool, error
 		}
 		return true, nil
 	}
-	if string(stderr) == fmt.Sprintf("cannot open '%s': dataset does not exist\n", dataset) {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 && len(stdout) == 0 && ctx.Err() == nil && string(stderr) == fmt.Sprintf("cannot open '%s': dataset does not exist\n", dataset) {
 		return false, nil
 	}
 	return false, fmt.Errorf("zfs list dataset %s: %w: %s", dataset, err, stderr)
@@ -191,12 +200,9 @@ func (m *Manager) Sync(ctx context.Context, taskID string) error {
 
 // runZFS executes a zfs command with the given arguments.
 func (m *Manager) runZFS(ctx context.Context, args ...string) error {
-	cmd := exec.CommandContext(ctx, "zfs", args...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("zfs %s failed: %w: %s", args[0], err, stderr.String())
+	_, stderr, err := m.runCommand(ctx, args...)
+	if err != nil {
+		return fmt.Errorf("zfs %s failed: %w: %s", args[0], err, stderr)
 	}
 	return nil
 }
@@ -312,17 +318,24 @@ func (m *Manager) SnapshotExists(ctx context.Context, snapshotPath string) bool 
 // a subsequent re-import heal the row without being blocked by a stale destroy
 // failure.
 func (m *Manager) DestroyDatasetRecursive(ctx context.Context, datasetPath string) error {
-	stdout, stderr, err := m.runCommand(ctx, "list", "-H", "-o", "name", datasetPath)
+	exists, err := m.DatasetPathExists(ctx, datasetPath)
 	if err != nil {
-		if string(stderr) == fmt.Sprintf("cannot open '%s': dataset does not exist\n", datasetPath) {
-			return nil
-		}
-		return fmt.Errorf("zfs list dataset %s: %w: %s", datasetPath, err, stderr)
+		return err
 	}
-	if strings.TrimSpace(string(stdout)) != datasetPath {
-		return fmt.Errorf("zfs list returned unexpected dataset %q", strings.TrimSpace(string(stdout)))
+	if !exists {
+		return nil
 	}
-	return m.runZFS(ctx, "destroy", "-R", datasetPath)
+	if err := m.runZFS(ctx, "destroy", "-R", datasetPath); err != nil {
+		return err
+	}
+	exists, err = m.DatasetPathExists(ctx, datasetPath)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return fmt.Errorf("verify ZFS dataset deletion: %s remains", datasetPath)
+	}
+	return nil
 }
 
 // ImportRootfsImage imports a rootfs.ext4 file into ZFS and creates the base snapshot.

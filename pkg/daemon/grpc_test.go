@@ -5,6 +5,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	pb "github.com/obra/stockyard/pkg/api/v1"
 	"github.com/obra/stockyard/pkg/config"
@@ -214,6 +215,26 @@ func TestGRPCServer_GetTask_NotFound(t *testing.T) {
 
 	if st.Code() != codes.NotFound {
 		t.Errorf("expected NotFound code, got %v", st.Code())
+	}
+}
+
+func TestGRPCServer_ListSnapshotsRejectsCleanupPending(t *testing.T) {
+	s := newTestGRPCServer(t, true)
+	if err := s.daemon.state.CreateTask(&Task{
+		ID:        "task-1",
+		Command:   "run",
+		Status:    "running",
+		CreatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.daemon.state.MarkTaskCleanupPending("task-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := s.ListSnapshots(context.Background(), &pb.ListSnapshotsRequest{TaskId: "task-1"})
+	if err == nil || !strings.Contains(err.Error(), ErrTaskCleanupPending.Error()) {
+		t.Fatalf("ListSnapshots error = %v, want cleanup-pending rejection", err)
 	}
 }
 

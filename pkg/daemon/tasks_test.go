@@ -13,6 +13,7 @@ import (
 	"github.com/obra/stockyard/pkg/network"
 	"github.com/obra/stockyard/pkg/secrets"
 	"github.com/obra/stockyard/pkg/vmbackend"
+	"github.com/obra/stockyard/pkg/zfs"
 )
 
 type taskCreateTestBackend struct {
@@ -298,6 +299,283 @@ func TestTaskManager_DestroyTaskRetainsTaskOnCanceledContext(t *testing.T) {
 	}
 	if _, err := state.GetTask("task-1"); err != nil {
 		t.Fatalf("task row disappeared after cancellation: %v", err)
+	}
+}
+
+func TestTaskManager_DestroyTaskBoundaryFailuresResume(t *testing.T) {
+	for _, tt := range []struct {
+		name, boundary    string
+		pending, released bool
+	}{
+		{"vm delete", "vm", false, false}, {"workspace destroy", "workspace", false, false},
+		{"workspace readback", "readback", false, false}, {"workspace remains", "remaining", false, false},
+		{"mark pending", "mark", false, false},
+		{"IP release", "release", true, false}, {"row delete", "row", true, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pool, _ := network.NewIPPool("10.0.100.0/24", "10.0.100.1")
+			pool.SetPersistPath(filepath.Join(t.TempDir(), "pool.json"))
+			if _, err := pool.Allocate("task-1"); err != nil {
+				t.Fatal(err)
+			}
+			state, _ := NewStateInMemory()
+			defer state.Close()
+			d := &Daemon{cfg: &config.Config{Backend: "firecracker"}, state: state, ipPool: pool, zfs: zfs.NewManager("tank", "stockyard/workspaces")}
+			tm := NewTaskManager(d, &taskCreateTestBackend{})
+			if err := state.CreateTask(&Task{ID: "task-1", Command: "run", Status: "running", VMID: "task-1", CreatedAt: time.Now()}); err != nil {
+				t.Fatal(err)
+			}
+			fail := errors.New("injected " + tt.boundary)
+			tm.destroyHooks = &destroyTaskHooks{
+				deleteVM: func(context.Context, string) error {
+					if tt.boundary == "vm" {
+						return fail
+					}
+					return nil
+				},
+				destroyWork: func(context.Context, string) error {
+					if tt.boundary == "workspace" {
+						return fail
+					}
+					return nil
+				},
+				workspaceOK: func(context.Context, string) (bool, error) {
+					if tt.boundary == "readback" {
+						return false, fail
+					}
+					if tt.boundary == "remaining" {
+						return true, nil
+					}
+					return false, nil
+				},
+				markPending: func(id string) error {
+					if tt.boundary == "mark" {
+						return fail
+					}
+					return state.MarkTaskCleanupPending(id)
+				},
+				releaseIP: func(id string) error {
+					if tt.boundary == "release" {
+						return fail
+					}
+					return pool.Release(id)
+				},
+				deleteRow: func(id string) error {
+					if tt.boundary == "row" {
+						return fail
+					}
+					return state.DeleteTask(id)
+				},
+			}
+			destroyErr := tm.DestroyTask(context.Background(), "task-1")
+			if tt.boundary == "remaining" {
+				if destroyErr == nil || !strings.Contains(destroyErr.Error(), "dataset remains") {
+					t.Fatalf("error = %v, want dataset-remains failure", destroyErr)
+				}
+			} else if !errors.Is(destroyErr, fail) {
+				t.Fatalf("error = %v, want %v", destroyErr, fail)
+			}
+			task, err := state.GetTask("task-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (task.Status == TaskStatusCleanupPending) != tt.pending {
+				t.Fatalf("status = %s", task.Status)
+			}
+			if (pool.GetAllocation("task-1") == "") == !tt.released {
+				t.Fatalf("IP release state wrong")
+			}
+			tm.destroyHooks = &destroyTaskHooks{deleteVM: func(context.Context, string) error { return nil }, destroyWork: func(context.Context, string) error { return nil }, workspaceOK: func(context.Context, string) (bool, error) { return false, nil }, markPending: state.MarkTaskCleanupPending, releaseIP: pool.Release, deleteRow: state.DeleteTask}
+			if err := tm.DestroyTask(context.Background(), "task-1"); err != nil {
+				t.Fatalf("retry: %v", err)
+			}
+			if _, err := state.GetTask("task-1"); !errors.Is(err, ErrTaskNotFound) {
+				t.Fatalf("row after retry = %v", err)
+			}
+		})
+	}
+}
+
+func TestTaskManager_DestroyTaskCancellationBoundariesResume(t *testing.T) {
+	for _, tt := range []struct {
+		boundary          string
+		wantCalls         []string
+		pending, released bool
+		completed         bool
+	}{
+		{boundary: "vm", wantCalls: []string{"vm"}},
+		{boundary: "workspace", wantCalls: []string{"vm", "workspace"}},
+		{boundary: "readback", wantCalls: []string{"vm", "workspace", "readback"}},
+		{boundary: "mark", wantCalls: []string{"vm", "workspace", "readback", "mark"}, pending: true},
+		{boundary: "release", wantCalls: []string{"vm", "workspace", "readback", "mark", "release"}, pending: true, released: true},
+		{boundary: "row", wantCalls: []string{"vm", "workspace", "readback", "mark", "release", "row"}, released: true, completed: true},
+	} {
+		t.Run(tt.boundary, func(t *testing.T) {
+			pool, err := network.NewIPPool("10.0.100.0/24", "10.0.100.1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			pool.SetPersistPath(filepath.Join(t.TempDir(), "pool.json"))
+			if _, err := pool.Allocate("task-1"); err != nil {
+				t.Fatal(err)
+			}
+			state, err := NewStateInMemory()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer state.Close()
+			if err := state.CreateTask(&Task{ID: "task-1", Command: "run", Status: "running", VMID: "task-1", CreatedAt: time.Now()}); err != nil {
+				t.Fatal(err)
+			}
+			daemon := &Daemon{
+				cfg:    &config.Config{Backend: "firecracker"},
+				state:  state,
+				ipPool: pool,
+				zfs:    zfs.NewManager("tank", "stockyard/workspaces"),
+			}
+			tm := NewTaskManager(daemon, &taskCreateTestBackend{})
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			calls := make([]string, 0, len(tt.wantCalls))
+			record := func(boundary string) {
+				calls = append(calls, boundary)
+				if tt.boundary == boundary {
+					cancel()
+				}
+			}
+			tm.destroyHooks = &destroyTaskHooks{
+				deleteVM: func(context.Context, string) error {
+					record("vm")
+					return nil
+				},
+				destroyWork: func(context.Context, string) error {
+					record("workspace")
+					return nil
+				},
+				workspaceOK: func(context.Context, string) (bool, error) {
+					record("readback")
+					return false, nil
+				},
+				markPending: func(id string) error {
+					record("mark")
+					return state.MarkTaskCleanupPending(id)
+				},
+				releaseIP: func(id string) error {
+					record("release")
+					return pool.Release(id)
+				},
+				deleteRow: func(id string) error {
+					record("row")
+					return state.DeleteTask(id)
+				},
+			}
+
+			err = tm.DestroyTask(ctx, "task-1")
+			if tt.completed {
+				if err != nil {
+					t.Fatalf("completed destroy returned cancellation: %v", err)
+				}
+			} else if !errors.Is(err, context.Canceled) {
+				t.Fatalf("DestroyTask error = %v, want context canceled", err)
+			}
+			if strings.Join(calls, ",") != strings.Join(tt.wantCalls, ",") {
+				t.Fatalf("boundary calls = %v, want %v", calls, tt.wantCalls)
+			}
+
+			task, getErr := state.GetTask("task-1")
+			if tt.completed {
+				if !errors.Is(getErr, ErrTaskNotFound) {
+					t.Fatalf("completed row read = %v", getErr)
+				}
+			} else {
+				if getErr != nil {
+					t.Fatal(getErr)
+				}
+				if (task.Status == TaskStatusCleanupPending) != tt.pending {
+					t.Fatalf("status = %s, pending = %v", task.Status, tt.pending)
+				}
+			}
+			if released := pool.GetAllocation("task-1") == ""; released != tt.released {
+				t.Fatalf("IP released = %v, want %v", released, tt.released)
+			}
+
+			if !tt.completed {
+				tm.destroyHooks = &destroyTaskHooks{
+					deleteVM:    func(context.Context, string) error { return nil },
+					destroyWork: func(context.Context, string) error { return nil },
+					workspaceOK: func(context.Context, string) (bool, error) { return false, nil },
+					markPending: state.MarkTaskCleanupPending,
+					releaseIP:   pool.Release,
+					deleteRow:   state.DeleteTask,
+				}
+				if err := tm.DestroyTask(context.Background(), "task-1"); err != nil {
+					t.Fatalf("retry: %v", err)
+				}
+				if _, err := state.GetTask("task-1"); !errors.Is(err, ErrTaskNotFound) {
+					t.Fatalf("row after retry = %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestTaskManager_DestroyTaskResumesRetainedStates(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		pending   bool
+		allocated bool
+	}{
+		{name: "ordinary row with allocation", allocated: true},
+		{name: "cleanup pending with allocation", pending: true, allocated: true},
+		{name: "cleanup pending after release", pending: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pool, err := network.NewIPPool("10.0.100.0/24", "10.0.100.1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			pool.SetPersistPath(filepath.Join(t.TempDir(), "pool.json"))
+			if tt.allocated {
+				if _, err := pool.Allocate("task-1"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			state, err := NewStateInMemory()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer state.Close()
+			if err := state.CreateTask(&Task{ID: "task-1", Command: "run", Status: "running", VMID: "task-1", CreatedAt: time.Now()}); err != nil {
+				t.Fatal(err)
+			}
+			if tt.pending {
+				if err := state.MarkTaskCleanupPending("task-1"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			daemon := &Daemon{
+				cfg:    &config.Config{Backend: "firecracker"},
+				state:  state,
+				ipPool: pool,
+				zfs:    zfs.NewManager("tank", "stockyard/workspaces"),
+			}
+			tm := NewTaskManager(daemon, &taskCreateTestBackend{})
+			tm.destroyHooks = &destroyTaskHooks{
+				deleteVM:    func(context.Context, string) error { return nil },
+				destroyWork: func(context.Context, string) error { return nil },
+				workspaceOK: func(context.Context, string) (bool, error) { return false, nil },
+			}
+
+			if err := tm.DestroyTask(context.Background(), "task-1"); err != nil {
+				t.Fatalf("DestroyTask: %v", err)
+			}
+			if _, err := state.GetTask("task-1"); !errors.Is(err, ErrTaskNotFound) {
+				t.Fatalf("row after destroy = %v", err)
+			}
+			if allocation := pool.GetAllocation("task-1"); allocation != "" {
+				t.Fatalf("retained allocation = %s", allocation)
+			}
+		})
 	}
 }
 

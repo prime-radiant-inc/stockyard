@@ -19,7 +19,8 @@ type Backend interface {
 	// StopVM gracefully stops a running VM.
 	StopVM(ctx context.Context, id string) error
 
-	// DeleteVM stops (if running) and removes all resources for a VM.
+	// DeleteVM stops and removes the exact VM's process, state directory, TAP,
+	// and rootfs clone. Nil means each resource was verified absent.
 	DeleteVM(ctx context.Context, id string) error
 
 	// GetVM returns the current state of a VM.

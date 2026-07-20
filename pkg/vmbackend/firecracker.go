@@ -8,11 +8,24 @@ import (
 
 // FirecrackerBackend adapts a firecracker.Client to the Backend interface.
 type FirecrackerBackend struct {
-	client *firecracker.Client
+	client firecrackerClient
+}
+
+type firecrackerClient interface {
+	CreateVM(context.Context, *firecracker.VMConfig) (*firecracker.VMInfo, error)
+	StartVM(context.Context, *firecracker.VMConfig) (*firecracker.VMInfo, error)
+	StopVM(context.Context, string, string) error
+	DeleteVM(context.Context, string, string) error
+	GetVM(context.Context, string, string) (*firecracker.VM, error)
+	ListVMs(context.Context, string) ([]*firecracker.VM, error)
+	Close() error
 }
 
 // NewFirecrackerBackend wraps an existing firecracker.Client.
 func NewFirecrackerBackend(client *firecracker.Client) *FirecrackerBackend {
+	if client == nil {
+		return &FirecrackerBackend{}
+	}
 	return &FirecrackerBackend{client: client}
 }
 

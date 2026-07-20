@@ -144,11 +144,10 @@ func (s *grpcServer) CreateSnapshot(ctx context.Context, req *pb.CreateSnapshotR
 }
 
 func (s *grpcServer) ListSnapshots(ctx context.Context, req *pb.ListSnapshotsRequest) (*pb.ListSnapshotsResponse, error) {
-	if s.daemon.zfs == nil {
-		return nil, status.Error(codes.Unavailable, "snapshots require ZFS (not available on this backend)")
+	if s.daemon.tasks == nil {
+		return nil, status.Error(codes.Unavailable, "task manager not initialized")
 	}
-
-	snapshots, err := s.daemon.zfs.ListSnapshots(ctx, req.TaskId)
+	snapshots, err := s.daemon.tasks.ListTaskSnapshots(ctx, req.TaskId)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list snapshots: %v", err)
 	}

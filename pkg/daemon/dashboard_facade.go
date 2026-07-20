@@ -47,7 +47,7 @@ func (f *DashboardFacade) GetTask(ctx context.Context, id string) (*dashboard.Da
 	if f.tasks == nil {
 		return nil, fmt.Errorf("TaskManager not available")
 	}
-	task, err := f.tasks.GetTask(id)
+	task, err := f.tasks.GetAttachTask(id)
 	if err != nil {
 		// Check if it's a "not found" error
 		if strings.Contains(err.Error(), "not found") {
@@ -106,7 +106,10 @@ func (f *DashboardFacade) DestroyTask(ctx context.Context, id string) error {
 
 // ListTaskSnapshots returns snapshots for a task.
 func (f *DashboardFacade) ListTaskSnapshots(ctx context.Context, taskID string) ([]dashboard.DaemonSnapshot, error) {
-	snaps, err := f.state.ListTaskSnapshots(taskID)
+	if f.tasks == nil {
+		return nil, fmt.Errorf("TaskManager not available")
+	}
+	snaps, err := f.tasks.ListRecordedSnapshots(taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -147,32 +150,18 @@ func (f *DashboardFacade) GetVMIP(ctx context.Context, taskID string) (string, e
 
 // GetVMCID returns the vsock CID for a VM.
 func (f *DashboardFacade) GetVMCID(ctx context.Context, taskID string) (uint32, error) {
-	task, err := f.state.GetTask(taskID)
-	if err != nil {
-		return 0, err
+	if f.tasks == nil {
+		return 0, fmt.Errorf("TaskManager not available")
 	}
-	if task == nil {
-		return 0, fmt.Errorf("task not found: %s", taskID)
-	}
-	if task.CID == 0 {
-		return 0, fmt.Errorf("VM CID not available (VM may not be running)")
-	}
-	return task.CID, nil
+	return f.tasks.GetVMCID(taskID)
 }
 
 // GetVsockPath returns the vsock UDS path for a VM.
 func (f *DashboardFacade) GetVsockPath(ctx context.Context, taskID string) (string, error) {
-	task, err := f.state.GetTask(taskID)
-	if err != nil {
-		return "", err
+	if f.tasks == nil {
+		return "", fmt.Errorf("TaskManager not available")
 	}
-	if task == nil {
-		return "", fmt.Errorf("task not found: %s", taskID)
-	}
-	if task.VsockPath == "" {
-		return "", fmt.Errorf("vsock path not available (VM may not be running)")
-	}
-	return task.VsockPath, nil
+	return f.tasks.GetVsockPath(taskID)
 }
 
 // convertToDashboardTask converts a daemon Task to a dashboard DaemonTask.

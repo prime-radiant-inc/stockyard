@@ -3,20 +3,25 @@ package zfs
 import (
 	"context"
 	"errors"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDatasetExistsClassifiesOnlyExactNotFoundAsAbsent(t *testing.T) {
 	tests := []struct {
 		name    string
+		stdout  string
 		stderr  string
 		err     error
 		want    bool
 		wantErr bool
 	}{
-		{name: "present", want: true},
-		{name: "exact missing dataset", stderr: "cannot open 'tank/stockyard/workspaces/task-one': dataset does not exist\n", err: errors.New("exit status 1"), want: false},
+		{name: "present", stdout: "tank/stockyard/workspaces/task-one\n", want: true},
+		{name: "successful malformed output", stdout: "tank/stockyard/workspaces/other\n", wantErr: true},
+		{name: "exact missing dataset", stderr: "cannot open 'tank/stockyard/workspaces/task-one': dataset does not exist\n", err: zfsExitStatusOne(t), want: false},
+		{name: "wrong exit code with missing text", stderr: "cannot open 'tank/stockyard/workspaces/task-one': dataset does not exist\n", err: zfsExitStatusTwo(t), wantErr: true},
 		{name: "permission denied", stderr: "cannot open 'tank/stockyard/workspaces/task-one': permission denied\n", err: errors.New("exit status 1"), wantErr: true},
 		{name: "malformed output", stderr: "dataset does not exist but unrelated\n", err: errors.New("exit status 1"), wantErr: true},
 	}
@@ -24,10 +29,7 @@ func TestDatasetExistsClassifiesOnlyExactNotFoundAsAbsent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := NewManager("tank", "stockyard/workspaces")
 			m.command = func(context.Context, ...string) ([]byte, []byte, error) {
-				if tt.err == nil {
-					return []byte("tank/stockyard/workspaces/task-one\n"), nil, nil
-				}
-				return nil, []byte(tt.stderr), tt.err
+				return []byte(tt.stdout), []byte(tt.stderr), tt.err
 			}
 			got, err := m.DatasetExists(context.Background(), "task-one")
 			if tt.wantErr {
@@ -41,6 +43,150 @@ func TestDatasetExistsClassifiesOnlyExactNotFoundAsAbsent(t *testing.T) {
 			}
 		})
 	}
+}
+
+func zfsExitStatusOne(t *testing.T) error {
+	t.Helper()
+	return exec.Command("sh", "-c", "exit 1").Run()
+}
+
+func zfsExitStatusTwo(t *testing.T) error {
+	t.Helper()
+	return exec.Command("sh", "-c", "exit 2").Run()
+}
+
+func TestDatasetExistsRefusesNotFoundTextFromCanceledOrNonExitCommands(t *testing.T) {
+	notFound := "cannot open 'tank/stockyard/workspaces/task-one': dataset does not exist\n"
+	exitOne := func(t *testing.T) error {
+		t.Helper()
+		return exec.Command("sh", "-c", "exit 1").Run()
+	}
+	tests := []struct {
+		name   string
+		ctx    context.Context
+		err    func(*testing.T) error
+		stdout string
+	}{
+		{name: "canceled context", ctx: canceledContext(), err: exitOne},
+		{name: "expired context", ctx: expiredContext(), err: exitOne},
+		{name: "non exit error", ctx: context.Background(), err: func(*testing.T) error { return errors.New("transport failure") }},
+		{name: "unexpected stdout", ctx: context.Background(), err: exitOne, stdout: "unexpected\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewManager("tank", "stockyard/workspaces")
+			m.command = func(context.Context, ...string) ([]byte, []byte, error) {
+				return []byte(tt.stdout), []byte(notFound), tt.err(t)
+			}
+			if _, err := m.DatasetExists(tt.ctx, "task-one"); err == nil {
+				t.Fatal("DatasetExists accepted untrustworthy absence")
+			}
+		})
+	}
+}
+
+func canceledContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
+}
+
+func expiredContext() context.Context {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	cancel()
+	return ctx
+}
+
+func TestDestroyDatasetRecursiveRequiresPostDestroyAbsence(t *testing.T) {
+	const dataset = "tank/stockyard/vms/task-one"
+	tests := []struct {
+		name      string
+		responses []zfsCommandResponse
+		wantErr   bool
+	}{
+		{
+			name: "already absent",
+			responses: []zfsCommandResponse{{
+				args:   []string{"list", "-H", "-o", "name", dataset},
+				stderr: "cannot open 'tank/stockyard/vms/task-one': dataset does not exist\n",
+				err:    zfsExitStatusOne(t),
+			}},
+		},
+		{
+			name: "initial read unknown",
+			responses: []zfsCommandResponse{{
+				args: []string{"list", "-H", "-o", "name", dataset},
+				err:  errors.New("permission denied"),
+			}},
+			wantErr: true,
+		},
+		{
+			name: "destroy failure",
+			responses: []zfsCommandResponse{
+				{args: []string{"list", "-H", "-o", "name", dataset}, stdout: dataset + "\n"},
+				{args: []string{"destroy", "-R", dataset}, err: errors.New("destroy failed")},
+			},
+			wantErr: true,
+		},
+		{
+			name: "post destroy read unknown",
+			responses: []zfsCommandResponse{
+				{args: []string{"list", "-H", "-o", "name", dataset}, stdout: dataset + "\n"},
+				{args: []string{"destroy", "-R", dataset}},
+				{args: []string{"list", "-H", "-o", "name", dataset}, err: errors.New("readback failed")},
+			},
+			wantErr: true,
+		},
+		{
+			name: "dataset remains",
+			responses: []zfsCommandResponse{
+				{args: []string{"list", "-H", "-o", "name", dataset}, stdout: dataset + "\n"},
+				{args: []string{"destroy", "-R", dataset}},
+				{args: []string{"list", "-H", "-o", "name", dataset}, stdout: dataset + "\n"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "verified absent",
+			responses: []zfsCommandResponse{
+				{args: []string{"list", "-H", "-o", "name", dataset}, stdout: dataset + "\n"},
+				{args: []string{"destroy", "-R", dataset}},
+				{args: []string{"list", "-H", "-o", "name", dataset}, stderr: "cannot open 'tank/stockyard/vms/task-one': dataset does not exist\n", err: zfsExitStatusOne(t)},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := NewManager("tank", "stockyard/workspaces")
+			responses := append([]zfsCommandResponse(nil), tt.responses...)
+			manager.command = func(_ context.Context, args ...string) ([]byte, []byte, error) {
+				if len(responses) == 0 {
+					t.Fatalf("unexpected zfs command: %v", args)
+				}
+				response := responses[0]
+				responses = responses[1:]
+				if strings.Join(args, "\x00") != strings.Join(response.args, "\x00") {
+					t.Fatalf("zfs command = %v, want %v", args, response.args)
+				}
+				return []byte(response.stdout), []byte(response.stderr), response.err
+			}
+
+			err := manager.DestroyDatasetRecursive(context.Background(), dataset)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("DestroyDatasetRecursive error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if len(responses) != 0 {
+				t.Fatalf("unused zfs responses = %d", len(responses))
+			}
+		})
+	}
+}
+
+type zfsCommandResponse struct {
+	args           []string
+	stdout, stderr string
+	err            error
 }
 
 func TestParseDatasetName(t *testing.T) {

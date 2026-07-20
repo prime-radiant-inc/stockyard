@@ -22,6 +22,20 @@ type TaskManager struct {
 	daemon         *Daemon
 	backend        vmbackend.Backend
 	lifecycleLocks taskLifecycleLocks
+	lifecycleHooks *taskLifecycleHooks
+	snapshotHooks  *taskSnapshotHooks
+	destroyHooks   *destroyTaskHooks
+}
+
+// destroyTaskHooks is a narrow test seam around authoritative destruction
+// boundaries. Production uses the daemon-owned implementations.
+type destroyTaskHooks struct {
+	deleteVM    func(context.Context, string) error
+	destroyWork func(context.Context, string) error
+	workspaceOK func(context.Context, string) (bool, error)
+	markPending func(string) error
+	releaseIP   func(string) error
+	deleteRow   func(string) error
 }
 
 // NewTaskManager creates a TaskManager with the given daemon and VM backend.
@@ -637,22 +651,31 @@ func (tm *TaskManager) destroyTaskLocked(ctx context.Context, taskID string) err
 
 	// Delete VM if backend is available and task has a VM
 	if tm.backend != nil && task.VMID != "" {
-		if err := tm.backend.DeleteVM(ctx, task.VMID); err != nil {
+		if err := tm.deleteVM(ctx, task.VMID); err != nil {
 			return fmt.Errorf("delete VM %s: %w", task.VMID, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 	}
 
 	// Destroy ZFS dataset (Firecracker backend only)
 	if tm.daemon.zfs != nil && (tm.daemon.cfg.Backend == "" || tm.daemon.cfg.Backend == "firecracker") {
-		if err := tm.daemon.zfs.DestroyDataset(ctx, taskID); err != nil {
+		if err := tm.destroyWorkspace(ctx, taskID); err != nil {
 			return fmt.Errorf("destroy workspace dataset %s: %w", taskID, err)
 		}
-		exists, err := tm.daemon.zfs.DatasetExists(ctx, taskID)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		exists, err := tm.workspaceExists(ctx, taskID)
 		if err != nil {
 			return fmt.Errorf("verify workspace dataset deletion %s: %w", taskID, err)
 		}
 		if exists {
 			return fmt.Errorf("verify workspace dataset deletion %s: dataset remains", taskID)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 	}
 
@@ -674,14 +697,17 @@ func (tm *TaskManager) destroyTaskLocked(ctx context.Context, taskID string) err
 		return err
 	}
 	if task.Status != TaskStatusCleanupPending {
-		if err := tm.daemon.state.MarkTaskCleanupPending(taskID); err != nil {
+		if err := tm.markCleanupPending(taskID); err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
 			return err
 		}
 	}
 
 	// Release the static IP allocation
 	if tm.daemon.IPPool() != nil {
-		if err := tm.daemon.IPPool().Release(taskID); err != nil {
+		if err := tm.releaseIP(taskID); err != nil {
 			return fmt.Errorf("release IP allocation: %w", err)
 		}
 	}
@@ -690,7 +716,49 @@ func (tm *TaskManager) destroyTaskLocked(ctx context.Context, taskID string) err
 	}
 
 	// Delete task from database
-	return tm.daemon.state.DeleteTask(taskID)
+	return tm.deleteTaskRow(taskID)
+}
+
+func (tm *TaskManager) deleteVM(ctx context.Context, id string) error {
+	if tm.destroyHooks != nil && tm.destroyHooks.deleteVM != nil {
+		return tm.destroyHooks.deleteVM(ctx, id)
+	}
+	return tm.backend.DeleteVM(ctx, id)
+}
+
+func (tm *TaskManager) destroyWorkspace(ctx context.Context, id string) error {
+	if tm.destroyHooks != nil && tm.destroyHooks.destroyWork != nil {
+		return tm.destroyHooks.destroyWork(ctx, id)
+	}
+	return tm.daemon.zfs.DestroyDataset(ctx, id)
+}
+
+func (tm *TaskManager) workspaceExists(ctx context.Context, id string) (bool, error) {
+	if tm.destroyHooks != nil && tm.destroyHooks.workspaceOK != nil {
+		return tm.destroyHooks.workspaceOK(ctx, id)
+	}
+	return tm.daemon.zfs.DatasetExists(ctx, id)
+}
+
+func (tm *TaskManager) markCleanupPending(id string) error {
+	if tm.destroyHooks != nil && tm.destroyHooks.markPending != nil {
+		return tm.destroyHooks.markPending(id)
+	}
+	return tm.daemon.state.MarkTaskCleanupPending(id)
+}
+
+func (tm *TaskManager) releaseIP(id string) error {
+	if tm.destroyHooks != nil && tm.destroyHooks.releaseIP != nil {
+		return tm.destroyHooks.releaseIP(id)
+	}
+	return tm.daemon.IPPool().Release(id)
+}
+
+func (tm *TaskManager) deleteTaskRow(id string) error {
+	if tm.destroyHooks != nil && tm.destroyHooks.deleteRow != nil {
+		return tm.destroyHooks.deleteRow(id)
+	}
+	return tm.daemon.state.DeleteTask(id)
 }
 
 // DestroyTasksByImage destroys every task whose resolved image is name.

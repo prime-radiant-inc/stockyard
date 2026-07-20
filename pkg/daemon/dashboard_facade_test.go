@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -132,7 +133,8 @@ func TestDashboardFacade_ListTaskSnapshots(t *testing.T) {
 	state.RecordSnapshot("task-1", "task-1@snap1")
 	state.RecordSnapshot("task-1", "task-1@snap2")
 
-	facade := NewDashboardFacade(state, nil, nil, "")
+	manager := NewTaskManager(&Daemon{state: state}, nil)
+	facade := NewDashboardFacade(state, manager, nil, "")
 
 	snaps, err := facade.ListTaskSnapshots(context.Background(), "task-1")
 	if err != nil {
@@ -140,6 +142,54 @@ func TestDashboardFacade_ListTaskSnapshots(t *testing.T) {
 	}
 	if len(snaps) != 2 {
 		t.Errorf("expected 2 snapshots, got %d", len(snaps))
+	}
+}
+
+func TestDashboardFacade_CleanupPendingRejectsAttachAndSnapshotPaths(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	if err := state.CreateTask(&Task{
+		ID:        "task-1",
+		Command:   "run",
+		Status:    "running",
+		CID:       123,
+		VsockPath: "/tmp/task-1.vsock",
+		CreatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.MarkTaskCleanupPending("task-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := NewTaskManager(&Daemon{state: state}, nil)
+	for _, tt := range []struct {
+		name    string
+		backend string
+		run     func(*DashboardFacade) error
+	}{
+		{name: "apple container attach", backend: "apple-container", run: func(f *DashboardFacade) error {
+			_, err := f.GetTask(context.Background(), "task-1")
+			return err
+		}},
+		{name: "Firecracker attach metadata", backend: "firecracker", run: func(f *DashboardFacade) error {
+			_, err := f.GetVsockPath(context.Background(), "task-1")
+			return err
+		}},
+		{name: "recorded snapshot list", backend: "firecracker", run: func(f *DashboardFacade) error {
+			_, err := f.ListTaskSnapshots(context.Background(), "task-1")
+			return err
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			facade := NewDashboardFacade(state, manager, nil, tt.backend)
+			if err := tt.run(facade); !errors.Is(err, ErrTaskCleanupPending) {
+				t.Fatalf("error = %v, want cleanup-pending rejection", err)
+			}
+		})
 	}
 }
 
