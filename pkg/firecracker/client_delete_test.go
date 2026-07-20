@@ -2,12 +2,45 @@ package firecracker
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/obra/stockyard/pkg/consolearchive"
 )
+
+func TestClientDeleteVMRetainsDirectoryWhenTapReadbackIsUnknown(t *testing.T) {
+	stateDir := t.TempDir()
+	client, err := NewClient(ClientConfig{StateDir: stateDir}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vmDir := makeVMDir(t, stateDir, "abc12345")
+	client.deleteHooks = &deleteVMHooks{
+		tapExists: func(string) (bool, error) { return false, errors.New("tap readback unavailable") },
+	}
+	if err := client.DeleteVM(context.Background(), "stockyard", "abc12345"); err == nil {
+		t.Fatal("DeleteVM succeeded with an unverifiable tap")
+	}
+	if _, err := os.Stat(vmDir); err != nil {
+		t.Fatalf("VM directory was removed before all resources were verified: %v", err)
+	}
+}
+
+func TestClientDeleteVMIsIdempotentAfterVerifiedAbsence(t *testing.T) {
+	stateDir := t.TempDir()
+	client, err := NewClient(ClientConfig{StateDir: stateDir}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.DeleteVM(context.Background(), "stockyard", "abc12345"); err != nil {
+		t.Fatalf("first exact-absence delete: %v", err)
+	}
+	if err := client.DeleteVM(context.Background(), "stockyard", "abc12345"); err != nil {
+		t.Fatalf("second exact-absence delete: %v", err)
+	}
+}
 
 func silentArchiver(dir string) *consolearchive.Archiver {
 	return &consolearchive.Archiver{Dir: dir, Logf: func(string, ...any) {}}

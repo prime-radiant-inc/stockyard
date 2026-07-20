@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/obra/stockyard/pkg/config"
 	"github.com/obra/stockyard/pkg/network"
@@ -262,6 +263,41 @@ func TestTaskManager_DestroyTaskIPReleaseFailureRetainsTask(t *testing.T) {
 	}
 	if _, err := state.GetTask("task-1"); err != nil {
 		t.Errorf("task row was removed after release failure: %v", err)
+	}
+}
+
+func TestTaskManager_DestroyTaskRetainsOrdinaryTaskWhenVMDeletionFails(t *testing.T) {
+	backend := &taskCreateTestBackend{deleteErr: errors.New("injected delete failure")}
+	manager, state := newTaskCreateTestManager(t, nil, backend)
+	defer state.Close()
+	if err := state.CreateTask(&Task{ID: "task-1", Command: "run", Status: "running", VMID: "task-1", CreatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.DestroyTask(context.Background(), "task-1"); err == nil {
+		t.Fatal("DestroyTask succeeded despite VM deletion failure")
+	}
+	task, err := state.GetTask("task-1")
+	if err != nil {
+		t.Fatalf("task row disappeared after VM deletion failure: %v", err)
+	}
+	if task.Status == TaskStatusCleanupPending {
+		t.Fatal("task entered cleanup_pending before VM deletion was verified")
+	}
+}
+
+func TestTaskManager_DestroyTaskRetainsTaskOnCanceledContext(t *testing.T) {
+	manager, state := newTaskCreateTestManager(t, nil, nil)
+	defer state.Close()
+	if err := state.CreateTask(&Task{ID: "task-1", Command: "run", Status: "running", CreatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := manager.DestroyTask(ctx, "task-1"); err == nil {
+		t.Fatal("DestroyTask succeeded after context cancellation")
+	}
+	if _, err := state.GetTask("task-1"); err != nil {
+		t.Fatalf("task row disappeared after cancellation: %v", err)
 	}
 }
 

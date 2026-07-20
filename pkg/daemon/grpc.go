@@ -3,7 +3,6 @@ package daemon
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"google.golang.org/grpc"
@@ -57,7 +56,10 @@ func (s *grpcServer) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) 
 }
 
 func (s *grpcServer) GetTask(ctx context.Context, req *pb.GetTaskRequest) (*pb.GetTaskResponse, error) {
-	task, err := s.daemon.state.GetTask(req.TaskId)
+	if s.daemon.tasks == nil {
+		return nil, status.Error(codes.Unavailable, "task manager not initialized")
+	}
+	task, err := s.daemon.tasks.GetTask(req.TaskId)
 	if err != nil {
 		if errors.Is(err, ErrTaskNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
@@ -130,23 +132,12 @@ func (s *grpcServer) DestroyTask(ctx context.Context, req *pb.DestroyTaskRequest
 }
 
 func (s *grpcServer) CreateSnapshot(ctx context.Context, req *pb.CreateSnapshotRequest) (*pb.CreateSnapshotResponse, error) {
-	if s.daemon.zfs == nil {
-		return nil, status.Error(codes.Unavailable, "snapshots require ZFS (not available on this backend)")
+	if s.daemon.tasks == nil {
+		return nil, status.Error(codes.Unavailable, "task manager not initialized")
 	}
-
-	// Sync filesystem first
-	if err := s.daemon.zfs.Sync(ctx, req.TaskId); err != nil {
-		fmt.Printf("Warning: sync failed: %v\n", err)
-	}
-
-	snapName, err := s.daemon.zfs.CreateSnapshot(ctx, req.TaskId, req.Label)
+	snapName, err := s.daemon.tasks.CreateSnapshot(ctx, req.TaskId, req.Label)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create snapshot: %v", err)
-	}
-
-	// Record in database
-	if err := s.daemon.state.RecordSnapshot(req.TaskId, snapName); err != nil {
-		fmt.Printf("Warning: failed to record snapshot in database: %v\n", err)
 	}
 
 	return &pb.CreateSnapshotResponse{SnapshotName: snapName}, nil
@@ -171,11 +162,10 @@ func (s *grpcServer) ListSnapshots(ctx context.Context, req *pb.ListSnapshotsReq
 }
 
 func (s *grpcServer) RestoreSnapshot(ctx context.Context, req *pb.RestoreSnapshotRequest) (*pb.RestoreSnapshotResponse, error) {
-	if s.daemon.zfs == nil {
-		return nil, status.Error(codes.Unavailable, "snapshots require ZFS (not available on this backend)")
+	if s.daemon.tasks == nil {
+		return nil, status.Error(codes.Unavailable, "task manager not initialized")
 	}
-
-	if err := s.daemon.zfs.RollbackSnapshot(ctx, req.TaskId, req.SnapshotName); err != nil {
+	if err := s.daemon.tasks.RestoreSnapshot(ctx, req.TaskId, req.SnapshotName); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to restore snapshot: %v", err)
 	}
 	return &pb.RestoreSnapshotResponse{}, nil

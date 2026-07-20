@@ -42,7 +42,8 @@ func TestDashboardFacade_ListTasks(t *testing.T) {
 		t.Fatalf("failed to create task2: %v", err)
 	}
 
-	facade := NewDashboardFacade(state, nil, nil, "")
+	manager := NewTaskManager(&Daemon{state: state}, nil)
+	facade := NewDashboardFacade(state, manager, nil, "")
 
 	// List all tasks
 	tasks, err := facade.ListTasks(context.Background(), "")
@@ -85,7 +86,8 @@ func TestDashboardFacade_GetTask(t *testing.T) {
 		t.Fatalf("failed to create task: %v", err)
 	}
 
-	facade := NewDashboardFacade(state, nil, nil, "")
+	tasks := NewTaskManager(&Daemon{state: state}, nil)
+	facade := NewDashboardFacade(state, tasks, nil, "")
 
 	// Test found case
 	result, err := facade.GetTask(context.Background(), "task-123")

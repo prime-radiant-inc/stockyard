@@ -16,6 +16,37 @@ import (
 type Manager struct {
 	PoolName string
 	BasePath string
+	command  func(context.Context, ...string) ([]byte, []byte, error)
+}
+
+// DatasetExists reports whether the exact task workspace dataset exists. Only
+// ZFS's exact missing-dataset result is absence; every other failed read is
+// unsafe to treat as cleanup proof.
+func (m *Manager) DatasetExists(ctx context.Context, taskID string) (bool, error) {
+	dataset := m.DatasetPath(taskID)
+	stdout, stderr, err := m.runCommand(ctx, "list", "-H", "-o", "name", dataset)
+	if err == nil {
+		if strings.TrimSpace(string(stdout)) != dataset {
+			return false, fmt.Errorf("zfs list returned unexpected dataset %q", strings.TrimSpace(string(stdout)))
+		}
+		return true, nil
+	}
+	if string(stderr) == fmt.Sprintf("cannot open '%s': dataset does not exist\n", dataset) {
+		return false, nil
+	}
+	return false, fmt.Errorf("zfs list dataset %s: %w: %s", dataset, err, stderr)
+}
+
+func (m *Manager) runCommand(ctx context.Context, args ...string) ([]byte, []byte, error) {
+	if m.command != nil {
+		return m.command(ctx, args...)
+	}
+	cmd := exec.CommandContext(ctx, "zfs", args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.Bytes(), stderr.Bytes(), err
 }
 
 // NewManager creates a new ZFS manager for the given pool and base path.
@@ -65,6 +96,13 @@ func (m *Manager) CreateDataset(ctx context.Context, taskID string) error {
 
 // DestroyDataset destroys the ZFS dataset for the given task ID and all its children.
 func (m *Manager) DestroyDataset(ctx context.Context, taskID string) error {
+	exists, err := m.DatasetExists(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
 	dataset := m.DatasetPath(taskID)
 	return m.runZFS(ctx, "destroy", "-r", dataset)
 }
@@ -274,10 +312,15 @@ func (m *Manager) SnapshotExists(ctx context.Context, snapshotPath string) bool 
 // a subsequent re-import heal the row without being blocked by a stale destroy
 // failure.
 func (m *Manager) DestroyDatasetRecursive(ctx context.Context, datasetPath string) error {
-	// Probe first: if the dataset does not exist, we are already done.
-	if err := exec.CommandContext(ctx, "zfs", "list", datasetPath).Run(); err != nil {
-		// dataset not found — nothing to destroy
-		return nil
+	stdout, stderr, err := m.runCommand(ctx, "list", "-H", "-o", "name", datasetPath)
+	if err != nil {
+		if string(stderr) == fmt.Sprintf("cannot open '%s': dataset does not exist\n", datasetPath) {
+			return nil
+		}
+		return fmt.Errorf("zfs list dataset %s: %w: %s", datasetPath, err, stderr)
+	}
+	if strings.TrimSpace(string(stdout)) != datasetPath {
+		return fmt.Errorf("zfs list returned unexpected dataset %q", strings.TrimSpace(string(stdout)))
 	}
 	return m.runZFS(ctx, "destroy", "-R", datasetPath)
 }

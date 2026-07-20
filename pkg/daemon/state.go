@@ -16,9 +16,12 @@ import (
 // Sentinel errors for the State layer. Use errors.Is to check these
 // in callers (e.g. gRPC handlers) instead of string matching.
 var (
-	ErrTaskNotFound   = errors.New("task not found")
-	ErrTaskNotStopped = errors.New("task is not stopped")
+	ErrTaskNotFound       = errors.New("task not found")
+	ErrTaskNotStopped     = errors.New("task is not stopped")
+	ErrTaskCleanupPending = errors.New("task cleanup is pending")
 )
+
+const TaskStatusCleanupPending = "cleanup_pending"
 
 // Task represents a running or completed task in the system.
 type Task struct {
@@ -191,6 +194,9 @@ func (s *State) SetStatusChangeCallback(cb StatusChangeCallback) {
 
 // CreateTask creates a new task in the database.
 func (s *State) CreateTask(task *Task) error {
+	if task.Status == TaskStatusCleanupPending {
+		return fmt.Errorf("%w: only destruction may retain cleanup pending", ErrTaskCleanupPending)
+	}
 	query := `
 	INSERT INTO tasks (id, name, command, status, vmid, cid, vsock_path, ip, owner, tailscale_hostname, image, created_at, stopped_at)
 	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -382,6 +388,9 @@ func (s *State) ListTasks(status string) ([]*Task, error) {
 // UpdateTaskStatus updates the status of a task.
 // If the new status is "stopped", the stopped_at timestamp is also set.
 func (s *State) UpdateTaskStatus(id, status string) error {
+	if status == TaskStatusCleanupPending {
+		return fmt.Errorf("%w: use destruction transaction", ErrTaskCleanupPending)
+	}
 	// Get the old status before updating
 	var oldStatus string
 	err := s.db.QueryRow("SELECT status FROM tasks WHERE id = ?", id).Scan(&oldStatus)
@@ -427,6 +436,23 @@ func (s *State) UpdateTaskStatus(id, status string) error {
 		}
 	}
 
+	return nil
+}
+
+// MarkTaskCleanupPending records that resource cleanup is complete enough to
+// release the retained allocation and remove the row on a later retry.
+func (s *State) MarkTaskCleanupPending(id string) error {
+	result, err := s.db.Exec(`UPDATE tasks SET status = ? WHERE id = ?`, TaskStatusCleanupPending, id)
+	if err != nil {
+		return fmt.Errorf("mark task cleanup pending: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("mark task cleanup pending rows: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: %s", ErrTaskNotFound, id)
+	}
 	return nil
 }
 

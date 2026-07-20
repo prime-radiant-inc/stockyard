@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -131,6 +132,18 @@ func TestState_UpdateTaskStatus(t *testing.T) {
 	}
 	if got.StoppedAt == nil {
 		t.Error("expected StoppedAt to be set when status is 'stopped'")
+	}
+}
+
+func TestStateCreateTaskRejectsCleanupPending(t *testing.T) {
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	err = state.CreateTask(&Task{ID: "task-cleanup", Command: "run", Status: TaskStatusCleanupPending, CreatedAt: time.Now()})
+	if !errors.Is(err, ErrTaskCleanupPending) {
+		t.Fatalf("CreateTask error = %v, want cleanup-pending rejection", err)
 	}
 }
 

@@ -44,7 +44,10 @@ func (f *DashboardFacade) ListTasks(ctx context.Context, status string) ([]*dash
 
 // GetTask returns a task by ID, or nil if not found.
 func (f *DashboardFacade) GetTask(ctx context.Context, id string) (*dashboard.DaemonTask, error) {
-	task, err := f.state.GetTask(id)
+	if f.tasks == nil {
+		return nil, fmt.Errorf("TaskManager not available")
+	}
+	task, err := f.tasks.GetTask(id)
 	if err != nil {
 		// Check if it's a "not found" error
 		if strings.Contains(err.Error(), "not found") {
@@ -79,11 +82,10 @@ func (f *DashboardFacade) CreateTask(ctx context.Context, req *dashboard.DaemonC
 
 // StopTask stops a running task.
 func (f *DashboardFacade) StopTask(ctx context.Context, id string) error {
-	if f.tasks != nil {
-		return f.tasks.StopTask(ctx, id)
+	if f.tasks == nil {
+		return fmt.Errorf("TaskManager not available")
 	}
-	// Fallback to just updating status if TaskManager not available
-	return f.state.UpdateTaskStatus(id, "stopped")
+	return f.tasks.StopTask(ctx, id)
 }
 
 // RestartTask restarts a stopped task.
@@ -96,11 +98,10 @@ func (f *DashboardFacade) RestartTask(ctx context.Context, id string) error {
 
 // DestroyTask destroys a task and its resources.
 func (f *DashboardFacade) DestroyTask(ctx context.Context, id string) error {
-	if f.tasks != nil {
-		return f.tasks.DestroyTask(ctx, id)
+	if f.tasks == nil {
+		return fmt.Errorf("TaskManager not available")
 	}
-	// Fallback to just deleting from state if TaskManager not available
-	return f.state.DeleteTask(id)
+	return f.tasks.DestroyTask(ctx, id)
 }
 
 // ListTaskSnapshots returns snapshots for a task.
@@ -122,78 +123,18 @@ func (f *DashboardFacade) ListTaskSnapshots(ctx context.Context, taskID string) 
 
 // CreateSnapshot creates a new snapshot for a task.
 func (f *DashboardFacade) CreateSnapshot(ctx context.Context, taskID, label string) (string, error) {
-	// Get task to find its VMID
-	task, err := f.state.GetTask(taskID)
-	if err != nil {
-		return "", fmt.Errorf("get task: %w", err)
+	if f.tasks == nil {
+		return "", fmt.Errorf("TaskManager not available")
 	}
-
-	if task.VMID == "" {
-		return "", fmt.Errorf("task %s has no VM", taskID)
-	}
-
-	// Create ZFS snapshot
-	if f.zfs == nil {
-		return "", fmt.Errorf("ZFS manager not available")
-	}
-
-	// Sync before snapshot to ensure data consistency
-	if err := f.zfs.Sync(ctx, task.VMID); err != nil {
-		// Log but don't fail - sync might fail if dataset is busy
-	}
-
-	snapName, err := f.zfs.CreateSnapshot(ctx, task.VMID, label)
-	if err != nil {
-		return "", fmt.Errorf("create ZFS snapshot: %w", err)
-	}
-
-	// Record in database
-	if err := f.state.RecordSnapshot(taskID, snapName); err != nil {
-		// Snapshot was created, so log the DB error but return success
-		return snapName, nil
-	}
-
-	return snapName, nil
+	return f.tasks.CreateSnapshot(ctx, taskID, label)
 }
 
 // RestoreSnapshot restores a task to a previous snapshot.
 func (f *DashboardFacade) RestoreSnapshot(ctx context.Context, taskID, snapshotName string) error {
-	// Get task to check status and find VMID
-	task, err := f.state.GetTask(taskID)
-	if err != nil {
-		return fmt.Errorf("get task: %w", err)
+	if f.tasks == nil {
+		return fmt.Errorf("TaskManager not available")
 	}
-
-	if task.VMID == "" {
-		return fmt.Errorf("task %s has no VM", taskID)
-	}
-
-	if f.zfs == nil {
-		return fmt.Errorf("ZFS manager not available")
-	}
-
-	// If VM is running, stop it first
-	wasRunning := task.Status == "running"
-	if wasRunning {
-		if f.tasks == nil {
-			return fmt.Errorf("cannot stop running VM: TaskManager not available")
-		}
-		if err := f.tasks.StopTask(ctx, taskID); err != nil {
-			return fmt.Errorf("stop VM before restore: %w", err)
-		}
-	}
-
-	// Roll back the ZFS dataset
-	if err := f.zfs.RollbackSnapshot(ctx, task.VMID, snapshotName); err != nil {
-		return fmt.Errorf("ZFS rollback: %w", err)
-	}
-
-	// Note: We don't automatically restart the VM after rollback.
-	// The user can manually restart if needed. This is safer because:
-	// 1. The restored state might be incompatible with current config
-	// 2. The user might want to inspect the state before running
-
-	return nil
+	return f.tasks.RestoreSnapshot(ctx, taskID, snapshotName)
 }
 
 // GetVMIP looks up a VM's IP address from DHCP leases.

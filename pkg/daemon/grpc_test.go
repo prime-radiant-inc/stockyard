@@ -124,18 +124,8 @@ func TestGRPCServer_DestroyTask_TaskNotFound(t *testing.T) {
 	_, err := s.DestroyTask(context.Background(), &pb.DestroyTaskRequest{
 		TaskId: "nonexistent-task",
 	})
-
-	if err == nil {
-		t.Fatal("expected error for nonexistent task")
-	}
-
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got: %v", err)
-	}
-
-	if st.Code() != codes.NotFound {
-		t.Errorf("expected NotFound code, got %v", st.Code())
+	if err != nil {
+		t.Fatalf("DestroyTask should treat exact row absence as completed cleanup: %v", err)
 	}
 }
 

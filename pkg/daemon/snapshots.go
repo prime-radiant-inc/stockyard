@@ -41,21 +41,15 @@ func (ss *SnapshotService) handleSnapshot(vmID, label string) error {
 
 	log.Printf("Creating snapshot for task %s: %s", taskID, label)
 
-	// Create ZFS snapshot
-	snapName, err := ss.daemon.zfs.CreateSnapshot(ss.ctx, taskID, label)
+	if ss.daemon.tasks == nil {
+		return fmt.Errorf("task manager not initialized")
+	}
+	snapName, err := ss.daemon.tasks.CreateSnapshot(ss.ctx, taskID, label)
 	if err != nil {
 		return fmt.Errorf("failed to create snapshot: %w", err)
 	}
 
 	log.Printf("Created snapshot: %s", snapName)
-
-	// Record in database. We log but don't fail here because:
-	// 1. The ZFS snapshot (the actual data) was successfully created
-	// 2. The database is just an index/cache that can be rebuilt
-	// 3. Returning an error would tell the VM to retry, but the snapshot already exists
-	if err := ss.daemon.state.RecordSnapshot(taskID, snapName); err != nil {
-		log.Printf("Warning: failed to record snapshot in database: %v (ZFS snapshot %s was created)", err, snapName)
-	}
 
 	return nil
 }

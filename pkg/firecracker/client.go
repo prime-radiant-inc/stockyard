@@ -3,7 +3,9 @@ package firecracker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,9 +21,9 @@ import (
 
 // Default paths and settings.
 const (
-	DefaultStateDir      = "/var/lib/stockyard/vms"
+	DefaultStateDir       = "/var/lib/stockyard/vms"
 	DefaultFirecrackerBin = "/usr/local/bin/firecracker"
-	DefaultBridgeName    = "flbr0"
+	DefaultBridgeName     = "flbr0"
 )
 
 // ClientConfig holds configuration for the Firecracker client.
@@ -49,13 +51,18 @@ type trackedProc struct {
 
 // Client manages Firecracker microVMs.
 type Client struct {
-	config     ClientConfig
-	zfs        *zfs.Manager
-	network    *NetworkManager
-	cidCounter uint32     // Next CID to allocate
-	cidMu      sync.Mutex // Protects cidCounter
-	mu         sync.Mutex
-	procs      map[string]*trackedProc // vmID -> tracked process
+	config      ClientConfig
+	zfs         *zfs.Manager
+	network     *NetworkManager
+	cidCounter  uint32     // Next CID to allocate
+	cidMu       sync.Mutex // Protects cidCounter
+	mu          sync.Mutex
+	procs       map[string]*trackedProc // vmID -> tracked process
+	deleteHooks *deleteVMHooks
+}
+
+type deleteVMHooks struct {
+	tapExists func(string) (bool, error)
 }
 
 // NewClient creates a new Firecracker client.
@@ -426,15 +433,24 @@ func (c *Client) GetVM(ctx context.Context, namespace, id string) (*VM, error) {
 	return vm, nil
 }
 
-// DeleteVM stops and removes a VM.
+// DeleteVM removes the exact VM process, directory, TAP device, and rootfs
+// clone. A nil result means each resource was verified absent.
 func (c *Client) DeleteVM(ctx context.Context, namespace, id string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if namespace == "" {
 		namespace = "default"
 	}
 
 	vmDir := filepath.Join(c.config.StateDir, namespace, id)
-	if _, err := os.Stat(vmDir); os.IsNotExist(err) {
-		return nil // Already gone
+	vmDirPresent := true
+	if _, err := os.Stat(vmDir); err != nil {
+		if os.IsNotExist(err) {
+			vmDirPresent = false
+		} else {
+			return fmt.Errorf("read VM directory: %w", err)
+		}
 	}
 
 	// Stop if running — prefer tracked process for clean reaping
@@ -443,32 +459,69 @@ func (c *Client) DeleteVM(ctx context.Context, namespace, id string) error {
 	c.mu.Unlock()
 
 	if tracked {
-		proc.cmd.Process.Signal(syscall.SIGTERM)
+		if err := proc.cmd.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return fmt.Errorf("stop Firecracker process: %w", err)
+		}
 		select {
 		case <-proc.done:
 			// reaped cleanly
 		case <-time.After(time.Second):
-			proc.cmd.Process.Kill()
+			if err := proc.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				return fmt.Errorf("kill Firecracker process: %w", err)
+			}
 			<-proc.done // wait for reaper to finish
 		}
 		c.mu.Lock()
 		delete(c.procs, id)
 		c.mu.Unlock()
-	} else if data, err := os.ReadFile(filepath.Join(vmDir, "firecracker.pid")); err == nil {
-		// Fallback for processes we don't track (e.g., after daemon restart).
-		// These are reparented to init, which will reap them.
-		if pid, err := strconv.Atoi(string(data)); err == nil && processRunning(pid) {
-			syscall.Kill(pid, syscall.SIGTERM)
-			time.Sleep(time.Second)
+	} else if vmDirPresent {
+		data, err := os.ReadFile(filepath.Join(vmDir, "firecracker.pid"))
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("read Firecracker PID: %w", err)
+		}
+		if err == nil {
+			// Fallback for processes we don't track (e.g., after daemon restart).
+			// These are reparented to init, which will reap them.
+			pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+			if err != nil {
+				return fmt.Errorf("parse Firecracker PID: %w", err)
+			}
 			if processRunning(pid) {
-				syscall.Kill(pid, syscall.SIGKILL)
+				if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+					return fmt.Errorf("stop Firecracker process: %w", err)
+				}
+				time.Sleep(time.Second)
+				if processRunning(pid) {
+					if err := syscall.Kill(pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+						return fmt.Errorf("kill Firecracker process: %w", err)
+					}
+					time.Sleep(10 * time.Millisecond)
+					if processRunning(pid) {
+						return fmt.Errorf("verify Firecracker process deletion: PID %d remains", pid)
+					}
+				}
 			}
 		}
 	}
 
 	// Clean up tap device
-	if data, err := os.ReadFile(filepath.Join(vmDir, "tap_name")); err == nil {
-		c.network.DeleteTap(string(data))
+	tapName := TapNameForVM(id)
+	if vmDirPresent {
+		data, err := os.ReadFile(filepath.Join(vmDir, "tap_name"))
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("read tap name: %w", err)
+		}
+		if err == nil {
+			tapName = strings.TrimSpace(string(data))
+		}
+	}
+	if err := c.network.DeleteTap(tapName); err != nil {
+		return err
+	}
+	if exists, err := c.tapExists(tapName); err != nil {
+		return fmt.Errorf("verify TAP deletion: %w", err)
+	} else if exists {
+		return fmt.Errorf("verify TAP deletion: %s remains", tapName)
 	}
 
 	// Preserve console logs before the state directory is removed
@@ -480,15 +533,37 @@ func (c *Client) DeleteVM(ctx context.Context, namespace, id string) error {
 	// Destroy ZFS clone dataset if using ZFS
 	if c.zfs != nil {
 		vmDatasetPath := fmt.Sprintf("%s/%s/%s", c.zfs.PoolName, c.config.VMsPath, id)
-		destroyZFSDataset(vmDatasetPath)
+		if err := c.zfs.DestroyDatasetRecursive(ctx, vmDatasetPath); err != nil {
+			return fmt.Errorf("destroy VM rootfs clone: %w", err)
+		}
 	}
 
 	// Remove state directory
 	if err := os.RemoveAll(vmDir); err != nil {
 		return fmt.Errorf("failed to remove VM directory: %w", err)
 	}
+	if _, err := os.Stat(vmDir); !os.IsNotExist(err) {
+		if err == nil {
+			return fmt.Errorf("verify VM directory deletion: %s remains", vmDir)
+		}
+		return fmt.Errorf("verify VM directory deletion: %w", err)
+	}
 
 	return nil
+}
+
+func (c *Client) tapExists(name string) (bool, error) {
+	if c.deleteHooks != nil && c.deleteHooks.tapExists != nil {
+		return c.deleteHooks.tapExists(name)
+	}
+	_, err := net.InterfaceByName(name)
+	if err == nil {
+		return true, nil
+	}
+	if strings.Contains(err.Error(), "no such network interface") {
+		return false, nil
+	}
+	return false, err
 }
 
 // ListVMs returns all VMs in a namespace.

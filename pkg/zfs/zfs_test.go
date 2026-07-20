@@ -1,9 +1,47 @@
 package zfs
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 )
+
+func TestDatasetExistsClassifiesOnlyExactNotFoundAsAbsent(t *testing.T) {
+	tests := []struct {
+		name    string
+		stderr  string
+		err     error
+		want    bool
+		wantErr bool
+	}{
+		{name: "present", want: true},
+		{name: "exact missing dataset", stderr: "cannot open 'tank/stockyard/workspaces/task-one': dataset does not exist\n", err: errors.New("exit status 1"), want: false},
+		{name: "permission denied", stderr: "cannot open 'tank/stockyard/workspaces/task-one': permission denied\n", err: errors.New("exit status 1"), wantErr: true},
+		{name: "malformed output", stderr: "dataset does not exist but unrelated\n", err: errors.New("exit status 1"), wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewManager("tank", "stockyard/workspaces")
+			m.command = func(context.Context, ...string) ([]byte, []byte, error) {
+				if tt.err == nil {
+					return []byte("tank/stockyard/workspaces/task-one\n"), nil, nil
+				}
+				return nil, []byte(tt.stderr), tt.err
+			}
+			got, err := m.DatasetExists(context.Background(), "task-one")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("DatasetExists succeeded for an unknown result")
+				}
+				return
+			}
+			if err != nil || got != tt.want {
+				t.Fatalf("DatasetExists = (%v, %v), want (%v, nil)", got, err, tt.want)
+			}
+		})
+	}
+}
 
 func TestParseDatasetName(t *testing.T) {
 	tests := []struct {

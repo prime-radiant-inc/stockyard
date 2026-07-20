@@ -19,8 +19,9 @@ import (
 
 // TaskManager handles the lifecycle of VM-based tasks.
 type TaskManager struct {
-	daemon  *Daemon
-	backend vmbackend.Backend
+	daemon         *Daemon
+	backend        vmbackend.Backend
+	lifecycleLocks taskLifecycleLocks
 }
 
 // NewTaskManager creates a TaskManager with the given daemon and VM backend.
@@ -437,8 +438,15 @@ func buildVMEnvMetadata(backend, taskID, taskName string, env map[string]string,
 
 // RestartTask restarts a stopped task by starting its VM again.
 func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
+	return tm.withTaskLock(taskID, func() error { return tm.restartTaskLocked(ctx, taskID) })
+}
+
+func (tm *TaskManager) restartTaskLocked(ctx context.Context, taskID string) error {
 	task, err := tm.daemon.state.GetTask(taskID)
 	if err != nil {
+		return err
+	}
+	if err := rejectCleanupPending(task); err != nil {
 		return err
 	}
 
@@ -520,8 +528,15 @@ func (tm *TaskManager) RestartTask(ctx context.Context, taskID string) error {
 
 // StopTask stops a running task by its ID.
 func (tm *TaskManager) StopTask(ctx context.Context, taskID string) error {
+	return tm.withTaskLock(taskID, func() error { return tm.stopTaskLocked(ctx, taskID) })
+}
+
+func (tm *TaskManager) stopTaskLocked(ctx context.Context, taskID string) error {
 	task, err := tm.daemon.state.GetTask(taskID)
 	if err != nil {
+		return err
+	}
+	if err := rejectCleanupPending(task); err != nil {
 		return err
 	}
 
@@ -558,8 +573,15 @@ func (tm *TaskManager) StopTask(ctx context.Context, taskID string) error {
 // FailTask marks a task as failed with a reason.
 // This is called when a VM crashes or becomes unresponsive.
 func (tm *TaskManager) FailTask(ctx context.Context, taskID string, reason string) error {
+	return tm.withTaskLock(taskID, func() error { return tm.failTaskLocked(ctx, taskID, reason) })
+}
+
+func (tm *TaskManager) failTaskLocked(ctx context.Context, taskID string, reason string) error {
 	task, err := tm.daemon.state.GetTask(taskID)
 	if err != nil {
+		return err
+	}
+	if err := rejectCleanupPending(task); err != nil {
 		return err
 	}
 
@@ -588,8 +610,18 @@ func (tm *TaskManager) FailTask(ctx context.Context, taskID string, reason strin
 
 // DestroyTask destroys a task and its associated resources.
 func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
+	return tm.withTaskLock(taskID, func() error { return tm.destroyTaskLocked(ctx, taskID) })
+}
+
+func (tm *TaskManager) destroyTaskLocked(ctx context.Context, taskID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	task, err := tm.daemon.state.GetTask(taskID)
 	if err != nil {
+		if errors.Is(err, ErrTaskNotFound) {
+			return nil
+		}
 		return err
 	}
 
@@ -606,14 +638,21 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 	// Delete VM if backend is available and task has a VM
 	if tm.backend != nil && task.VMID != "" {
 		if err := tm.backend.DeleteVM(ctx, task.VMID); err != nil {
-			fmt.Printf("Warning: failed to delete VM %s: %v\n", task.VMID, err)
+			return fmt.Errorf("delete VM %s: %w", task.VMID, err)
 		}
 	}
 
 	// Destroy ZFS dataset (Firecracker backend only)
 	if tm.daemon.zfs != nil && (tm.daemon.cfg.Backend == "" || tm.daemon.cfg.Backend == "firecracker") {
 		if err := tm.daemon.zfs.DestroyDataset(ctx, taskID); err != nil {
-			fmt.Printf("Warning: failed to destroy ZFS dataset for %s: %v\n", taskID, err)
+			return fmt.Errorf("destroy workspace dataset %s: %w", taskID, err)
+		}
+		exists, err := tm.daemon.zfs.DatasetExists(ctx, taskID)
+		if err != nil {
+			return fmt.Errorf("verify workspace dataset deletion %s: %w", taskID, err)
+		}
+		if exists {
+			return fmt.Errorf("verify workspace dataset deletion %s: dataset remains", taskID)
 		}
 	}
 
@@ -631,12 +670,23 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 			// Don't fail - ephemeral keys handle cleanup
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if task.Status != TaskStatusCleanupPending {
+		if err := tm.daemon.state.MarkTaskCleanupPending(taskID); err != nil {
+			return err
+		}
+	}
 
 	// Release the static IP allocation
 	if tm.daemon.IPPool() != nil {
 		if err := tm.daemon.IPPool().Release(taskID); err != nil {
 			return fmt.Errorf("release IP allocation: %w", err)
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	// Delete task from database
