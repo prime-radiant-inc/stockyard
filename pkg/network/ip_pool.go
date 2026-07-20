@@ -4,11 +4,39 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"sync"
 )
+
+type persistenceFile interface {
+	Write([]byte) (int, error)
+	Sync() error
+	Close() error
+	Name() string
+}
+
+type persistenceOps struct {
+	mkdirAll   func(string, os.FileMode) error
+	createTemp func(string, string) (persistenceFile, error)
+	rename     func(string, string) error
+	openDir    func(string) (persistenceFile, error)
+	remove     func(string) error
+}
+
+func defaultPersistenceOps() persistenceOps {
+	return persistenceOps{
+		mkdirAll: os.MkdirAll,
+		createTemp: func(dir, pattern string) (persistenceFile, error) {
+			return os.CreateTemp(dir, pattern)
+		},
+		rename:  os.Rename,
+		openDir: func(path string) (persistenceFile, error) { return os.Open(path) },
+		remove:  os.Remove,
+	}
+}
 
 // IPPool manages a pool of IP addresses for VM allocation.
 type IPPool struct {
@@ -18,6 +46,7 @@ type IPPool struct {
 	allocated   map[string]string // vmID -> IP
 	available   []string          // available IPs
 	persistPath string            // path to persist state (optional)
+	persistence persistenceOps
 }
 
 // persistedState is the JSON format for saving pool state to disk.
@@ -34,10 +63,11 @@ func NewIPPool(cidr, gateway string) (*IPPool, error) {
 	}
 
 	pool := &IPPool{
-		network:   ipNet,
-		gateway:   gateway,
-		allocated: make(map[string]string),
-		available: make([]string, 0),
+		network:     ipNet,
+		gateway:     gateway,
+		allocated:   make(map[string]string),
+		available:   make([]string, 0),
+		persistence: defaultPersistenceOps(),
 	}
 
 	// Generate available IPs (skip network address, gateway, and broadcast)
@@ -68,10 +98,11 @@ func NewIPPoolFromGateway(gateway string, prefixLen int) (*IPPool, error) {
 	}
 
 	pool := &IPPool{
-		network:   ipNet,
-		gateway:   gateway,
-		allocated: make(map[string]string),
-		available: make([]string, 0),
+		network:     ipNet,
+		gateway:     gateway,
+		allocated:   make(map[string]string),
+		available:   make([]string, 0),
+		persistence: defaultPersistenceOps(),
 	}
 
 	pool.generateAvailableIPs()
@@ -173,27 +204,34 @@ func (p *IPPool) Allocate(vmID string) (string, error) {
 	}
 
 	ip := p.available[0]
+	allocations := copyAllocations(p.allocated)
+	allocations[vmID] = ip
+	if err := p.persistLocked(allocations); err != nil {
+		return "", err
+	}
+	p.allocated = allocations
 	p.available = p.available[1:]
-	p.allocated[vmID] = ip
-
-	p.persistLocked()
 	return ip, nil
 }
 
 // Release returns a VM's IP address to the pool.
-func (p *IPPool) Release(vmID string) {
+func (p *IPPool) Release(vmID string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	ip, ok := p.allocated[vmID]
 	if !ok {
-		return
+		return nil
 	}
 
-	delete(p.allocated, vmID)
+	allocations := copyAllocations(p.allocated)
+	delete(allocations, vmID)
+	if err := p.persistLocked(allocations); err != nil {
+		return err
+	}
+	p.allocated = allocations
 	p.available = append(p.available, ip)
-
-	p.persistLocked()
+	return nil
 }
 
 // GetAllocation returns the IP allocated to a VM, or empty string if none.
@@ -203,33 +241,74 @@ func (p *IPPool) GetAllocation(vmID string) string {
 	return p.allocated[vmID]
 }
 
-// persistLocked saves allocation state to disk. Caller must hold the lock.
-func (p *IPPool) persistLocked() {
+func copyAllocations(allocations map[string]string) map[string]string {
+	copy := make(map[string]string, len(allocations))
+	for vmID, ip := range allocations {
+		copy[vmID] = ip
+	}
+	return copy
+}
+
+// persistLocked saves a proposed allocation state to disk. Caller must hold the lock.
+func (p *IPPool) persistLocked(allocations map[string]string) error {
 	if p.persistPath == "" {
-		return
+		return nil
 	}
 
 	state := persistedState{
-		Allocated: p.allocated,
+		Allocated: allocations,
 	}
 
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
-		return // silently fail - persistence is best-effort
+		return fmt.Errorf("marshal IP allocation state: %w", err)
 	}
 
-	// Ensure directory exists
 	dir := filepath.Dir(p.persistPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return
+	if err := p.persistence.mkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create IP allocation directory: %w", err)
 	}
 
-	// Write atomically via temp file
-	tmpPath := p.persistPath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
-		return
+	tmp, err := p.persistence.createTemp(dir, ".ip-pool-*")
+	if err != nil {
+		return fmt.Errorf("create IP allocation temp file: %w", err)
 	}
-	os.Rename(tmpPath, p.persistPath)
+	tmpPath := tmp.Name()
+	renamed := false
+	defer func() {
+		if !renamed {
+			_ = p.persistence.remove(tmpPath)
+		}
+	}()
+
+	if n, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write IP allocation state: %w", err)
+	} else if n != len(data) {
+		_ = tmp.Close()
+		return fmt.Errorf("write IP allocation state: %w", io.ErrShortWrite)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync IP allocation temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close IP allocation temp file: %w", err)
+	}
+	if err := p.persistence.rename(tmpPath, p.persistPath); err != nil {
+		return fmt.Errorf("rename IP allocation state: %w", err)
+	}
+	renamed = true
+
+	dirFile, err := p.persistence.openDir(dir)
+	if err != nil {
+		return fmt.Errorf("open IP allocation directory: %w", err)
+	}
+	defer dirFile.Close()
+	if err := dirFile.Sync(); err != nil {
+		return fmt.Errorf("sync IP allocation directory: %w", err)
+	}
+	return nil
 }
 
 // LoadState restores allocation state from disk.

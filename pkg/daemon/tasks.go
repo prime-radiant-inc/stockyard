@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -102,33 +103,31 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	var networkConfig *network.StaticNetworkConfig
 	if tm.daemon.IPPool() != nil {
 		if _, err := tm.daemon.IPPool().Allocate(taskID); err != nil {
-			log.Printf("Warning: could not allocate static IP: %v (falling back to DHCP)", err)
-		} else {
-			staticIPArgs = tm.daemon.IPPool().KernelIPArgs(taskID)
-			networkConfig = tm.daemon.IPPool().NetworkConfig(taskID)
+			return nil, fmt.Errorf("allocate static IP: %w", err)
 		}
+		staticIPArgs = tm.daemon.IPPool().KernelIPArgs(taskID)
+		networkConfig = tm.daemon.IPPool().NetworkConfig(taskID)
 	}
 
 	// Create ZFS dataset for workspace (Firecracker backend only)
 	var workspacePath string
+	datasetCreated := false
 	if tm.daemon.zfs != nil && (tm.daemon.cfg.Backend == "" || tm.daemon.cfg.Backend == "firecracker") {
 		if err := tm.daemon.zfs.CreateDataset(ctx, taskID); err != nil {
-			if tm.daemon.IPPool() != nil {
-				tm.daemon.IPPool().Release(taskID)
-			}
-			return nil, fmt.Errorf("failed to create ZFS dataset: %w", err)
+			return nil, errors.Join(
+				fmt.Errorf("failed to create ZFS dataset: %w", err),
+				tm.cleanupCreateTask(ctx, taskID, "", false),
+			)
 		}
+		datasetCreated = true
 
 		var err error
 		workspacePath, err = tm.daemon.zfs.GetMountpoint(ctx, taskID)
 		if err != nil {
-			if tm.daemon.zfs != nil {
-				tm.daemon.zfs.DestroyDataset(ctx, taskID)
-			}
-			if tm.daemon.IPPool() != nil {
-				tm.daemon.IPPool().Release(taskID)
-			}
-			return nil, fmt.Errorf("failed to get workspace mountpoint: %w", err)
+			return nil, errors.Join(
+				fmt.Errorf("failed to get workspace mountpoint: %w", err),
+				tm.cleanupCreateTask(ctx, taskID, "", datasetCreated),
+			)
 		}
 	}
 
@@ -190,13 +189,10 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		var err error
 		cloudInitData, err = cloudInitCfg.Generate()
 		if err != nil {
-			if tm.daemon.zfs != nil {
-				tm.daemon.zfs.DestroyDataset(ctx, taskID)
-			}
-			if tm.daemon.IPPool() != nil {
-				tm.daemon.IPPool().Release(taskID)
-			}
-			return nil, fmt.Errorf("failed to generate cloud-init config: %w", err)
+			return nil, errors.Join(
+				fmt.Errorf("failed to generate cloud-init config: %w", err),
+				tm.cleanupCreateTask(ctx, taskID, "", datasetCreated),
+			)
 		}
 	}
 
@@ -207,13 +203,10 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	if tm.daemon.images != nil {
 		rec, err := tm.daemon.state.GetImage(resolvedImage)
 		if err != nil {
-			if tm.daemon.zfs != nil {
-				tm.daemon.zfs.DestroyDataset(ctx, taskID)
-			}
-			if tm.daemon.IPPool() != nil {
-				tm.daemon.IPPool().Release(taskID)
-			}
-			return nil, fmt.Errorf("image %q disappeared during task creation: %w", resolvedImage, err)
+			return nil, errors.Join(
+				fmt.Errorf("image %q disappeared during task creation: %w", resolvedImage, err),
+				tm.cleanupCreateTask(ctx, taskID, "", datasetCreated),
+			)
 		}
 		rootfsSnapshot = tm.daemon.images.snapshotPathFor(rec)
 		imageKernel = rec.KernelPath
@@ -245,13 +238,10 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 		vm, err := tm.backend.CreateVM(ctx, vmCfg)
 		if err != nil {
-			if tm.daemon.zfs != nil {
-				tm.daemon.zfs.DestroyDataset(ctx, taskID)
-			}
-			if tm.daemon.IPPool() != nil {
-				tm.daemon.IPPool().Release(taskID)
-			}
-			return nil, fmt.Errorf("failed to create VM: %w", err)
+			return nil, errors.Join(
+				fmt.Errorf("failed to create VM: %w", err),
+				tm.cleanupCreateTask(ctx, taskID, "", datasetCreated),
+			)
 		}
 		vmID = vm.ID
 		vmCID = vm.CID
@@ -281,17 +271,10 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	}
 
 	if err := tm.daemon.state.CreateTask(task); err != nil {
-		// Attempt cleanup on failure
-		if tm.backend != nil && vmID != "" {
-			tm.backend.DeleteVM(ctx, vmID)
-		}
-		if tm.daemon.zfs != nil {
-			tm.daemon.zfs.DestroyDataset(ctx, taskID)
-		}
-		if tm.daemon.IPPool() != nil {
-			tm.daemon.IPPool().Release(taskID)
-		}
-		return nil, fmt.Errorf("failed to record task: %w", err)
+		return nil, errors.Join(
+			fmt.Errorf("failed to record task: %w", err),
+			tm.cleanupCreateTask(ctx, taskID, vmID, datasetCreated),
+		)
 	}
 
 	// Record activity event for VM started
@@ -331,6 +314,26 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 	}
 
 	return task, nil
+}
+
+func (tm *TaskManager) cleanupCreateTask(ctx context.Context, taskID, vmID string, datasetCreated bool) error {
+	var cleanupErrs []error
+	if tm.backend != nil && vmID != "" {
+		if err := tm.backend.DeleteVM(ctx, vmID); err != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("delete VM during task creation cleanup: %w", err))
+		}
+	}
+	if datasetCreated && tm.daemon.zfs != nil {
+		if err := tm.daemon.zfs.DestroyDataset(ctx, taskID); err != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("destroy workspace during task creation cleanup: %w", err))
+		}
+	}
+	if tm.daemon.IPPool() != nil {
+		if err := tm.daemon.IPPool().Release(taskID); err != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("release IP allocation during task creation cleanup: %w", err))
+		}
+	}
+	return errors.Join(cleanupErrs...)
 }
 
 // parseDotEnv parses raw .env file bytes into a key→value map.
@@ -629,7 +632,9 @@ func (tm *TaskManager) DestroyTask(ctx context.Context, taskID string) error {
 
 	// Release the static IP allocation
 	if tm.daemon.IPPool() != nil {
-		tm.daemon.IPPool().Release(taskID)
+		if err := tm.daemon.IPPool().Release(taskID); err != nil {
+			return fmt.Errorf("release IP allocation: %w", err)
+		}
 	}
 
 	// Delete task from database

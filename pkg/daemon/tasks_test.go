@@ -2,11 +2,62 @@ package daemon
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/obra/stockyard/pkg/config"
+	"github.com/obra/stockyard/pkg/network"
 	"github.com/obra/stockyard/pkg/secrets"
+	"github.com/obra/stockyard/pkg/vmbackend"
 )
+
+type taskCreateTestBackend struct {
+	createCalls int
+	onCreate    func()
+	createErr   error
+}
+
+func (b *taskCreateTestBackend) CreateVM(context.Context, *vmbackend.VMConfig) (*vmbackend.VMInfo, error) {
+	b.createCalls++
+	if b.onCreate != nil {
+		b.onCreate()
+	}
+	if b.createErr != nil {
+		return nil, b.createErr
+	}
+	return &vmbackend.VMInfo{ID: "test-vm"}, nil
+}
+
+func (b *taskCreateTestBackend) StartVM(context.Context, *vmbackend.VMConfig) (*vmbackend.VMInfo, error) {
+	return nil, nil
+}
+func (b *taskCreateTestBackend) StopVM(context.Context, string) error   { return nil }
+func (b *taskCreateTestBackend) DeleteVM(context.Context, string) error { return nil }
+func (b *taskCreateTestBackend) GetVM(context.Context, string) (*vmbackend.VMState, error) {
+	return nil, nil
+}
+func (b *taskCreateTestBackend) ListVMs(context.Context) ([]*vmbackend.VMState, error) {
+	return nil, nil
+}
+func (b *taskCreateTestBackend) Close() error { return nil }
+
+func newTaskCreateTestManager(t *testing.T, pool *network.IPPool, backend vmbackend.Backend) (*TaskManager, *State) {
+	t.Helper()
+	state, err := NewStateInMemory()
+	if err != nil {
+		t.Fatalf("NewStateInMemory: %v", err)
+	}
+	d := &Daemon{
+		cfg:     &config.Config{Backend: "apple-container"},
+		secrets: &secrets.MockProvider{Secrets: map[string]string{}},
+		state:   state,
+		ipPool:  pool,
+	}
+	return NewTaskManager(d, backend), state
+}
 
 func TestParseMemory(t *testing.T) {
 	tests := []struct {
@@ -78,6 +129,100 @@ func TestCreateTaskRequest_Defaults(t *testing.T) {
 	}
 	if req.MemoryMB != 0 {
 		t.Errorf("expected default MemoryMB to be 0, got %d", req.MemoryMB)
+	}
+}
+
+func TestTaskManager_CreateTaskIPAllocationPersistenceFailureCreatesNoTaskOrVM(t *testing.T) {
+	pool, err := network.NewIPPool("10.0.100.0/24", "10.0.100.1")
+	if err != nil {
+		t.Fatalf("NewIPPool: %v", err)
+	}
+	blockedParent := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blockedParent, nil, 0644); err != nil {
+		t.Fatalf("write blocked parent: %v", err)
+	}
+	pool.SetPersistPath(filepath.Join(blockedParent, "ip_pool.json"))
+	backend := &taskCreateTestBackend{}
+	manager, state := newTaskCreateTestManager(t, pool, backend)
+	defer state.Close()
+
+	if _, err := manager.CreateTask(context.Background(), &CreateTaskRequest{
+		Name:        "allocation-failure",
+		NoTailscale: true,
+	}); err == nil {
+		t.Fatal("CreateTask succeeded despite IP allocation persistence failure")
+	}
+	if backend.createCalls != 0 {
+		t.Errorf("CreateVM calls = %d, want 0", backend.createCalls)
+	}
+	tasks, err := state.ListTasks("")
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Errorf("task rows after failed allocation = %d, want 0", len(tasks))
+	}
+}
+
+func TestTaskManager_CreateTaskCleanupReleaseFailureVisibleToCaller(t *testing.T) {
+	pool, err := network.NewIPPool("10.0.100.0/24", "10.0.100.1")
+	if err != nil {
+		t.Fatalf("NewIPPool: %v", err)
+	}
+	pool.SetPersistPath(filepath.Join(t.TempDir(), "ip_pool.json"))
+	blockedParent := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blockedParent, nil, 0644); err != nil {
+		t.Fatalf("write blocked parent: %v", err)
+	}
+	backend := &taskCreateTestBackend{
+		createErr: errors.New("injected VM creation failure"),
+		onCreate: func() {
+			pool.SetPersistPath(filepath.Join(blockedParent, "ip_pool.json"))
+		},
+	}
+	manager, state := newTaskCreateTestManager(t, pool, backend)
+	defer state.Close()
+
+	_, err = manager.CreateTask(context.Background(), &CreateTaskRequest{
+		Name:        "cleanup-release-failure",
+		NoTailscale: true,
+	})
+	if err == nil {
+		t.Fatal("CreateTask succeeded despite VM and release failures")
+	}
+	if !strings.Contains(err.Error(), "injected VM creation failure") {
+		t.Errorf("CreateTask error %q does not include VM creation failure", err)
+	}
+	if !strings.Contains(err.Error(), "create IP allocation directory") {
+		t.Errorf("CreateTask error %q does not include release persistence failure", err)
+	}
+}
+
+func TestTaskManager_DestroyTaskIPReleaseFailureRetainsTask(t *testing.T) {
+	pool, err := network.NewIPPool("10.0.100.0/24", "10.0.100.1")
+	if err != nil {
+		t.Fatalf("NewIPPool: %v", err)
+	}
+	pool.SetPersistPath(filepath.Join(t.TempDir(), "ip_pool.json"))
+	if _, err := pool.Allocate("task-1"); err != nil {
+		t.Fatalf("Allocate task-1: %v", err)
+	}
+	blockedParent := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blockedParent, nil, 0644); err != nil {
+		t.Fatalf("write blocked parent: %v", err)
+	}
+	pool.SetPersistPath(filepath.Join(blockedParent, "ip_pool.json"))
+	manager, state := newTaskCreateTestManager(t, pool, nil)
+	defer state.Close()
+	if err := state.CreateTask(&Task{ID: "task-1", Status: "running"}); err != nil {
+		t.Fatalf("CreateTask row: %v", err)
+	}
+
+	if err := manager.DestroyTask(context.Background(), "task-1"); err == nil {
+		t.Fatal("DestroyTask succeeded despite release persistence failure")
+	}
+	if _, err := state.GetTask("task-1"); err != nil {
+		t.Errorf("task row was removed after release failure: %v", err)
 	}
 }
 

@@ -1,9 +1,92 @@
 package network
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 )
+
+type failingPersistenceFile struct {
+	persistenceFile
+	failWrite bool
+	failSync  bool
+}
+
+func (f failingPersistenceFile) Write(data []byte) (int, error) {
+	if f.failWrite {
+		return 0, errors.New("injected write failure")
+	}
+	return f.persistenceFile.Write(data)
+}
+
+func (f failingPersistenceFile) Sync() error {
+	if f.failSync {
+		return errors.New("injected sync failure")
+	}
+	return f.persistenceFile.Sync()
+}
+
+func persistenceFailure(stage string) persistenceOps {
+	ops := defaultPersistenceOps()
+	if stage == "mkdir" {
+		ops.mkdirAll = func(string, os.FileMode) error {
+			return errors.New("injected mkdir failure")
+		}
+	}
+	if stage == "create-temp" {
+		ops.createTemp = func(string, string) (persistenceFile, error) {
+			return nil, errors.New("injected temp-file failure")
+		}
+	} else {
+		ops.createTemp = func(dir, pattern string) (persistenceFile, error) {
+			file, err := os.CreateTemp(dir, pattern)
+			if err != nil {
+				return nil, err
+			}
+			return failingPersistenceFile{
+				persistenceFile: file,
+				failWrite:       stage == "write",
+				failSync:        stage == "file-sync",
+			}, nil
+		}
+	}
+	if stage == "rename" {
+		ops.rename = func(string, string) error {
+			return errors.New("injected rename failure")
+		}
+	}
+	if stage == "open-parent" {
+		ops.openDir = func(string) (persistenceFile, error) {
+			return nil, errors.New("injected parent-directory open failure")
+		}
+	} else {
+		ops.openDir = func(path string) (persistenceFile, error) {
+			file, err := os.Open(path)
+			if err != nil {
+				return nil, err
+			}
+			return failingPersistenceFile{
+				persistenceFile: file,
+				failSync:        stage == "parent-sync",
+			}, nil
+		}
+	}
+	return ops
+}
+
+func restartIPPool(t *testing.T, path string) *IPPool {
+	t.Helper()
+	pool, err := NewIPPool("10.0.100.0/24", "10.0.100.1")
+	if err != nil {
+		t.Fatalf("NewIPPool: %v", err)
+	}
+	pool.SetPersistPath(path)
+	if err := pool.LoadState(); err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	return pool
+}
 
 func TestNewIPPool(t *testing.T) {
 	pool, err := NewIPPool("10.0.100.0/24", "10.0.100.1")
@@ -108,6 +191,178 @@ func TestIPPoolPersistence(t *testing.T) {
 	}
 	if ip2Again != ip2 {
 		t.Errorf("vm-002: expected %s, got %s", ip2, ip2Again)
+	}
+}
+
+func TestIPPool_AllocatePersistenceWriteFailureLeavesMemoryUnchanged(t *testing.T) {
+	pool, err := NewIPPool("10.0.100.0/24", "10.0.100.1")
+	if err != nil {
+		t.Fatalf("NewIPPool: %v", err)
+	}
+
+	blockedParent := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blockedParent, nil, 0644); err != nil {
+		t.Fatalf("write blocked parent: %v", err)
+	}
+	pool.SetPersistPath(filepath.Join(blockedParent, "ip_pool.json"))
+	available := pool.Available()
+
+	if _, err := pool.Allocate("vm-001"); err == nil {
+		t.Fatal("Allocate succeeded despite an unwritable persistence path")
+	}
+	if got := pool.GetAllocation("vm-001"); got != "" {
+		t.Errorf("allocation after failed persistence = %q, want empty", got)
+	}
+	if got := pool.Available(); got != available {
+		t.Errorf("available addresses after failed persistence = %d, want %d", got, available)
+	}
+}
+
+func TestIPPool_AllocatePersistenceFailuresPreserveOwnership(t *testing.T) {
+	stages := []struct {
+		name            string
+		proposedVisible bool
+	}{
+		{name: "mkdir"},
+		{name: "create-temp"},
+		{name: "write"},
+		{name: "file-sync"},
+		{name: "rename"},
+		{name: "open-parent", proposedVisible: true},
+		{name: "parent-sync", proposedVisible: true},
+	}
+
+	for _, stage := range stages {
+		t.Run(stage.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "ip_pool.json")
+			pool := restartIPPool(t, path)
+			if _, err := pool.Allocate("vm-existing"); err != nil {
+				t.Fatalf("Allocate vm-existing: %v", err)
+			}
+			previousFile, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read previous persistence state: %v", err)
+			}
+			nextIP := pool.available[0]
+			pool.persistence = persistenceFailure(stage.name)
+
+			if _, err := pool.Allocate("vm-next"); err == nil {
+				t.Fatal("Allocate succeeded despite injected persistence failure")
+			}
+			if got := pool.GetAllocation("vm-existing"); got == "" {
+				t.Error("existing allocation was lost after failed persistence")
+			}
+			if got := pool.GetAllocation("vm-next"); got != "" {
+				t.Errorf("new allocation after failed persistence = %q, want empty", got)
+			}
+
+			visibleFile, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read visible persistence state: %v", err)
+			}
+			if stage.proposedVisible {
+				restarted := restartIPPool(t, path)
+				if got := restarted.GetAllocation("vm-next"); got != nextIP {
+					t.Errorf("restart allocation after post-rename failure = %q, want %q", got, nextIP)
+				}
+				if got, err := restarted.Allocate("vm-next"); err != nil || got != nextIP {
+					t.Errorf("retry allocation after proposed restart state = %q, %v; want %q, nil", got, err, nextIP)
+				}
+			} else if string(visibleFile) != string(previousFile) {
+				t.Error("pre-rename persistence failure changed the durable file")
+			}
+
+			pool.persistence = defaultPersistenceOps()
+			if got, err := pool.Allocate("vm-next"); err != nil || got != nextIP {
+				t.Errorf("retry allocation = %q, %v; want %q, nil", got, err, nextIP)
+			}
+		})
+	}
+}
+
+func TestIPPool_ReleasePersistenceFailuresPreserveOwnership(t *testing.T) {
+	stages := []struct {
+		name            string
+		proposedVisible bool
+	}{
+		{name: "mkdir"},
+		{name: "create-temp"},
+		{name: "write"},
+		{name: "file-sync"},
+		{name: "rename"},
+		{name: "open-parent", proposedVisible: true},
+		{name: "parent-sync", proposedVisible: true},
+	}
+
+	for _, stage := range stages {
+		t.Run(stage.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "ip_pool.json")
+			pool := restartIPPool(t, path)
+			ip, err := pool.Allocate("vm-existing")
+			if err != nil {
+				t.Fatalf("Allocate vm-existing: %v", err)
+			}
+			previousFile, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read previous persistence state: %v", err)
+			}
+			pool.persistence = persistenceFailure(stage.name)
+
+			if err := pool.Release("vm-existing"); err == nil {
+				t.Fatal("Release succeeded despite injected persistence failure")
+			}
+			if got := pool.GetAllocation("vm-existing"); got != ip {
+				t.Errorf("allocation after failed release = %q, want %q", got, ip)
+			}
+
+			visibleFile, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read visible persistence state: %v", err)
+			}
+			if stage.proposedVisible {
+				restarted := restartIPPool(t, path)
+				if got := restarted.GetAllocation("vm-existing"); got != "" {
+					t.Errorf("restart allocation after post-rename failure = %q, want empty", got)
+				}
+				if err := restarted.Release("vm-existing"); err != nil {
+					t.Errorf("idempotent release after proposed restart state: %v", err)
+				}
+			} else if string(visibleFile) != string(previousFile) {
+				t.Error("pre-rename persistence failure changed the durable file")
+			}
+
+			pool.persistence = defaultPersistenceOps()
+			if err := pool.Release("vm-existing"); err != nil {
+				t.Fatalf("retry release: %v", err)
+			}
+			if got, err := pool.Allocate("vm-retry"); err != nil || got == "" {
+				t.Errorf("allocation after release retry = %q, %v; want a non-empty address and nil", got, err)
+			}
+		})
+	}
+}
+
+func TestIPPool_ReleasePersistenceAbsentTaskIsIdempotent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ip_pool.json")
+	pool := restartIPPool(t, path)
+	if _, err := pool.Allocate("vm-existing"); err != nil {
+		t.Fatalf("Allocate vm-existing: %v", err)
+	}
+	previousFile, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read previous persistence state: %v", err)
+	}
+	pool.persistence = persistenceFailure("write")
+
+	if err := pool.Release("vm-absent"); err != nil {
+		t.Fatalf("Release absent task: %v", err)
+	}
+	visibleFile, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read visible persistence state: %v", err)
+	}
+	if string(visibleFile) != string(previousFile) {
+		t.Error("idempotent release changed the durable file")
 	}
 }
 
