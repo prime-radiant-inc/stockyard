@@ -318,9 +318,11 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 
 func (tm *TaskManager) cleanupCreateTask(ctx context.Context, taskID, vmID string, datasetCreated bool) error {
 	var cleanupErrs []error
+	canReleaseIP := true
 	if tm.backend != nil && vmID != "" {
 		if err := tm.backend.DeleteVM(ctx, vmID); err != nil {
 			cleanupErrs = append(cleanupErrs, fmt.Errorf("delete VM during task creation cleanup: %w", err))
+			canReleaseIP = false
 		}
 	}
 	if datasetCreated && tm.daemon.zfs != nil {
@@ -328,7 +330,7 @@ func (tm *TaskManager) cleanupCreateTask(ctx context.Context, taskID, vmID strin
 			cleanupErrs = append(cleanupErrs, fmt.Errorf("destroy workspace during task creation cleanup: %w", err))
 		}
 	}
-	if tm.daemon.IPPool() != nil {
+	if canReleaseIP && tm.daemon.IPPool() != nil {
 		if err := tm.daemon.IPPool().Release(taskID); err != nil {
 			cleanupErrs = append(cleanupErrs, fmt.Errorf("release IP allocation during task creation cleanup: %w", err))
 		}

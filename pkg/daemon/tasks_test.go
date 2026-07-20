@@ -16,26 +16,33 @@ import (
 
 type taskCreateTestBackend struct {
 	createCalls int
+	deleteCalls int
+	createdID   string
 	onCreate    func()
 	createErr   error
+	deleteErr   error
 }
 
-func (b *taskCreateTestBackend) CreateVM(context.Context, *vmbackend.VMConfig) (*vmbackend.VMInfo, error) {
+func (b *taskCreateTestBackend) CreateVM(_ context.Context, cfg *vmbackend.VMConfig) (*vmbackend.VMInfo, error) {
 	b.createCalls++
+	b.createdID = cfg.ID
 	if b.onCreate != nil {
 		b.onCreate()
 	}
 	if b.createErr != nil {
 		return nil, b.createErr
 	}
-	return &vmbackend.VMInfo{ID: "test-vm"}, nil
+	return &vmbackend.VMInfo{ID: cfg.ID}, nil
 }
 
 func (b *taskCreateTestBackend) StartVM(context.Context, *vmbackend.VMConfig) (*vmbackend.VMInfo, error) {
 	return nil, nil
 }
-func (b *taskCreateTestBackend) StopVM(context.Context, string) error   { return nil }
-func (b *taskCreateTestBackend) DeleteVM(context.Context, string) error { return nil }
+func (b *taskCreateTestBackend) StopVM(context.Context, string) error { return nil }
+func (b *taskCreateTestBackend) DeleteVM(context.Context, string) error {
+	b.deleteCalls++
+	return b.deleteErr
+}
 func (b *taskCreateTestBackend) GetVM(context.Context, string) (*vmbackend.VMState, error) {
 	return nil, nil
 }
@@ -195,6 +202,38 @@ func TestTaskManager_CreateTaskCleanupReleaseFailureVisibleToCaller(t *testing.T
 	}
 	if !strings.Contains(err.Error(), "create IP allocation directory") {
 		t.Errorf("CreateTask error %q does not include release persistence failure", err)
+	}
+}
+
+func TestTaskManager_CreateTaskCleanupRecordFailureRetainsIPWhenVMDeleteFails(t *testing.T) {
+	pool, err := network.NewIPPool("10.0.100.0/24", "10.0.100.1")
+	if err != nil {
+		t.Fatalf("NewIPPool: %v", err)
+	}
+	pool.SetPersistPath(filepath.Join(t.TempDir(), "ip_pool.json"))
+	backend := &taskCreateTestBackend{deleteErr: errors.New("injected VM deletion failure")}
+	manager, state := newTaskCreateTestManager(t, pool, backend)
+	backend.onCreate = func() {
+		if err := state.Close(); err != nil {
+			t.Fatalf("close state before task insert: %v", err)
+		}
+	}
+
+	_, err = manager.CreateTask(context.Background(), &CreateTaskRequest{
+		Name:        "record-failure",
+		NoTailscale: true,
+	})
+	if err == nil {
+		t.Fatal("CreateTask succeeded despite task-record and VM deletion failures")
+	}
+	if !strings.Contains(err.Error(), "injected VM deletion failure") {
+		t.Errorf("CreateTask error %q does not include VM deletion failure", err)
+	}
+	if backend.deleteCalls != 1 {
+		t.Errorf("DeleteVM calls = %d, want 1", backend.deleteCalls)
+	}
+	if got := pool.GetAllocation(backend.createdID); got == "" {
+		t.Error("IP allocation was released while the VM delete failed")
 	}
 }
 

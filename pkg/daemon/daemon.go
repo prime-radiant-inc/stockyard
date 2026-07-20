@@ -173,8 +173,8 @@ func New(cfg *config.Config, secretsProvider secrets.Provider) (*Daemon, error) 
 		// Persist allocations to survive daemon restarts
 		ipPool.SetPersistPath(filepath.Join(cfg.Daemon.DataDir, "ip_pool.json"))
 		if err := ipPool.LoadState(); err != nil {
-			// Log warning but continue - fresh state is fine
-			fmt.Printf("Warning: could not load IP pool state: %v\n", err)
+			state.Close()
+			return nil, fmt.Errorf("load IP pool state: %w", err)
 		}
 		d.ipPool = ipPool
 	}
@@ -566,4 +566,3 @@ func (d *Daemon) pollHostMetrics() {
 		}
 	}
 }
-
