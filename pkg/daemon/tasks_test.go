@@ -23,6 +23,7 @@ type taskCreateTestBackend struct {
 	onCreate    func()
 	createErr   error
 	deleteErr   error
+	deletedID   string
 }
 
 func (b *taskCreateTestBackend) CreateVM(_ context.Context, cfg *vmbackend.VMConfig) (*vmbackend.VMInfo, error) {
@@ -41,8 +42,9 @@ func (b *taskCreateTestBackend) StartVM(context.Context, *vmbackend.VMConfig) (*
 	return nil, nil
 }
 func (b *taskCreateTestBackend) StopVM(context.Context, string) error { return nil }
-func (b *taskCreateTestBackend) DeleteVM(context.Context, string) error {
+func (b *taskCreateTestBackend) DeleteVM(_ context.Context, id string) error {
 	b.deleteCalls++
+	b.deletedID = id
 	return b.deleteErr
 }
 func (b *taskCreateTestBackend) GetVM(context.Context, string) (*vmbackend.VMState, error) {
@@ -204,6 +206,74 @@ func TestTaskManager_CreateTaskCleanupReleaseFailureVisibleToCaller(t *testing.T
 	}
 	if !strings.Contains(err.Error(), "create IP allocation directory") {
 		t.Errorf("CreateTask error %q does not include release persistence failure", err)
+	}
+}
+
+func TestTaskManager_CreateTaskVMFailureRetainsIPWhenCleanupIsUncertain(t *testing.T) {
+	pool, err := network.NewIPPool("10.0.100.0/24", "10.0.100.1")
+	if err != nil {
+		t.Fatalf("NewIPPool: %v", err)
+	}
+	pool.SetPersistPath(filepath.Join(t.TempDir(), "ip_pool.json"))
+	backend := &taskCreateTestBackend{
+		createErr: errors.New("injected VM creation failure"),
+		deleteErr: errors.New("injected VM cleanup uncertainty"),
+	}
+	manager, state := newTaskCreateTestManager(t, pool, backend)
+	defer state.Close()
+
+	_, err = manager.CreateTask(context.Background(), &CreateTaskRequest{
+		Name:        "create-failure-cleanup-uncertain",
+		NoTailscale: true,
+	})
+	if err == nil {
+		t.Fatal("CreateTask succeeded despite VM creation failure")
+	}
+	for _, want := range []string{"injected VM creation failure", "injected VM cleanup uncertainty"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("CreateTask error %q does not include %q", err, want)
+		}
+	}
+	if backend.deleteCalls != 1 {
+		t.Fatalf("DeleteVM calls = %d, want 1", backend.deleteCalls)
+	}
+	if backend.deletedID != backend.createdID {
+		t.Errorf("DeleteVM ID = %q, want requested VM ID %q", backend.deletedID, backend.createdID)
+	}
+	if got := pool.GetAllocation(backend.createdID); got == "" {
+		t.Error("IP allocation was released while VM cleanup remained uncertain")
+	}
+	tasks, listErr := state.ListTasks("")
+	if listErr != nil {
+		t.Fatalf("ListTasks: %v", listErr)
+	}
+	if len(tasks) != 0 {
+		t.Errorf("task rows after failed VM creation = %d, want 0", len(tasks))
+	}
+}
+
+func TestTaskManager_CreateTaskVMFailureReleasesIPAfterExactCleanup(t *testing.T) {
+	pool, err := network.NewIPPool("10.0.100.0/24", "10.0.100.1")
+	if err != nil {
+		t.Fatalf("NewIPPool: %v", err)
+	}
+	pool.SetPersistPath(filepath.Join(t.TempDir(), "ip_pool.json"))
+	backend := &taskCreateTestBackend{createErr: errors.New("injected VM creation failure")}
+	manager, state := newTaskCreateTestManager(t, pool, backend)
+	defer state.Close()
+
+	_, err = manager.CreateTask(context.Background(), &CreateTaskRequest{
+		Name:        "create-failure-cleanup-complete",
+		NoTailscale: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "injected VM creation failure") {
+		t.Fatalf("CreateTask error = %v, want VM creation failure", err)
+	}
+	if backend.deleteCalls != 1 || backend.deletedID != backend.createdID {
+		t.Errorf("DeleteVM calls/ID = %d/%q, want 1/%q", backend.deleteCalls, backend.deletedID, backend.createdID)
+	}
+	if got := pool.GetAllocation(backend.createdID); got != "" {
+		t.Errorf("IP allocation retained after exact VM cleanup: %s", got)
 	}
 }
 

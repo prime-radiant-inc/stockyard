@@ -255,7 +255,7 @@ func (tm *TaskManager) CreateTask(ctx context.Context, req *CreateTaskRequest) (
 		if err != nil {
 			return nil, errors.Join(
 				fmt.Errorf("failed to create VM: %w", err),
-				tm.cleanupCreateTask(ctx, taskID, "", datasetCreated),
+				tm.cleanupCreateTask(ctx, taskID, taskID, datasetCreated),
 			)
 		}
 		vmID = vm.ID

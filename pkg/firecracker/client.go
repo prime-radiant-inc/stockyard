@@ -59,18 +59,22 @@ type Client struct {
 	mu          sync.Mutex
 	procs       map[string]*trackedProc // vmID -> tracked process
 	deleteHooks *deleteVMHooks
+	createHooks *createVMHooks
+	processes   stableProcessProvider
+}
+
+type createVMHooks struct {
+	createTap    func(string) error
+	startProcess func(*exec.Cmd) error
 }
 
 type deleteVMHooks struct {
-	pathExists         func(string) (bool, error)
-	listProcesses      func(context.Context) ([]byte, error)
-	signalProcess      func(int, syscall.Signal) error
-	waitForProcessExit func(context.Context, string, int, time.Duration) error
-	deleteTap          func(string) error
-	tapExists          func(string) (bool, error)
-	destroyRootfs      func(context.Context, string) error
-	rootfsExists       func(context.Context, string) (bool, error)
-	removeAll          func(string) error
+	pathExists    func(string) (bool, error)
+	deleteTap     func(string) error
+	tapExists     func(string) (bool, error)
+	destroyRootfs func(context.Context, string) error
+	rootfsExists  func(context.Context, string) (bool, error)
+	removeAll     func(string) error
 }
 
 var errFirecrackerProcessStillRunning = errors.New("firecracker process remains")
@@ -99,6 +103,7 @@ func NewClient(cfg ClientConfig, zfsMgr *zfs.Manager) (*Client, error) {
 		network:    NewNetworkManager(cfg.BridgeName),
 		cidCounter: 100, // Start CIDs at 100 (3-99 reserved)
 		procs:      make(map[string]*trackedProc),
+		processes:  newStableProcessProvider(),
 	}, nil
 }
 
@@ -155,7 +160,7 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	if err := c.network.DeleteTap(tapName); err != nil {
 		// Ignore errors from non-existent tap
 	}
-	if err := c.network.CreateTap(tapName); err != nil {
+	if err := c.createTap(tapName); err != nil {
 		return nil, fmt.Errorf("failed to create tap device: %w", err)
 	}
 
@@ -232,7 +237,7 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 		Setpgid: true, // Start in new process group
 	}
 
-	if err := cmd.Start(); err != nil {
+	if err := c.startProcess(cmd); err != nil {
 		stdoutLog.Close()
 		stderrLog.Close()
 		destroyZFSDataset(vmDatasetPath)
@@ -244,11 +249,12 @@ func (c *Client) CreateVM(ctx context.Context, config *VMConfig) (*VMInfo, error
 	stderrLog.Close()
 
 	if err := writeProcessMetadata(vmDir, cmd.Process.Pid, apiSocketPath); err != nil {
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
-		destroyZFSDataset(vmDatasetPath)
-		c.network.DeleteTap(tapName)
-		return nil, err
+		return nil, errors.Join(
+			err,
+			c.DeleteVM(ctx, namespace, config.ID),
+		)
 	}
 
 	// Track process with a done channel for death detection.
@@ -486,12 +492,12 @@ func (c *Client) DeleteVM(ctx context.Context, namespace, id string) error {
 		delete(c.procs, id)
 		c.mu.Unlock()
 	} else {
-		pid, err := c.findProcessBySocket(ctx, apiSocketPath)
+		process, err := c.findProcessBySocket(ctx, apiSocketPath)
 		if err != nil {
 			return fmt.Errorf("read Firecracker process: %w", err)
 		}
-		if pid != 0 {
-			if err := c.stopDetachedProcess(ctx, apiSocketPath, pid); err != nil {
+		if process != nil {
+			if err := c.stopDetachedProcess(ctx, process); err != nil {
 				return err
 			}
 		}
@@ -564,63 +570,44 @@ func (c *Client) pathExists(path string) (bool, error) {
 	return false, err
 }
 
-func (c *Client) stopDetachedProcess(ctx context.Context, socketPath string, pid int) error {
-	if err := c.signalProcess(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+func (c *Client) stopDetachedProcess(ctx context.Context, process stableProcessHandle) (retErr error) {
+	defer func() {
+		if err := process.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close Firecracker process handle: %w", err))
+		}
+	}()
+
+	if err := process.Signal(syscall.SIGTERM); errors.Is(err, errProcessAbsent) {
+		return nil
+	} else if err != nil {
 		return fmt.Errorf("stop Firecracker process: %w", err)
 	}
-	if err := c.waitForProcessExit(ctx, socketPath, pid, time.Second); err == nil {
+	if err := process.Wait(ctx, time.Second); err == nil || errors.Is(err, errProcessAbsent) {
 		return nil
 	} else if !errors.Is(err, errFirecrackerProcessStillRunning) {
 		return fmt.Errorf("verify Firecracker process deletion: %w", err)
 	}
-	if err := c.signalProcess(pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+	if err := process.Signal(syscall.SIGKILL); errors.Is(err, errProcessAbsent) {
+		return nil
+	} else if err != nil {
 		return fmt.Errorf("kill Firecracker process: %w", err)
 	}
-	if err := c.waitForProcessExit(ctx, socketPath, pid, time.Second); err != nil {
+	if err := process.Wait(ctx, time.Second); err != nil && !errors.Is(err, errProcessAbsent) {
 		return fmt.Errorf("verify Firecracker process deletion: %w", err)
 	}
 	return nil
 }
 
-func (c *Client) signalProcess(pid int, signal syscall.Signal) error {
-	if c.deleteHooks != nil && c.deleteHooks.signalProcess != nil {
-		return c.deleteHooks.signalProcess(pid, signal)
-	}
-	return syscall.Kill(pid, signal)
-}
-
-func (c *Client) waitForProcessExit(ctx context.Context, socketPath string, pid int, timeout time.Duration) error {
-	if c.deleteHooks != nil && c.deleteHooks.waitForProcessExit != nil {
-		return c.deleteHooks.waitForProcessExit(ctx, socketPath, pid, timeout)
-	}
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		foundPID, err := c.findProcessBySocket(ctx, socketPath)
-		if err != nil {
-			return err
-		}
-		if foundPID == 0 {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-timer.C:
-			return fmt.Errorf("%w: PID %d owns API socket %s", errFirecrackerProcessStillRunning, foundPID, socketPath)
-		case <-ticker.C:
-		}
-	}
-}
-
 func (c *Client) requireProcessAbsent(ctx context.Context, socketPath string) error {
-	pid, err := c.findProcessBySocket(ctx, socketPath)
+	process, err := c.findProcessBySocket(ctx, socketPath)
 	if err != nil {
 		return fmt.Errorf("verify Firecracker process deletion: %w", err)
 	}
-	if pid != 0 {
+	if process != nil {
+		pid := process.PID()
+		if err := process.Close(); err != nil {
+			return fmt.Errorf("verify Firecracker process deletion: close process handle: %w", err)
+		}
 		return fmt.Errorf("verify Firecracker process deletion: PID %d remains for API socket %s", pid, socketPath)
 	}
 	return nil
@@ -642,57 +629,25 @@ func (c *Client) tapExists(name string) (bool, error) {
 	return false, nil
 }
 
-func (c *Client) findProcessBySocket(ctx context.Context, socketPath string) (int, error) {
-	output, err := c.listProcesses(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("list processes: %w", err)
-	}
-	if len(strings.TrimSpace(string(output))) == 0 {
-		return 0, nil
-	}
-	var match int
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			return 0, fmt.Errorf("malformed process record %q", line)
-		}
-		pid, err := strconv.Atoi(fields[0])
-		if err != nil || pid <= 0 {
-			return 0, fmt.Errorf("malformed process PID %q", fields[0])
-		}
-		if filepath.Base(fields[1]) != filepath.Base(c.config.FirecrackerBin) {
-			continue
-		}
-		foundSocket := false
-		for i := 2; i+1 < len(fields); i++ {
-			if fields[i] == "--api-sock" && fields[i+1] == socketPath {
-				foundSocket = true
-				break
-			}
-		}
-		if !foundSocket {
-			continue
-		}
-		if match != 0 {
-			return 0, fmt.Errorf("multiple Firecracker processes own API socket %s", socketPath)
-		}
-		match = pid
-	}
-	return match, nil
-}
-
-func (c *Client) listProcesses(ctx context.Context) ([]byte, error) {
-	if c.deleteHooks != nil && c.deleteHooks.listProcesses != nil {
-		return c.deleteHooks.listProcesses(ctx)
-	}
-	return exec.CommandContext(ctx, "ps", "-axo", "pid=,comm=,args=").Output()
-}
-
 func (c *Client) deleteTap(name string) error {
 	if c.deleteHooks != nil && c.deleteHooks.deleteTap != nil {
 		return c.deleteHooks.deleteTap(name)
 	}
 	return c.network.DeleteTap(name)
+}
+
+func (c *Client) createTap(name string) error {
+	if c.createHooks != nil && c.createHooks.createTap != nil {
+		return c.createHooks.createTap(name)
+	}
+	return c.network.CreateTap(name)
+}
+
+func (c *Client) startProcess(cmd *exec.Cmd) error {
+	if c.createHooks != nil && c.createHooks.startProcess != nil {
+		return c.createHooks.startProcess(cmd)
+	}
+	return cmd.Start()
 }
 
 func (c *Client) destroyRootfs(ctx context.Context, dataset string) error {

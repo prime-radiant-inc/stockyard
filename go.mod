@@ -10,6 +10,7 @@ require (
 	github.com/liquidmetal-dev/flintlock/api v0.0.0-20251202154859-49e881a25c36
 	github.com/mdlayher/vsock v1.2.1
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/sys v0.42.0
 	google.golang.org/grpc v1.68.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
@@ -32,7 +33,6 @@ require (
 	github.com/spf13/pflag v1.0.9 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241118233622-e639e219e697 // indirect
