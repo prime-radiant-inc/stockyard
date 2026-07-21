@@ -257,10 +257,6 @@ func reconcileTaskExpectations(audit *orphanAudit, tasks map[string]orphanAuditT
 		case "stopped":
 			requireNoAuditResource(audit, task, "processes", "process", processes[task.VMID])
 			requireNoAuditResource(audit, task, "taps", "tap", taps[task.VMID])
-		case "failed":
-			if !hasUnknownRead(audit.UnknownReads, "processes") && !hasUnknownRead(audit.UnknownReads, "taps") && processes[task.VMID] != taps[task.VMID] {
-				audit.Mismatches = append(audit.Mismatches, orphanAuditMismatch{Kind: "mismatched", Resource: "failed_task_runtime", OwnerID: task.ID, Detail: "process and tap ownership differ"})
-			}
 		}
 	}
 }

@@ -104,8 +104,10 @@ func TestOrphanAuditEnforcesStateSpecificProcessAndTapOwnership(t *testing.T) {
 		{name: "running requires both", status: "running", taps: []orphanAuditResource{{OwnerID: auditTaskID}}, wantErr: true},
 		{name: "starting requires both", status: "starting", processes: []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}}, wantErr: true},
 		{name: "stopped requires neither", status: "stopped", processes: []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}}, wantErr: true},
-		{name: "failed permits matched live pair", status: "failed", processes: []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}}, taps: []orphanAuditResource{{OwnerID: auditTaskID}}},
-		{name: "failed rejects unpaired process", status: "failed", processes: []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}}, wantErr: true},
+		{name: "failed permits neither", status: "failed"},
+		{name: "failed permits process only", status: "failed", processes: []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}}},
+		{name: "failed permits tap only", status: "failed", taps: []orphanAuditResource{{OwnerID: auditTaskID}}},
+		{name: "failed permits process and tap", status: "failed", processes: []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}}, taps: []orphanAuditResource{{OwnerID: auditTaskID}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -169,14 +171,36 @@ func TestOrphanAuditCleanupPendingRequiresVerifiedAbsence(t *testing.T) {
 	}
 }
 
-func TestOrphanAuditRejectsMultipleProcessesForOneVM(t *testing.T) {
-	readers := cleanOrphanAuditReaders()
-	readers.listProcesses = func(context.Context) ([]orphanAuditProcess, error) {
-		return []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}, {OwnerID: auditTaskID, PID: 456, Running: true}}, nil
-	}
-	var output bytes.Buffer
-	if err := runOrphanAudit(context.Background(), readers, &output); err == nil {
-		t.Fatal("runOrphanAudit accepted two Firecracker processes for one VM")
+func TestOrphanAuditRejectsDuplicateRuntimeOwnership(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		set  func(*orphanAuditReaders)
+	}{
+		{
+			name: "processes",
+			set: func(readers *orphanAuditReaders) {
+				readers.listProcesses = func(context.Context) ([]orphanAuditProcess, error) {
+					return []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}, {OwnerID: auditTaskID, PID: 456, Running: true}}, nil
+				}
+			},
+		},
+		{
+			name: "taps",
+			set: func(readers *orphanAuditReaders) {
+				readers.listTaps = func(context.Context) ([]orphanAuditResource, error) {
+					return []orphanAuditResource{{OwnerID: auditTaskID}, {OwnerID: auditTaskID}}, nil
+				}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			readers := cleanOrphanAuditReaders()
+			test.set(&readers)
+			var output bytes.Buffer
+			if err := runOrphanAudit(context.Background(), readers, &output); err == nil {
+				t.Fatalf("runOrphanAudit accepted duplicate %s ownership", test.name)
+			}
+		})
 	}
 }
 
