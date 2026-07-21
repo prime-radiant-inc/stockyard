@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,8 +22,9 @@ import (
 )
 
 type orphanAuditTask struct {
-	ID   string `json:"id"`
-	VMID string `json:"vm_id"`
+	ID     string `json:"id"`
+	VMID   string `json:"vm_id"`
+	Status string `json:"status"`
 }
 
 type orphanAuditResource struct {
@@ -169,8 +171,12 @@ func reconcileOrphanAudit(audit *orphanAudit) {
 	tasksByID := make(map[string]orphanAuditTask, len(audit.Tasks))
 	tasksByVMID := make(map[string]orphanAuditTask, len(audit.Tasks))
 	for _, task := range audit.Tasks {
-		if task.ID == "" || task.VMID == "" {
-			audit.Mismatches = append(audit.Mismatches, orphanAuditMismatch{Kind: "malformed", Resource: "task_row", OwnerID: task.ID, Detail: "task id and vm id are required"})
+		if !isCanonicalAuditID(task.ID) || !isCanonicalAuditID(task.VMID) || !isAuditTaskStatus(task.Status) {
+			audit.Mismatches = append(audit.Mismatches, orphanAuditMismatch{Kind: "malformed", Resource: "task_row", OwnerID: task.ID, Detail: "task id, vm id, and status must be canonical"})
+			continue
+		}
+		if task.ID != task.VMID {
+			audit.Mismatches = append(audit.Mismatches, orphanAuditMismatch{Kind: "mismatched", Resource: "task_vm", OwnerID: task.ID, Detail: task.VMID})
 			continue
 		}
 		if _, exists := tasksByID[task.ID]; exists {
@@ -191,6 +197,7 @@ func reconcileOrphanAudit(audit *orphanAudit) {
 	reconcileResources(audit, "workspace_dataset", audit.WorkspaceDatasets, tasksByID, tasksByVMID, false)
 	reconcileResources(audit, "tap", audit.Taps, tasksByID, tasksByVMID, true)
 	reconcileAllocations(audit, tasksByID, tasksByVMID)
+	reconcileTaskExpectations(audit, tasksByID)
 	sort.Slice(audit.Mismatches, func(i, j int) bool {
 		left, right := audit.Mismatches[i], audit.Mismatches[j]
 		if left.Resource != right.Resource {
@@ -201,6 +208,102 @@ func reconcileOrphanAudit(audit *orphanAudit) {
 		}
 		return left.Kind < right.Kind
 	})
+}
+
+func isCanonicalAuditID(id string) bool {
+	if len(id) != 8 {
+		return false
+	}
+	for _, character := range id {
+		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+func isAuditTaskStatus(status string) bool {
+	switch status {
+	case "running", "starting", "stopped", "failed", "cleanup_pending":
+		return true
+	default:
+		return false
+	}
+}
+
+func reconcileTaskExpectations(audit *orphanAudit, tasks map[string]orphanAuditTask) {
+	vmDirectories := countAuditResources(audit.VMDirectories)
+	rootfsDatasets := countAuditResources(audit.RootfsDatasets)
+	workspaceDatasets := countAuditResources(audit.WorkspaceDatasets)
+	taps := countAuditResources(audit.Taps)
+	processes := countAuditProcesses(audit.Processes)
+	for _, task := range tasks {
+		if task.Status == "cleanup_pending" {
+			requireNoAuditResource(audit, task, "vm_directories", "vm_directory", vmDirectories[task.VMID])
+			requireNoAuditResource(audit, task, "rootfs_datasets", "rootfs_dataset", rootfsDatasets[task.VMID])
+			requireNoAuditResource(audit, task, "workspace_datasets", "workspace_dataset", workspaceDatasets[task.ID])
+			requireNoAuditResource(audit, task, "processes", "process", processes[task.VMID])
+			requireNoAuditResource(audit, task, "taps", "tap", taps[task.VMID])
+			continue
+		}
+		requireOneAuditResource(audit, task, "vm_directories", "vm_directory", vmDirectories[task.VMID])
+		requireOneAuditResource(audit, task, "rootfs_datasets", "rootfs_dataset", rootfsDatasets[task.VMID])
+		requireOneAuditResource(audit, task, "workspace_datasets", "workspace_dataset", workspaceDatasets[task.ID])
+		requireOneAuditResource(audit, task, "ip_allocations", "ip_allocation", allocationCount(audit.IPAllocations, task.ID))
+		switch task.Status {
+		case "running", "starting":
+			requireOneAuditResource(audit, task, "processes", "process", processes[task.VMID])
+			requireOneAuditResource(audit, task, "taps", "tap", taps[task.VMID])
+		case "stopped":
+			requireNoAuditResource(audit, task, "processes", "process", processes[task.VMID])
+			requireNoAuditResource(audit, task, "taps", "tap", taps[task.VMID])
+		case "failed":
+			if !hasUnknownRead(audit.UnknownReads, "processes") && !hasUnknownRead(audit.UnknownReads, "taps") && processes[task.VMID] != taps[task.VMID] {
+				audit.Mismatches = append(audit.Mismatches, orphanAuditMismatch{Kind: "mismatched", Resource: "failed_task_runtime", OwnerID: task.ID, Detail: "process and tap ownership differ"})
+			}
+		}
+	}
+}
+
+func countAuditResources(resources []orphanAuditResource) map[string]int {
+	counts := make(map[string]int, len(resources))
+	for _, resource := range resources {
+		counts[resource.OwnerID]++
+	}
+	return counts
+}
+
+func countAuditProcesses(processes []orphanAuditProcess) map[string]int {
+	counts := make(map[string]int, len(processes))
+	for _, process := range processes {
+		counts[process.OwnerID]++
+	}
+	return counts
+}
+
+func allocationCount(allocations map[string]string, taskID string) int {
+	if _, exists := allocations[taskID]; exists {
+		return 1
+	}
+	return 0
+}
+
+func requireOneAuditResource(audit *orphanAudit, task orphanAuditTask, source, resource string, count int) {
+	if hasUnknownRead(audit.UnknownReads, source) {
+		return
+	}
+	if count != 1 {
+		audit.Mismatches = append(audit.Mismatches, orphanAuditMismatch{Kind: "missing", Resource: resource, OwnerID: task.ID, Detail: "expected exactly one"})
+	}
+}
+
+func requireNoAuditResource(audit *orphanAudit, task orphanAuditTask, source, resource string, count int) {
+	if hasUnknownRead(audit.UnknownReads, source) {
+		return
+	}
+	if count != 0 {
+		audit.Mismatches = append(audit.Mismatches, orphanAuditMismatch{Kind: "mismatched", Resource: resource, OwnerID: task.ID, Detail: "cleanup_pending requires absence"})
+	}
 }
 
 func reconcileResources(audit *orphanAudit, resource string, resources []orphanAuditResource, tasksByID, tasksByVMID map[string]orphanAuditTask, useVMID bool) {
@@ -240,12 +343,11 @@ func reconcileProcesses(audit *orphanAudit, processes []orphanAuditProcess, task
 			audit.Mismatches = append(audit.Mismatches, orphanAuditMismatch{Kind: "malformed", Resource: "process", OwnerID: process.OwnerID, Detail: strconv.Itoa(process.PID), Running: process.Running})
 			continue
 		}
-		key := process.OwnerID + "/" + strconv.Itoa(process.PID)
-		if _, exists := seen[key]; exists {
+		if _, exists := seen[process.OwnerID]; exists {
 			audit.Mismatches = append(audit.Mismatches, orphanAuditMismatch{Kind: "duplicate", Resource: "process", OwnerID: process.OwnerID, Detail: strconv.Itoa(process.PID), Running: process.Running})
 			continue
 		}
-		seen[key] = struct{}{}
+		seen[process.OwnerID] = struct{}{}
 		if _, exists := tasksByVMID[process.OwnerID]; exists {
 			continue
 		}
@@ -260,7 +362,7 @@ func reconcileProcesses(audit *orphanAudit, processes []orphanAuditProcess, task
 func reconcileAllocations(audit *orphanAudit, tasksByID, tasksByVMID map[string]orphanAuditTask) {
 	byIP := make(map[string]string, len(audit.IPAllocations))
 	for taskID, ip := range audit.IPAllocations {
-		if taskID == "" || net.ParseIP(ip) == nil {
+		if !isCanonicalAuditID(taskID) || !isCanonicalAuditIPv4(ip) {
 			audit.Mismatches = append(audit.Mismatches, orphanAuditMismatch{Kind: "malformed", Resource: "ip_allocation", OwnerID: taskID, Detail: ip})
 			continue
 		}
@@ -294,7 +396,7 @@ func newSystemOrphanAuditReaders(cfg *config.Config, c *client.Client) orphanAud
 					items = append(items, orphanAuditTask{})
 					continue
 				}
-				items = append(items, orphanAuditTask{ID: task.GetId(), VMID: task.GetVmId()})
+				items = append(items, orphanAuditTask{ID: task.GetId(), VMID: task.GetVmId(), Status: task.GetStatus()})
 			}
 			return items, nil
 		},
@@ -314,7 +416,7 @@ func newSystemOrphanAuditReaders(cfg *config.Config, c *client.Client) orphanAud
 			return listAuditTaps(ctx, vmDir)
 		},
 		listIPAllocations: func(context.Context) (map[string]string, error) {
-			return listAuditIPAllocations(filepath.Join(cfg.Daemon.DataDir, "ip_pool.json"))
+			return listAuditIPAllocations(filepath.Join(cfg.Daemon.DataDir, "ip_pool.json"), cfg.Firecracker.VMSubnet, cfg.Firecracker.VMGateway)
 		},
 	}
 }
@@ -409,33 +511,143 @@ func listAuditTaps(ctx context.Context, vmDir string) ([]orphanAuditResource, er
 	return items, nil
 }
 
-func listAuditIPAllocations(path string) (map[string]string, error) {
+func listAuditIPAllocations(path, subnet, gateway string) (map[string]string, error) {
 	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return map[string]string{}, nil
-	}
 	if err != nil {
 		return nil, err
 	}
-	var persisted struct {
-		Allocated map[string]string `json:"allocated"`
-	}
-	decoder := json.NewDecoder(strings.NewReader(string(data)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&persisted); err != nil {
+	return parseAuditIPAllocations(data, subnet, gateway)
+}
+
+func parseAuditIPAllocations(data []byte, subnet, gateway string) (map[string]string, error) {
+	prefix, gatewayAddress, broadcast, err := auditIPv4Pool(subnet, gateway)
+	if err != nil {
 		return nil, err
 	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	start, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	if delimiter, ok := start.(json.Delim); !ok || delimiter != '{' {
+		return nil, errors.New("allocation state must be a JSON object")
+	}
+	var allocations map[string]string
+	seen := make(map[string]struct{})
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return nil, err
+		}
+		key, ok := token.(string)
+		if !ok {
+			return nil, errors.New("allocation state has a non-string key")
+		}
+		if _, exists := seen[key]; exists {
+			return nil, fmt.Errorf("duplicate allocation state key %q", key)
+		}
+		seen[key] = struct{}{}
+		if key != "allocated" {
+			return nil, fmt.Errorf("unknown allocation state key %q", key)
+		}
+		allocations, err = decodeAuditAllocations(decoder, prefix, gatewayAddress, broadcast)
+		if err != nil {
+			return nil, err
+		}
+	}
+	end, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	if delimiter, ok := end.(json.Delim); !ok || delimiter != '}' {
+		return nil, errors.New("allocation state object did not close")
+	}
+	if _, err := decoder.Token(); err != io.EOF {
 		if err == nil {
 			return nil, errors.New("allocation state contains multiple JSON documents")
 		}
 		return nil, err
 	}
-	if persisted.Allocated == nil {
+	if allocations == nil {
 		return nil, errors.New("allocation state omits allocated map")
 	}
-	return persisted.Allocated, nil
+	return allocations, nil
+}
+
+func decodeAuditAllocations(decoder *json.Decoder, prefix netip.Prefix, gateway, broadcast netip.Addr) (map[string]string, error) {
+	start, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	if delimiter, ok := start.(json.Delim); !ok || delimiter != '{' {
+		return nil, errors.New("allocated must be a JSON object")
+	}
+	allocations := make(map[string]string)
+	seenIPs := make(map[string]string)
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return nil, err
+		}
+		taskID, ok := token.(string)
+		if !ok || !isCanonicalAuditID(taskID) {
+			return nil, fmt.Errorf("invalid allocation task id %q", taskID)
+		}
+		if _, exists := allocations[taskID]; exists {
+			return nil, fmt.Errorf("duplicate allocation task id %q", taskID)
+		}
+		var ip string
+		if err := decoder.Decode(&ip); err != nil {
+			return nil, err
+		}
+		if !isUsableAuditIPv4(ip, prefix, gateway, broadcast) {
+			return nil, fmt.Errorf("invalid allocation address %q", ip)
+		}
+		if otherTaskID, exists := seenIPs[ip]; exists {
+			return nil, fmt.Errorf("duplicate allocation address %q for %s and %s", ip, otherTaskID, taskID)
+		}
+		seenIPs[ip] = taskID
+		allocations[taskID] = ip
+	}
+	end, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	if delimiter, ok := end.(json.Delim); !ok || delimiter != '}' {
+		return nil, errors.New("allocated object did not close")
+	}
+	return allocations, nil
+}
+
+func auditIPv4Pool(subnet, gateway string) (netip.Prefix, netip.Addr, netip.Addr, error) {
+	prefix, err := netip.ParsePrefix(subnet)
+	if err != nil || !prefix.Addr().Is4() || prefix.Bits() != 24 {
+		return netip.Prefix{}, netip.Addr{}, netip.Addr{}, fmt.Errorf("invalid IPv4 allocation subnet %q", subnet)
+	}
+	prefix = prefix.Masked()
+	gatewayAddress, err := netip.ParseAddr(gateway)
+	if err != nil || !gatewayAddress.Is4() || !prefix.Contains(gatewayAddress) {
+		return netip.Prefix{}, netip.Addr{}, netip.Addr{}, fmt.Errorf("invalid IPv4 allocation gateway %q", gateway)
+	}
+	network := binary.BigEndian.Uint32(prefix.Addr().AsSlice())
+	hostMask := (uint32(1) << uint(32-prefix.Bits())) - 1
+	broadcastValue := network | hostMask
+	var broadcastBytes [4]byte
+	binary.BigEndian.PutUint32(broadcastBytes[:], broadcastValue)
+	return prefix, gatewayAddress, netip.AddrFrom4(broadcastBytes), nil
+}
+
+func isCanonicalAuditIPv4(value string) bool {
+	address, err := netip.ParseAddr(value)
+	return err == nil && address.Is4() && address.String() == value
+}
+
+func isUsableAuditIPv4(value string, prefix netip.Prefix, gateway, broadcast netip.Addr) bool {
+	if !isCanonicalAuditIPv4(value) {
+		return false
+	}
+	address := netip.MustParseAddr(value)
+	return prefix.Contains(address) && address != prefix.Addr() && address != gateway && address != broadcast
 }
 
 func listAuditProcesses(ctx context.Context, vmDir, firecrackerBin string) ([]orphanAuditProcess, error) {

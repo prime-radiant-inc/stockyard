@@ -7,30 +7,34 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/obra/stockyard/pkg/config"
 )
+
+const auditTaskID = "a1b2c3d4"
 
 func cleanOrphanAuditReaders() orphanAuditReaders {
 	return orphanAuditReaders{
 		listTasks: func(context.Context) ([]orphanAuditTask, error) {
-			return []orphanAuditTask{{ID: "task-1", VMID: "vm-1"}}, nil
+			return []orphanAuditTask{{ID: auditTaskID, VMID: auditTaskID, Status: "running"}}, nil
 		},
 		listVMDirs: func(context.Context) ([]orphanAuditResource, error) {
-			return []orphanAuditResource{{OwnerID: "vm-1"}}, nil
+			return []orphanAuditResource{{OwnerID: auditTaskID}}, nil
 		},
 		listProcesses: func(context.Context) ([]orphanAuditProcess, error) {
-			return []orphanAuditProcess{{OwnerID: "vm-1", PID: 123, Running: true}}, nil
+			return []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}}, nil
 		},
 		listRootfsDatasets: func(context.Context) ([]orphanAuditResource, error) {
-			return []orphanAuditResource{{OwnerID: "vm-1"}}, nil
+			return []orphanAuditResource{{OwnerID: auditTaskID}}, nil
 		},
 		listWorkspaceDatasets: func(context.Context) ([]orphanAuditResource, error) {
-			return []orphanAuditResource{{OwnerID: "task-1"}}, nil
+			return []orphanAuditResource{{OwnerID: auditTaskID}}, nil
 		},
 		listTaps: func(context.Context) ([]orphanAuditResource, error) {
-			return []orphanAuditResource{{OwnerID: "vm-1"}}, nil
+			return []orphanAuditResource{{OwnerID: auditTaskID}}, nil
 		},
 		listIPAllocations: func(context.Context) (map[string]string, error) {
-			return map[string]string{"task-1": "10.0.0.2"}, nil
+			return map[string]string{auditTaskID: "10.0.100.2"}, nil
 		},
 	}
 }
@@ -56,17 +60,143 @@ func TestOrphanAuditCleanInventoryIsReadOnlyAndSucceeds(t *testing.T) {
 	}
 }
 
+func TestOrphanAuditRequiresEveryOrdinaryDurableResource(t *testing.T) {
+	tests := []struct {
+		name string
+		set  func(*orphanAuditReaders)
+	}{
+		{"VM directory", func(readers *orphanAuditReaders) {
+			readers.listVMDirs = func(context.Context) ([]orphanAuditResource, error) { return nil, nil }
+		}},
+		{"rootfs dataset", func(readers *orphanAuditReaders) {
+			readers.listRootfsDatasets = func(context.Context) ([]orphanAuditResource, error) { return nil, nil }
+		}},
+		{"workspace dataset", func(readers *orphanAuditReaders) {
+			readers.listWorkspaceDatasets = func(context.Context) ([]orphanAuditResource, error) { return nil, nil }
+		}},
+		{"IP allocation", func(readers *orphanAuditReaders) {
+			readers.listIPAllocations = func(context.Context) (map[string]string, error) { return map[string]string{}, nil }
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			readers := cleanOrphanAuditReaders()
+			tt.set(&readers)
+			var output bytes.Buffer
+			if err := runOrphanAudit(context.Background(), readers, &output); err == nil {
+				t.Fatalf("runOrphanAudit accepted missing %s", tt.name)
+			}
+			if got := decodeOrphanAudit(t, output); len(got.Mismatches) == 0 {
+				t.Fatalf("missing %s was not reported: %#v", tt.name, got)
+			}
+		})
+	}
+}
+
+func TestOrphanAuditEnforcesStateSpecificProcessAndTapOwnership(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    string
+		processes []orphanAuditProcess
+		taps      []orphanAuditResource
+		wantErr   bool
+	}{
+		{name: "running requires both", status: "running", taps: []orphanAuditResource{{OwnerID: auditTaskID}}, wantErr: true},
+		{name: "starting requires both", status: "starting", processes: []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}}, wantErr: true},
+		{name: "stopped requires neither", status: "stopped", processes: []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}}, wantErr: true},
+		{name: "failed permits matched live pair", status: "failed", processes: []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}}, taps: []orphanAuditResource{{OwnerID: auditTaskID}}},
+		{name: "failed rejects unpaired process", status: "failed", processes: []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			readers := cleanOrphanAuditReaders()
+			readers.listTasks = func(context.Context) ([]orphanAuditTask, error) {
+				return []orphanAuditTask{{ID: auditTaskID, VMID: auditTaskID, Status: tt.status}}, nil
+			}
+			readers.listProcesses = func(context.Context) ([]orphanAuditProcess, error) { return tt.processes, nil }
+			readers.listTaps = func(context.Context) ([]orphanAuditResource, error) { return tt.taps, nil }
+			var output bytes.Buffer
+			err := runOrphanAudit(context.Background(), readers, &output)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("runOrphanAudit() error = %v, want error %t", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestOrphanAuditCleanupPendingRequiresVerifiedAbsence(t *testing.T) {
+	for _, set := range []func(*orphanAuditReaders){
+		func(readers *orphanAuditReaders) {
+			readers.listVMDirs = func(context.Context) ([]orphanAuditResource, error) {
+				return []orphanAuditResource{{OwnerID: auditTaskID}}, nil
+			}
+		},
+		func(readers *orphanAuditReaders) {
+			readers.listRootfsDatasets = func(context.Context) ([]orphanAuditResource, error) {
+				return []orphanAuditResource{{OwnerID: auditTaskID}}, nil
+			}
+		},
+		func(readers *orphanAuditReaders) {
+			readers.listWorkspaceDatasets = func(context.Context) ([]orphanAuditResource, error) {
+				return []orphanAuditResource{{OwnerID: auditTaskID}}, nil
+			}
+		},
+		func(readers *orphanAuditReaders) {
+			readers.listProcesses = func(context.Context) ([]orphanAuditProcess, error) {
+				return []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}}, nil
+			}
+		},
+		func(readers *orphanAuditReaders) {
+			readers.listTaps = func(context.Context) ([]orphanAuditResource, error) {
+				return []orphanAuditResource{{OwnerID: auditTaskID}}, nil
+			}
+		},
+	} {
+		readers := cleanOrphanAuditReaders()
+		readers.listTasks = func(context.Context) ([]orphanAuditTask, error) {
+			return []orphanAuditTask{{ID: auditTaskID, VMID: auditTaskID, Status: "cleanup_pending"}}, nil
+		}
+		readers.listVMDirs = func(context.Context) ([]orphanAuditResource, error) { return nil, nil }
+		readers.listProcesses = func(context.Context) ([]orphanAuditProcess, error) { return nil, nil }
+		readers.listRootfsDatasets = func(context.Context) ([]orphanAuditResource, error) { return nil, nil }
+		readers.listWorkspaceDatasets = func(context.Context) ([]orphanAuditResource, error) { return nil, nil }
+		readers.listTaps = func(context.Context) ([]orphanAuditResource, error) { return nil, nil }
+		set(&readers)
+		var output bytes.Buffer
+		if err := runOrphanAudit(context.Background(), readers, &output); err == nil {
+			t.Fatal("cleanup_pending accepted remaining resource")
+		}
+	}
+}
+
+func TestOrphanAuditRejectsMultipleProcessesForOneVM(t *testing.T) {
+	readers := cleanOrphanAuditReaders()
+	readers.listProcesses = func(context.Context) ([]orphanAuditProcess, error) {
+		return []orphanAuditProcess{{OwnerID: auditTaskID, PID: 123, Running: true}, {OwnerID: auditTaskID, PID: 456, Running: true}}, nil
+	}
+	var output bytes.Buffer
+	if err := runOrphanAudit(context.Background(), readers, &output); err == nil {
+		t.Fatal("runOrphanAudit accepted two Firecracker processes for one VM")
+	}
+}
+
 func TestOrphanAuditReportsRunningOrphanProcess(t *testing.T) {
 	readers := cleanOrphanAuditReaders()
 	readers.listProcesses = func(context.Context) ([]orphanAuditProcess, error) {
-		return []orphanAuditProcess{{OwnerID: "orphan-vm", PID: 456, Running: true}}, nil
+		return []orphanAuditProcess{{OwnerID: "deadbeef", PID: 456, Running: true}}, nil
 	}
 	var output bytes.Buffer
 	if err := runOrphanAudit(context.Background(), readers, &output); err == nil {
 		t.Fatal("runOrphanAudit accepted a running orphan process")
 	}
 	got := decodeOrphanAudit(t, output)
-	if len(got.Mismatches) != 1 || got.Mismatches[0].Resource != "process" || got.Mismatches[0].OwnerID != "orphan-vm" || !got.Mismatches[0].Running {
+	found := false
+	for _, mismatch := range got.Mismatches {
+		if mismatch.Resource == "process" && mismatch.OwnerID == "deadbeef" && mismatch.Running {
+			found = true
+		}
+	}
+	if !found {
 		t.Fatalf("running orphan result = %#v", got)
 	}
 }
@@ -127,7 +257,7 @@ func TestOrphanAuditRejectsOrphanResources(t *testing.T) {
 				t.Fatal("runOrphanAudit accepted an orphan")
 			}
 			got := decodeOrphanAudit(t, output)
-			if len(got.Mismatches) != 1 || len(got.UnknownReads) != 0 {
+			if len(got.Mismatches) == 0 || len(got.UnknownReads) != 0 {
 				t.Fatalf("orphan result = %#v", got)
 			}
 		})
@@ -215,13 +345,65 @@ func TestAuditProcessSocketRejectsMalformedOwnership(t *testing.T) {
 	}
 }
 
-func TestListAuditIPAllocationsRejectsTrailingJSON(t *testing.T) {
+func TestListAuditIPAllocationsRejectsMissingInventory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ip_pool.json")
+	cfg := config.DefaultConfig()
+	if _, err := listAuditIPAllocations(path, cfg.Firecracker.VMSubnet, cfg.Firecracker.VMGateway); err == nil {
+		t.Fatal("listAuditIPAllocations accepted a missing inventory for an empty fleet")
+	}
+}
+
+func TestOrphanAuditTreatsMissingIPInventoryAsUnknownForAnyFleetSize(t *testing.T) {
+	for _, zeroRows := range []bool{false, true} {
+		readers := cleanOrphanAuditReaders()
+		if zeroRows {
+			readers.listTasks = func(context.Context) ([]orphanAuditTask, error) { return nil, nil }
+			readers.listVMDirs = func(context.Context) ([]orphanAuditResource, error) { return nil, nil }
+			readers.listProcesses = func(context.Context) ([]orphanAuditProcess, error) { return nil, nil }
+			readers.listRootfsDatasets = func(context.Context) ([]orphanAuditResource, error) { return nil, nil }
+			readers.listWorkspaceDatasets = func(context.Context) ([]orphanAuditResource, error) { return nil, nil }
+			readers.listTaps = func(context.Context) ([]orphanAuditResource, error) { return nil, nil }
+		}
+		readers.listIPAllocations = func(context.Context) (map[string]string, error) { return nil, os.ErrNotExist }
+		var output bytes.Buffer
+		if err := runOrphanAudit(context.Background(), readers, &output); err == nil {
+			t.Fatal("runOrphanAudit accepted a missing durable IP inventory")
+		}
+		got := decodeOrphanAudit(t, output)
+		if len(got.UnknownReads) != 1 || got.UnknownReads[0].Source != "ip_allocations" {
+			t.Fatalf("missing IP inventory result = %#v", got)
+		}
+	}
+}
+
+func TestListAuditIPAllocationsRejectsMalformedState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "ip_pool.json")
 	if err := os.WriteFile(path, []byte(`{"allocated":{"task-1":"10.0.0.2"}} {}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := listAuditIPAllocations(path); err == nil {
+	cfg := config.DefaultConfig()
+	if _, err := listAuditIPAllocations(path, cfg.Firecracker.VMSubnet, cfg.Firecracker.VMGateway); err == nil {
 		t.Fatal("listAuditIPAllocations accepted trailing JSON")
+	}
+}
+
+func TestParseAuditIPAllocationsRejectsDuplicateKeysAndInvalidAddresses(t *testing.T) {
+	cfg := config.DefaultConfig()
+	for _, state := range []string{
+		`{"allocated":{},"allocated":{}}`,
+		`{"unexpected":true}`,
+		`{"allocated":{"a1b2c3d4":"10.0.100.2","a1b2c3d4":"10.0.100.3"}}`,
+		`{"allocated":{"a1b2c3d4":"10.0.100.2","deadbeef":"10.0.100.2"}}`,
+		`{"allocated":{"a1b2c3d4":"10.0.100.1"}}`,
+		`{"allocated":{"a1b2c3d4":"10.0.100.0"}}`,
+		`{"allocated":{"a1b2c3d4":"10.0.100.255"}}`,
+		`{"allocated":{"a1b2c3d4":"10.0.101.2"}}`,
+		`{"allocated":{"a1b2c3d4":"2001:db8::1"}}`,
+		`{"allocated":{"a1b2c3d4":"010.0.100.2"}}`,
+	} {
+		if _, err := parseAuditIPAllocations([]byte(state), cfg.Firecracker.VMSubnet, cfg.Firecracker.VMGateway); err == nil {
+			t.Fatalf("parseAuditIPAllocations accepted %s", state)
+		}
 	}
 }
 
