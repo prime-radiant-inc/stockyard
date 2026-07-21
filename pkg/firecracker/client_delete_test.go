@@ -35,6 +35,9 @@ func newDeleteTestClient(t *testing.T, createDir, withZFS bool) (*Client, string
 		deleteTap: func(string) error { return nil },
 		tapExists: func(string) (bool, error) { return false, nil },
 	}
+	client.resolveExecutable = func(path string) (executableIdentity, error) {
+		return testExecutableIdentity(path), nil
+	}
 	client.processes = noStableProcesses()
 	vmDir := filepath.Join(stateDir, "stockyard", "abc12345")
 	if createDir {
@@ -76,6 +79,13 @@ func (h *fakeStableProcessHandle) Wait(ctx context.Context, timeout time.Duratio
 }
 func (h *fakeStableProcessHandle) Close() error { return h.close() }
 
+type testExecutableIdentity string
+
+func (id testExecutableIdentity) same(other executableIdentity) bool {
+	otherID, ok := other.(testExecutableIdentity)
+	return ok && id == otherID
+}
+
 func noStableProcesses() stableProcessProvider {
 	return &fakeStableProcessProvider{
 		candidateFunc: func(context.Context, string, string) ([]int, error) { return nil, nil },
@@ -89,7 +99,7 @@ func newFakeProcessHandle(pid int, executable, socketPath string) *fakeStablePro
 	return &fakeStableProcessHandle{
 		pid: pid,
 		identity: func() (processIdentity, error) {
-			return processIdentity{executable: executable, arguments: []string{"--api-sock", socketPath}}, nil
+			return processIdentity{executable: testExecutableIdentity(executable), arguments: []string{"--api-sock", socketPath}}, nil
 		},
 		signal: func(syscall.Signal) error { return nil },
 		wait:   func(context.Context, time.Duration) error { return nil },
@@ -175,6 +185,12 @@ func TestClientDeleteVMDoesNotSignalReusedProcessIdentity(t *testing.T) {
 	client, vmDir := newDeleteTestClient(t, false, false)
 	socketPath := filepath.Join(vmDir, "api.sock")
 	handle := newFakeProcessHandle(1234, "/usr/bin/unrelated", socketPath)
+	handle.identity = func() (processIdentity, error) {
+		return processIdentity{
+			executable: testExecutableIdentity("/usr/bin/unrelated"),
+			arguments:  []string{"--serve-user-data"},
+		}, nil
+	}
 	successorSignaled := false
 	handle.signal = func(syscall.Signal) error {
 		successorSignaled = true
@@ -190,6 +206,215 @@ func TestClientDeleteVMDoesNotSignalReusedProcessIdentity(t *testing.T) {
 	}
 	if successorSignaled {
 		t.Fatal("unrelated successor process was signaled after PID reuse")
+	}
+}
+
+func TestClientDeleteVMDoesNotSignalSpoofedExecutableIdentity(t *testing.T) {
+	client, vmDir := newDeleteTestClient(t, false, false)
+	socketPath := filepath.Join(vmDir, "api.sock")
+	executableDir := t.TempDir()
+	configuredExecutable := filepath.Join(executableDir, "firecracker")
+	unrelatedExecutable := filepath.Join(executableDir, "unrelated")
+	for _, path := range []string{configuredExecutable, unrelatedExecutable} {
+		if err := os.WriteFile(path, []byte(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	client.config.FirecrackerBin = configuredExecutable
+	client.resolveExecutable = resolveConfiguredExecutableIdentity
+	unrelatedInfo, err := os.Stat(unrelatedExecutable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle := newFakeProcessHandle(1234, client.config.FirecrackerBin, socketPath)
+	handle.identity = func() (processIdentity, error) {
+		return processIdentity{
+			executable: fileExecutableIdentity{info: unrelatedInfo},
+			arguments:  []string{"--api-sock", socketPath},
+		}, nil
+	}
+	successorSignaled := false
+	handleCloses := 0
+	handle.signal = func(syscall.Signal) error {
+		successorSignaled = true
+		return nil
+	}
+	handle.close = func() error {
+		handleCloses++
+		return nil
+	}
+	client.processes = processProviderForHandle(handle)
+
+	err = client.DeleteVM(context.Background(), "stockyard", "abc12345")
+	if err == nil || !strings.Contains(err.Error(), "executable identity") {
+		t.Fatalf("DeleteVM error = %v, want executable identity mismatch", err)
+	}
+	if successorSignaled {
+		t.Fatal("unrelated executable with spoofed Firecracker arguments was signaled")
+	}
+	if handleCloses != 1 {
+		t.Errorf("spoofed executable handle closes = %d, want 1", handleCloses)
+	}
+}
+
+func TestFindProcessBySocketClosesRetainedMatchOnLaterCandidateError(t *testing.T) {
+	laterErr := errors.New("later candidate failure")
+	firstCloseErr := errors.New("first match close failure")
+	secondCloseErr := errors.New("second candidate close failure")
+
+	tests := []struct {
+		name          string
+		configureLast func(*fakeStableProcessHandle) func(int) (stableProcessHandle, error)
+		wantErrors    []error
+	}{
+		{
+			name: "open failure",
+			configureLast: func(*fakeStableProcessHandle) func(int) (stableProcessHandle, error) {
+				return func(int) (stableProcessHandle, error) { return nil, laterErr }
+			},
+			wantErrors: []error{laterErr, firstCloseErr},
+		},
+		{
+			name: "identity failure",
+			configureLast: func(second *fakeStableProcessHandle) func(int) (stableProcessHandle, error) {
+				second.identity = func() (processIdentity, error) { return processIdentity{}, laterErr }
+				second.close = func() error { return secondCloseErr }
+				return func(int) (stableProcessHandle, error) { return second, nil }
+			},
+			wantErrors: []error{laterErr, firstCloseErr, secondCloseErr},
+		},
+		{
+			name: "disappeared process close failure",
+			configureLast: func(second *fakeStableProcessHandle) func(int) (stableProcessHandle, error) {
+				second.identity = func() (processIdentity, error) { return processIdentity{}, errProcessAbsent }
+				second.close = func() error { return secondCloseErr }
+				return func(int) (stableProcessHandle, error) { return second, nil }
+			},
+			wantErrors: []error{firstCloseErr, secondCloseErr},
+		},
+		{
+			name: "unrelated process close failure",
+			configureLast: func(second *fakeStableProcessHandle) func(int) (stableProcessHandle, error) {
+				second.identity = func() (processIdentity, error) {
+					return processIdentity{executable: testExecutableIdentity("/usr/bin/unrelated")}, nil
+				}
+				second.close = func() error { return secondCloseErr }
+				return func(int) (stableProcessHandle, error) { return second, nil }
+			},
+			wantErrors: []error{firstCloseErr, secondCloseErr},
+		},
+		{
+			name: "executable identity mismatch",
+			configureLast: func(second *fakeStableProcessHandle) func(int) (stableProcessHandle, error) {
+				originalIdentity := second.identity
+				second.identity = func() (processIdentity, error) {
+					identity, err := originalIdentity()
+					if err != nil {
+						return processIdentity{}, err
+					}
+					return processIdentity{
+						executable: testExecutableIdentity("/usr/bin/spoof"),
+						arguments:  identity.arguments,
+					}, nil
+				}
+				second.close = func() error { return secondCloseErr }
+				return func(int) (stableProcessHandle, error) { return second, nil }
+			},
+			wantErrors: []error{firstCloseErr, secondCloseErr},
+		},
+		{
+			name: "multiple exact matches",
+			configureLast: func(second *fakeStableProcessHandle) func(int) (stableProcessHandle, error) {
+				second.close = func() error { return secondCloseErr }
+				return func(int) (stableProcessHandle, error) { return second, nil }
+			},
+			wantErrors: []error{firstCloseErr, secondCloseErr},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, vmDir := newDeleteTestClient(t, false, false)
+			socketPath := filepath.Join(vmDir, "api.sock")
+			first := newFakeProcessHandle(1234, client.config.FirecrackerBin, socketPath)
+			second := newFakeProcessHandle(5678, client.config.FirecrackerBin, socketPath)
+			firstCloses := 0
+			secondCloses := 0
+			first.close = func() error {
+				firstCloses++
+				return firstCloseErr
+			}
+			secondClose := second.close
+			openLast := tt.configureLast(second)
+			configuredSecondClose := second.close
+			second.close = func() error {
+				secondCloses++
+				if configuredSecondClose != nil {
+					return configuredSecondClose()
+				}
+				return secondClose()
+			}
+			client.processes = &fakeStableProcessProvider{
+				candidateFunc: func(context.Context, string, string) ([]int, error) {
+					return []int{1234, 5678}, nil
+				},
+				openFunc: func(pid int) (stableProcessHandle, error) {
+					if pid == 1234 {
+						return first, nil
+					}
+					return openLast(pid)
+				},
+			}
+
+			_, err := client.findProcessBySocket(context.Background(), socketPath)
+			if err == nil {
+				t.Fatal("findProcessBySocket succeeded despite later candidate failure")
+			}
+			for _, wantErr := range tt.wantErrors {
+				if !errors.Is(err, wantErr) {
+					t.Errorf("error %q does not preserve %q", err, wantErr)
+				}
+			}
+			if firstCloses != 1 {
+				t.Errorf("first handle closes = %d, want 1", firstCloses)
+			}
+			wantSecondCloses := 1
+			if tt.name == "open failure" {
+				wantSecondCloses = 0
+			}
+			if secondCloses != wantSecondCloses {
+				t.Errorf("second handle closes = %d, want %d", secondCloses, wantSecondCloses)
+			}
+		})
+	}
+}
+
+func TestFindProcessBySocketTransfersMatchedHandleOwnership(t *testing.T) {
+	client, vmDir := newDeleteTestClient(t, false, false)
+	socketPath := filepath.Join(vmDir, "api.sock")
+	handle := newFakeProcessHandle(1234, client.config.FirecrackerBin, socketPath)
+	closes := 0
+	handle.close = func() error {
+		closes++
+		return nil
+	}
+	client.processes = processProviderForHandle(handle)
+
+	matched, err := client.findProcessBySocket(context.Background(), socketPath)
+	if err != nil {
+		t.Fatalf("findProcessBySocket: %v", err)
+	}
+	if matched != handle {
+		t.Fatalf("matched handle = %T %v, want original handle", matched, matched)
+	}
+	if closes != 0 {
+		t.Fatalf("matched handle closed before ownership transfer: %d", closes)
+	}
+	if err := matched.Close(); err != nil {
+		t.Fatalf("close transferred handle: %v", err)
+	}
+	if closes != 1 {
+		t.Errorf("matched handle closes = %d, want 1", closes)
 	}
 }
 
@@ -473,6 +698,12 @@ func TestClientDeleteVMIgnoresUnrelatedProcesses(t *testing.T) {
 	client, vmDir := newDeleteTestClient(t, true, false)
 	socketPath := filepath.Join(vmDir, "api.sock")
 	handle := newFakeProcessHandle(102, "/usr/bin/unrelated", socketPath)
+	handle.identity = func() (processIdentity, error) {
+		return processIdentity{
+			executable: testExecutableIdentity("/usr/bin/unrelated"),
+			arguments:  []string{"--api-sock", "/tmp/other.sock"},
+		}, nil
+	}
 	handle.signal = func(syscall.Signal) error {
 		t.Fatal("unrelated process was signaled")
 		return nil

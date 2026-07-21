@@ -4,14 +4,29 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
 	"syscall"
 	"time"
 )
 
 var errProcessAbsent = errors.New("process is absent")
 
+type executableIdentity interface {
+	same(executableIdentity) bool
+}
+
+type fileExecutableIdentity struct {
+	info os.FileInfo
+}
+
+func (identity fileExecutableIdentity) same(other executableIdentity) bool {
+	otherFile, ok := other.(fileExecutableIdentity)
+	return ok && os.SameFile(identity.info, otherFile.info)
+}
+
 type processIdentity struct {
-	executable string
+	executable executableIdentity
 	arguments  []string
 }
 
@@ -28,13 +43,25 @@ type stableProcessProvider interface {
 	open(int) (stableProcessHandle, error)
 }
 
-func (c *Client) findProcessBySocket(ctx context.Context, socketPath string) (stableProcessHandle, error) {
+func (c *Client) findProcessBySocket(ctx context.Context, socketPath string) (result stableProcessHandle, retErr error) {
 	pids, err := c.processes.candidatePIDs(ctx, c.config.FirecrackerBin, socketPath)
 	if err != nil {
 		return nil, fmt.Errorf("list process candidates: %w", err)
 	}
+	if len(pids) == 0 {
+		return nil, nil
+	}
+	expectedExecutable, err := c.resolveExecutable(c.config.FirecrackerBin)
+	if err != nil {
+		return nil, fmt.Errorf("resolve configured Firecracker executable identity: %w", err)
+	}
 
 	var match stableProcessHandle
+	defer func() {
+		if match != nil {
+			retErr = errors.Join(retErr, closeStableProcessHandle(match, "close retained Firecracker process handle"))
+		}
+	}()
 	for _, pid := range pids {
 		process, err := c.processes.open(pid)
 		if errors.Is(err, errProcessAbsent) {
@@ -46,44 +73,74 @@ func (c *Client) findProcessBySocket(ctx context.Context, socketPath string) (st
 
 		identity, err := process.Identity()
 		if errors.Is(err, errProcessAbsent) {
-			if closeErr := process.Close(); closeErr != nil {
-				return nil, fmt.Errorf("close absent process handle for PID %d: %w", pid, closeErr)
+			if closeErr := closeStableProcessHandle(process, "close absent process handle"); closeErr != nil {
+				return nil, closeErr
 			}
 			continue
 		}
 		if err != nil {
 			return nil, errors.Join(
 				fmt.Errorf("read stable process identity for PID %d: %w", pid, err),
-				process.Close(),
+				closeStableProcessHandle(process, "close process handle after identity failure"),
 			)
 		}
-		if !identityOwnsSocket(identity, c.config.FirecrackerBin, socketPath) {
-			if err := process.Close(); err != nil {
-				return nil, fmt.Errorf("close unrelated process handle for PID %d: %w", pid, err)
+		if !argumentsOwnSocket(identity.arguments, socketPath) {
+			if err := closeStableProcessHandle(process, "close unrelated process handle"); err != nil {
+				return nil, err
 			}
 			continue
 		}
+		if !sameExecutableIdentity(identity.executable, expectedExecutable) {
+			return nil, errors.Join(
+				fmt.Errorf("Firecracker process candidate PID %d has an unknown executable identity", pid),
+				closeStableProcessHandle(process, "close executable-mismatch process handle"),
+			)
+		}
 		if match != nil {
 			firstPID := match.PID()
-			closeErr := errors.Join(match.Close(), process.Close())
 			return nil, errors.Join(
 				fmt.Errorf("multiple Firecracker processes own API socket %s: PIDs %d and %d", socketPath, firstPID, pid),
-				closeErr,
+				closeStableProcessHandle(process, "close additional Firecracker process handle"),
 			)
 		}
 		match = process
 	}
-	return match, nil
+	result = match
+	match = nil
+	return result, nil
 }
 
-func identityOwnsSocket(identity processIdentity, executable, socketPath string) bool {
-	if identity.executable != executable {
+func resolveConfiguredExecutableIdentity(configured string) (executableIdentity, error) {
+	path, err := exec.LookPath(configured)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	return fileExecutableIdentity{info: info}, nil
+}
+
+func sameExecutableIdentity(left, right executableIdentity) bool {
+	if left == nil || right == nil {
 		return false
 	}
-	for i := 0; i+1 < len(identity.arguments); i++ {
-		if identity.arguments[i] == "--api-sock" && identity.arguments[i+1] == socketPath {
+	return left.same(right) && right.same(left)
+}
+
+func argumentsOwnSocket(arguments []string, socketPath string) bool {
+	for i := 0; i+1 < len(arguments); i++ {
+		if arguments[i] == "--api-sock" && arguments[i+1] == socketPath {
 			return true
 		}
 	}
 	return false
+}
+
+func closeStableProcessHandle(process stableProcessHandle, action string) error {
+	if err := process.Close(); err != nil {
+		return fmt.Errorf("%s for PID %d: %w", action, process.PID(), err)
+	}
+	return nil
 }

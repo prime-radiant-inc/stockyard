@@ -51,16 +51,17 @@ type trackedProc struct {
 
 // Client manages Firecracker microVMs.
 type Client struct {
-	config      ClientConfig
-	zfs         *zfs.Manager
-	network     *NetworkManager
-	cidCounter  uint32     // Next CID to allocate
-	cidMu       sync.Mutex // Protects cidCounter
-	mu          sync.Mutex
-	procs       map[string]*trackedProc // vmID -> tracked process
-	deleteHooks *deleteVMHooks
-	createHooks *createVMHooks
-	processes   stableProcessProvider
+	config            ClientConfig
+	zfs               *zfs.Manager
+	network           *NetworkManager
+	cidCounter        uint32     // Next CID to allocate
+	cidMu             sync.Mutex // Protects cidCounter
+	mu                sync.Mutex
+	procs             map[string]*trackedProc // vmID -> tracked process
+	deleteHooks       *deleteVMHooks
+	createHooks       *createVMHooks
+	processes         stableProcessProvider
+	resolveExecutable func(string) (executableIdentity, error)
 }
 
 type createVMHooks struct {
@@ -98,12 +99,13 @@ func NewClient(cfg ClientConfig, zfsMgr *zfs.Manager) (*Client, error) {
 	}
 
 	return &Client{
-		config:     cfg,
-		zfs:        zfsMgr,
-		network:    NewNetworkManager(cfg.BridgeName),
-		cidCounter: 100, // Start CIDs at 100 (3-99 reserved)
-		procs:      make(map[string]*trackedProc),
-		processes:  newStableProcessProvider(),
+		config:            cfg,
+		zfs:               zfsMgr,
+		network:           NewNetworkManager(cfg.BridgeName),
+		cidCounter:        100, // Start CIDs at 100 (3-99 reserved)
+		procs:             make(map[string]*trackedProc),
+		processes:         newStableProcessProvider(),
+		resolveExecutable: resolveConfiguredExecutableIdentity,
 	}, nil
 }
 
