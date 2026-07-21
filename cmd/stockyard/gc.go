@@ -25,6 +25,7 @@ var (
 	gcForce      bool
 	gcDryRun     bool
 	gcVerbose    bool
+	gcJSON       bool
 )
 
 var gcCmd = &cobra.Command{
@@ -41,6 +42,33 @@ Use --force to skip confirmation prompts.
 
 Note: This command will NOT clean up running VMs - they must be stopped first.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validateGCAuditFlags(gcOrphans, gcDryRun, gcJSON); err != nil {
+			return err
+		}
+		if gcJSON {
+			if gcAll || gcEverything || gcForce {
+				return fmt.Errorf("gc --json cannot be combined with --all, --everything, or --force")
+			}
+			cfg, err := config.Load()
+			if err != nil {
+				return runOrphanAudit(cmd.Context(), orphanAuditReaders{
+					listTasks: func(context.Context) ([]orphanAuditTask, error) {
+						return nil, fmt.Errorf("load configuration: %w", err)
+					},
+				}, cmd.OutOrStdout())
+			}
+			c, clientErr := getClient()
+			if clientErr != nil {
+				readers := newSystemOrphanAuditReaders(cfg, nil)
+				readers.listTasks = func(context.Context) ([]orphanAuditTask, error) {
+					return nil, clientErr
+				}
+				return runOrphanAudit(cmd.Context(), readers, cmd.OutOrStdout())
+			}
+			defer c.Close()
+			return runOrphanAudit(cmd.Context(), newSystemOrphanAuditReaders(cfg, c), cmd.OutOrStdout())
+		}
+
 		// Check for root privileges
 		if os.Geteuid() != 0 {
 			fmt.Fprintln(os.Stderr, "Warning: gc requires root privileges for most operations (ZFS, network, process management)")
@@ -497,5 +525,6 @@ func init() {
 	gcCmd.Flags().BoolVarP(&gcForce, "force", "f", false, "Skip confirmation prompts")
 	gcCmd.Flags().BoolVar(&gcDryRun, "dry-run", false, "Show what would be cleaned without making changes")
 	gcCmd.Flags().BoolVarP(&gcVerbose, "verbose", "v", false, "Show verbose output including warnings")
+	gcCmd.Flags().BoolVar(&gcJSON, "json", false, "Emit strict read-only orphan audit JSON")
 	rootCmd.AddCommand(gcCmd)
 }
