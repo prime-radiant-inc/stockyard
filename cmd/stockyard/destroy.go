@@ -4,11 +4,31 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 )
 
 var destroyForce bool
+
+func quoteTaskNameForDisplay(name string) string {
+	return strconv.QuoteToASCII(name)
+}
+
+func quotePOSIXShellArgument(value string) (string, bool) {
+	if !utf8.ValidString(value) || strings.IndexByte(value, 0) >= 0 {
+		return "", false
+	}
+	for _, r := range value {
+		if !unicode.IsPrint(r) {
+			return "", false
+		}
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'", true
+}
 
 var destroyCmd = &cobra.Command{
 	Use:   "destroy <task-id>",
