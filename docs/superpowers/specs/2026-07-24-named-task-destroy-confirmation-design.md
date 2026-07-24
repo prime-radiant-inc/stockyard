@@ -76,8 +76,11 @@ into a terminal or treat a diagnostic representation as executable shell text.
   alter the display.
 - For names containing only printable runes, executable guidance quotes the
   name as one POSIX shell argument: surround the value with single quotes and
-  replace each embedded single quote with `'"'"'`. Emit the flag in
-  `--confirm-name=<quoted-value>` form so leading dashes remain unambiguous.
+  replace each embedded single quote with `'"'"'`. Show a pasteable flag suffix
+  in `--force --confirm-name=<quoted-value>` form so leading dashes remain
+  unambiguous. Tell the operator to add that suffix to the same invocation;
+  never reconstruct a complete command that could omit root-scoped connection
+  selectors such as `--url`.
 - Go `%q` and `strconv.Quote` are not shell escaping and must not be used to
   produce a pasteable command.
 - For a name containing NUL or any non-printing/control rune, print only the
@@ -95,8 +98,8 @@ After confirming that the task exists:
    nil task or mismatched response is an error and cannot reach `DestroyTask`.
 2. Without `--force`, print the task preview and return without mutation.
    - For a named task, include the terminal-safe stored-name representation.
-     When the name is safe to render as executable guidance, include an example
-     containing both `--force` and `--confirm-name`.
+     When the name is safe to render as executable guidance, include the flag
+     suffix containing both `--force` and `--confirm-name`.
    - For an unnamed task, retain the existing `--force` guidance.
 3. With `--force`, inspect the stored task name.
    - If the name is nonempty and `--confirm-name` is absent or differs from the
@@ -177,9 +180,10 @@ counts, not merely whether destruction happened. They will cover:
 
 The shell-guidance helper will be round-trip tested as one argument through a
 POSIX shell for spaces, single quotes, `$()`, backticks, leading dashes, and
-printable Unicode. Control characters, Unicode formatting controls, and NUL
-will be tested to ensure diagnostic output contains no raw terminal controls
-and offers no pasteable command.
+printable Unicode. The preview test will assert that guidance is a flag suffix,
+not a reconstructed command that can lose root flags. Control characters,
+Unicode formatting controls, and NUL will be tested to ensure diagnostic
+output contains no raw terminal controls and offers no pasteable suffix.
 
 The tests will assert RPC behavior and returned errors directly. Output checks
 will be limited to the public guidance contract rather than matching the full
