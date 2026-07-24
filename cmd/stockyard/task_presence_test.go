@@ -5,18 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"net"
 	"testing"
 
 	pb "github.com/obra/stockyard/pkg/api/v1"
 	"github.com/obra/stockyard/pkg/client"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/grpc/test/bufconn"
 )
-
-const taskPresenceBufSize = 1024 * 1024
 
 type taskPresenceServer struct {
 	pb.UnimplementedStockyardServer
@@ -26,28 +21,6 @@ type taskPresenceServer struct {
 
 func (s taskPresenceServer) GetTask(context.Context, *pb.GetTaskRequest) (*pb.GetTaskResponse, error) {
 	return s.response, s.err
-}
-
-func newTaskPresenceClient(t *testing.T, server pb.StockyardServer) *client.Client {
-	t.Helper()
-	listener := bufconn.Listen(taskPresenceBufSize)
-	grpcServer := grpc.NewServer()
-	pb.RegisterStockyardServer(grpcServer, server)
-	go func() {
-		if err := grpcServer.Serve(listener); err != nil {
-			t.Errorf("serve bufconn gRPC: %v", err)
-		}
-	}()
-	t.Cleanup(grpcServer.Stop)
-
-	c, err := client.NewWithDialer("passthrough:///bufnet", func(context.Context, string) (net.Conn, error) {
-		return listener.Dial()
-	})
-	if err != nil {
-		t.Fatalf("new bufconn client: %v", err)
-	}
-	t.Cleanup(func() { _ = c.Close() })
-	return c
 }
 
 func decodeSingleJSON(data []byte, target any) error {
@@ -99,7 +72,7 @@ func TestTaskPresenceMapsExactGetTaskOutcomes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var output bytes.Buffer
-			err := writeTaskPresence(context.Background(), newTaskPresenceClient(t, tt.server), "t-123", &output)
+			err := writeTaskPresence(context.Background(), newStockyardTestClient(t, tt.server), "t-123", &output)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("writeTaskPresence succeeded")
