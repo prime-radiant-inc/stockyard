@@ -45,6 +45,32 @@ The `--env-file` flag delivers a `.env` file into the VM at boot. The Firecracke
 
 Tailscale auth keys are handled separately via `--tailscale-auth-key` or automatic 1Password lookup.
 
+## Destroying Tasks
+
+Without `--force`, `stockyard destroy` previews the selected task and does not
+delete anything:
+
+```bash
+stockyard destroy <task-id>
+```
+
+An unnamed task requires `--force`:
+
+```bash
+stockyard destroy <task-id> --force
+```
+
+A named task requires both `--force` and its exact name:
+
+```bash
+stockyard destroy <task-id> --force --confirm-name='my-task'
+```
+
+The name comparison is byte-for-byte. Existing scripts that destroy named tasks
+with `--force` alone now fail closed and must supply an independently known
+expected name. Copying both the ID and name from the same selected row defeats
+the additional selection check.
+
 ## Remote Access
 
 The CLI can connect to remote stockyard daemons using the `--url` flag or `STOCKYARD_URL` environment variable.
