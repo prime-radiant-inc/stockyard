@@ -28,7 +28,9 @@ task teardown lifecycle, and it does not require a new authorization boundary.
    `--confirm-name <exact-task-name>`.
 4. The confirmation value must match the stored task name byte-for-byte. The
    CLI does not trim whitespace or perform case folding.
-5. Unnamed tasks keep the current `--force` behavior.
+5. Unnamed tasks keep the current `--force` behavior, but an explicitly
+   supplied `--confirm-name` on an unnamed task refuses instead of being
+   ignored.
 6. The CLI verifies that `GetTask` returned the exact requested task ID before
    trusting the returned name.
 7. This is a cognitive selection check, not authorization, a unique-identity
@@ -42,13 +44,16 @@ task teardown lifecycle, and it does not require a new authorization boundary.
 |---|---|---|
 | Any task | no `--force` | Show a preview; do not call `DestroyTask` |
 | Unnamed task | `--force` | Destroy the task |
+| Unnamed task | `--force --confirm-name <any-value>` | Refuse with a nonzero error; do not call `DestroyTask` |
 | Named task | `--force` | Refuse with a nonzero error; do not call `DestroyTask` |
 | Named task | `--force --confirm-name <wrong-name>` | Refuse with a nonzero error; do not call `DestroyTask` |
 | Named task | `--force --confirm-name <exact-name>` | Destroy the task |
 
 `--confirm-name` without `--force` does not permit destruction: the command
-still takes the preview-only path. For an unnamed task, `--confirm-name` is not
-part of the safety decision; `--force` remains sufficient.
+still takes the preview-only path. For an unnamed task, `--force` alone remains
+sufficient, but an explicitly supplied `--confirm-name` fails closed: the flag
+asserts an expected name the task does not have, so the command refuses rather
+than silently ignore it.
 
 ## Confirmation Semantics
 
@@ -102,6 +107,8 @@ After confirming that the task exists:
      suffix containing both `--force` and `--confirm-name`.
    - For an unnamed task, retain the existing `--force` guidance.
 3. With `--force`, inspect the stored task name.
+   - If the name is empty and `--confirm-name` was explicitly supplied, return
+     a clear error before issuing a destroy RPC.
    - If the name is nonempty and `--confirm-name` is absent or differs from the
      stored value, return a clear error before issuing a destroy RPC.
    - Otherwise, call `DestroyTask` exactly once with the requested task ID.
@@ -142,6 +149,8 @@ daemon's task lock, which is outside this CLI-only change.
 - Missing or mismatched confirmation for a named task produces a nonzero CLI
   error that identifies the task using terminal-safe output and states that
   `--confirm-name` must match exactly.
+- An explicitly supplied `--confirm-name` for an unnamed task produces a
+  nonzero CLI error stating that the task has no name.
 - A nil task or a response whose task ID differs from the requested ID is an
   error and cannot reach `DestroyTask`.
 - A refusal happens before `DestroyTask`, so a confirmation error has no
@@ -160,8 +169,8 @@ counts, not merely whether destruction happened. They will cover:
 
 - named and unnamed preview paths do not destroy;
 - an unnamed task with `--force` does destroy;
-- an unnamed task with an irrelevant `--confirm-name` still follows the
-  existing `--force` behavior;
+- an unnamed task with an explicitly supplied `--confirm-name` refuses before
+  any destroy RPC;
 - a named task with `--force` but no confirmation does not destroy;
 - a named task with a mismatched confirmation does not destroy;
 - case-only and trailing-whitespace mismatches do not destroy;

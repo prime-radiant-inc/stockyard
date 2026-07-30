@@ -314,12 +314,13 @@ func TestQuotePOSIXShellArgumentRejectsUnsafeDisplayValues(t *testing.T) {
 
 func TestDestroyCommandNamedConfirmation(t *testing.T) {
 	tests := []struct {
-		name           string
-		taskName       string
-		args           []string
-		wantErr        bool
-		wantDestroyIDs []string
-		wantOutput     []string
+		name            string
+		taskName        string
+		args            []string
+		wantErr         bool
+		wantDestroyIDs  []string
+		wantOutput      []string
+		wantErrContains []string
 	}{
 		{
 			name:     "named preview",
@@ -377,8 +378,16 @@ func TestDestroyCommandNamedConfirmation(t *testing.T) {
 			},
 		},
 		{
-			name:           "unnamed ignores irrelevant confirmation",
-			args:           []string{"task-123", "--force", "--confirm-name=anything"},
+			name:    "unnamed refuses explicit confirmation",
+			args:    []string{"task-123", "--force", "--confirm-name=anything"},
+			wantErr: true,
+			wantErrContains: []string{
+				`refusing to destroy unnamed task "task-123": --confirm-name was provided but the task has no name`,
+			},
+		},
+		{
+			name:           "unnamed force alone destroys",
+			args:           []string{"task-123", "--force"},
 			wantDestroyIDs: []string{"task-123"},
 			wantOutput:     []string{"Task destroyed."},
 		},
@@ -391,6 +400,11 @@ func TestDestroyCommandNamedConfirmation(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("destroy succeeded")
+				}
+				for _, want := range tt.wantErrContains {
+					if !strings.Contains(err.Error(), want) {
+						t.Fatalf("error %q does not contain %q", err, want)
+					}
 				}
 			} else if err != nil {
 				t.Fatalf("execute destroy: %v", err)

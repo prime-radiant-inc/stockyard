@@ -84,6 +84,12 @@ confirmation must match the stored task name byte-for-byte.`,
 				return nil
 			}
 
+			if cmd.Flags().Changed("confirm-name") && taskName == "" {
+				return fmt.Errorf(
+					"refusing to destroy unnamed task %q: --confirm-name was provided but the task has no name",
+					taskID,
+				)
+			}
 			if taskName != "" && confirmName != taskName {
 				return fmt.Errorf(
 					"refusing to destroy named task %q (name %s): --confirm-name must match exactly",
