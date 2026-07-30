@@ -71,6 +71,9 @@ with `--force` alone now fail closed and must supply an independently known
 expected name. Copying both the ID and name from the same selected row defeats
 the additional selection check.
 
+This confirmation applies to the `stockyard destroy` command only.
+`stockyard gc`, the dashboard, and direct API clients destroy tasks without it.
+
 ## Remote Access
 
 The CLI can connect to remote stockyard daemons using the `--url` flag or `STOCKYARD_URL` environment variable.
