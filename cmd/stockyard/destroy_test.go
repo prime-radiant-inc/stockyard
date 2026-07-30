@@ -76,6 +76,22 @@ func executeDestroyCommand(t *testing.T, server pb.StockyardServer, args ...stri
 	return output.String(), err
 }
 
+// executeDestroyCommandUnsilenced mirrors the production root command: errors
+// are not silenced, so cobra renders them to the command's stderr stream,
+// which is captured here on its own.
+func executeDestroyCommandUnsilenced(t *testing.T, server pb.StockyardServer, args ...string) (string, error) {
+	t.Helper()
+	cmd := newDestroyCommand(func() (*client.Client, error) {
+		return newStockyardTestClient(t, server), nil
+	})
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return stderr.String(), err
+}
+
 func TestDestroyCommandUnnamedPaths(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -546,5 +562,41 @@ func TestDestroyCommandHelpDocumentsNamedConfirmation(t *testing.T) {
 	}
 	if !strings.Contains(flag.Usage, "exact task name") {
 		t.Fatalf("--confirm-name usage = %q", flag.Usage)
+	}
+}
+
+func TestRefusalOutputPinsConsumerMarker(t *testing.T) {
+	server := &destroyCommandServer{task: &pb.Task{Id: "task-123", Name: "production"}}
+	stderr, err := executeDestroyCommandUnsilenced(t, server, "task-123", "--force")
+	if err == nil {
+		t.Fatal("destroy succeeded")
+	}
+	// Downstream automation matches this exact substring; do not reword without a coordinated consumer migration.
+	if !strings.Contains(stderr, "refusing to destroy named task") {
+		t.Fatalf("stderr %q does not contain %q", stderr, "refusing to destroy named task")
+	}
+	_, destroyIDs := server.requestIDs()
+	if len(destroyIDs) != 0 {
+		t.Fatalf("destroy IDs = %v, want none", destroyIDs)
+	}
+}
+
+func TestNotFoundPreflightPinsConsumerMarker(t *testing.T) {
+	// The daemon answers an unknown id with a NotFound status whose message is
+	// "task not found: <id>" (state.ErrTaskNotFound via the gRPC handler).
+	server := &destroyCommandServer{
+		getErr: status.Error(codes.NotFound, "task not found: task-404"),
+	}
+	stderr, err := executeDestroyCommandUnsilenced(t, server, "task-404", "--force")
+	if err == nil {
+		t.Fatal("destroy succeeded")
+	}
+	// Downstream automation matches this exact substring; do not reword without a coordinated consumer migration.
+	if !strings.Contains(stderr, "task not found") {
+		t.Fatalf("stderr %q does not contain %q", stderr, "task not found")
+	}
+	_, destroyIDs := server.requestIDs()
+	if len(destroyIDs) != 0 {
+		t.Fatalf("destroy IDs = %v, want none", destroyIDs)
 	}
 }
